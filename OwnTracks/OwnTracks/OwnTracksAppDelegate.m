@@ -234,6 +234,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                                inMOC:moc];
     [locationManager start];
     
+    // Publish initial status after a short delay to ensure connection is established
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self status];
+        [[OwnTracking sharedInstance] publishStatus:YES];
+    });
+    
     return YES;
 }
 
@@ -262,6 +268,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
 - (void)applicationWillResignActive:(UIApplication *)application {
     DDLogInfo(@"[OwnTracksAppDelegate] applicationWillResignActive");
+    [[OwnTracking sharedInstance] publishStatus:NO];
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
@@ -631,6 +638,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
 - (void)applicationDidBecomeActive:(UIApplication *)application {
     DDLogInfo(@"[OwnTracksAppDelegate] applicationDidBecomeActive");
+    [[OwnTracking sharedInstance] publishStatus:YES];
     
     [self.connection connectToLast];
     

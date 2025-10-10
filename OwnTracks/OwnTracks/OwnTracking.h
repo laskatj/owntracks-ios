@@ -35,5 +35,6 @@ lon:(double)lon;
 
 - (NSDictionary *)waypointAsJSON:(Waypoint *)waypoint;
 - (NSDictionary *)regionAsJSON:(Region *)region;
+- (void)publishStatus:(BOOL)isActive;
 
 @end

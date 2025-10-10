@@ -681,4 +681,48 @@ static OwnTracking *theInstance = nil;
     return json;
 }
 
+- (void)publishStatus:(BOOL)isActive {
+    // Only publish user_status when app is in foreground
+    UIApplicationState appState = [UIApplication sharedApplication].applicationState;
+    if (appState != UIApplicationStateActive) {
+        DDLogInfo(@"[OwnTracking] Skipping publishStatus: app not in foreground (state: %ld)", (long)appState);
+        return;
+    }
+    
+    NSString *tid = [Settings stringForKey:@"trackerid_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    NSString *topic = [Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC];
+    
+    OwnTracksAppDelegate *appDelegate = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+    if (!tid || !topic || !appDelegate.connection || appDelegate.connection.state != state_connected) {
+        DDLogWarn(@"[OwnTracking] Skipping publishStatus: missing tid, topic, or connection not connected (state: %ld)", (long)(appDelegate.connection ? appDelegate.connection.state : -1));
+        return;
+    }
+    
+    NSString *statusTopic = [topic stringByAppendingString:@"/user_status"];
+    
+    // Create dictionary more safely to avoid nil insertion
+    NSMutableDictionary *json = [[NSMutableDictionary alloc] init];
+    json[@"_type"] = @"user_status";
+    if (tid) {
+        json[@"tid"] = tid;
+    }
+    json[@"isActive"] = @(isActive);
+    json[@"timestamp"] = @((long long)([[NSDate date] timeIntervalSince1970] * 1000));
+    
+    NSError *error;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:json options:0 error:&error];
+    if (error) {
+        DDLogError(@"[OwnTracking] JSON serialization error: %@", error);
+        return;
+    }
+    
+    [appDelegate.connection sendData:data
+                        topic:statusTopic
+                   topicAlias:@(9)
+                          qos:[Settings intForKey:@"qos_preference" inMOC:CoreData.sharedInstance.mainMOC]
+                       retain:NO];
+    
+    DDLogInfo(@"[OwnTracking] Published user_status (%@) to %@ (app state: %ld)", isActive ? @"active" : @"inactive", statusTopic, (long)appState);
+}
+
 @end
