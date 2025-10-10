@@ -23,29 +23,40 @@ Location: PROJECT_SETTINGS -> PRODUCT_BUNDLE_IDENTIFIER
         return;
     }
     
-    NSString *tid = [Settings stringForKey:@"tid_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    NSString *tid = [Settings stringForKey:@"trackerid_preference" inMOC:CoreData.sharedInstance.mainMOC];
     NSString *topic = [Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC];
     
-    if (!tid || !topic || !self.connection.session) {
-        DDLogWarn(@"[OwnTracking] Skipping publishStatus: missing tid, topic, or connection");
+    OwnTracksAppDelegate *appDelegate = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+    if (!tid || !topic || !appDelegate.connection || appDelegate.connection.state != state_connected) {
+        DDLogWarn(@"[OwnTracking] Skipping publishStatus: missing tid, topic, or connection not connected");
         return;
     }
     
-    NSString *statusTopic = [topic stringByAppendingString:@"/user_status"];
+    // Append a suffix so we don't interfere with location stream
+    NSString *statusTopic = [topic stringByAppendingString:@"/status"];
     
-    NSMutableDictionary *json = [[NSMutableDictionary alloc] init];
-    json[@"_type"] = @"user_status";
-    json[@"tid"] = tid;
-    json[@"isActive"] = @(isActive);
-    json[@"timestamp"] = @((long long)([[NSDate date] timeIntervalSince1970] * 1000));
+    NSDictionary *json = @{
+        @"_type": @"user_status",
+        @"tid": tid,
+        @"active": @(isActive),
+        @"tst": @((NSInteger)[[NSDate date] timeIntervalSince1970])
+    };
     
-    [self.connection sendData:[self jsonToData:json]
+    NSError *error;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:json options:0 error:&error];
+    if (error) {
+        DDLogError(@"[OwnTracking] JSON serialization error: %@", error);
+        return;
+    }
+    
+    // Use QoS 0 for status messages to avoid affecting badge count (which tracks pending messages)
+    [appDelegate.connection sendData:data
                         topic:statusTopic
                    topicAlias:@(7)
-                          qos:[Settings intForKey:@"qos_preference" inMOC:CoreData.sharedInstance.mainMOC]
+                          qos:0
                        retain:NO];
     
-    DDLogInfo(@"[OwnTracking] Published user_status (%@) to %@ (app state: %ld)", isActive ? @"active" : @"inactive", statusTopic, (long)appState);
+    DDLogInfo(@"[OwnTracking] Published user_status (active=%@) to %@ (app state: %ld)", isActive ? @"YES" : @"NO", statusTopic, (long)appState);
 }
 ```
 
@@ -151,10 +162,11 @@ Location: PROJECT_SETTINGS -> PRODUCT_BUNDLE_IDENTIFIER
 
     json[@"iOS"] = iOS;
     
+    // Use QoS 0 for device_status to avoid affecting badge count (which tracks pending messages)
     [self.connection sendData:[self jsonToData:json]
                         topic:[[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC] stringByAppendingString:@"/device_status"]
                    topicAlias:@(8)
-                          qos:[Settings intForKey:@"qos_preference" inMOC:CoreData.sharedInstance.mainMOC]
+                          qos:0
                        retain:NO];
 }
 ```
@@ -224,7 +236,7 @@ Make sure these frameworks are linked:
 ## 8. Settings Keys Used
 
 The methods reference these settings keys:
-- `tid_preference` - Device identifier
+- `trackerid_preference` - Device identifier (tid)
 - `qos_preference` - MQTT QoS level
 - `theGeneralTopicInMOC` - MQTT topic prefix
 
@@ -236,9 +248,9 @@ Make sure these are defined in your Settings class or equivalent configuration s
 ```json
 {
   "_type": "user_status",
-  "tid": "device123",
-  "isActive": true,
-  "timestamp": 1704067200000
+  "tid": "JT",
+  "active": true,
+  "tst": 1704067200
 }
 ```
 
@@ -266,11 +278,11 @@ Make sure these are defined in your Settings class or equivalent configuration s
 ```
 
 ### Publishing Details:
-- **User Status Topic:** `{your_topic}/user_status`
+- **User Status Topic:** `{your_topic}/status`
 - **Device Status Topic:** `{your_topic}/device_status`
 - **User Status Topic Alias:** 7
 - **Device Status Topic Alias:** 8
-- **QoS:** Based on your qos_preference setting
+- **QoS:** 0 (fire-and-forget) for both to avoid affecting badge count
 - **Retain:** false for both
 
 

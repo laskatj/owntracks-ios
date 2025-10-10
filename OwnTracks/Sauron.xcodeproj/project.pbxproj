@@ -41,7 +41,7 @@
 		8436DFD62BA9D72F00118AFF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8436DFD52BA9D72F00118AFF /* PrivacyInfo.xcprivacy */; };
 		8436DFDC2BA9DD6100118AFF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8436DFDB2BA9DD6100118AFF /* PrivacyInfo.xcprivacy */; };
 		843A57AB24A9A4D600A5441B /* IntentHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 843A57AA24A9A4D600A5441B /* IntentHandler.m */; };
-		843A57AF24A9A4D700A5441B /* OwnTracksIntents.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 843A57A724A9A4D600A5441B /* OwnTracksIntents.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		843A57AF24A9A4D700A5441B /* SauronIntents.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 843A57A724A9A4D600A5441B /* SauronIntents.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		843B91721C8A14BF00DBD306 /* Storyboard.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 843B91741C8A14BF00DBD306 /* Storyboard.storyboard */; };
 		845273D324A8736000C44340 /* Intents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 849B359924A7578000BEC1BB /* Intents.framework */; };
 		845299E71DFA004000A4DC21 /* Friend+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 845299E01DFA004000A4DC21 /* Friend+CoreDataClass.m */; };
@@ -136,7 +136,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				843A57AF24A9A4D700A5441B /* OwnTracksIntents.appex in Embed Foundation Extensions */,
+				843A57AF24A9A4D700A5441B /* SauronIntents.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -212,7 +212,7 @@
 		8436DFD52BA9D72F00118AFF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8436DFDB2BA9DD6100118AFF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		843817FB1C386A8700CE14EE /* CFNetwork.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CFNetwork.framework; path = System/Library/Frameworks/CFNetwork.framework; sourceTree = SDKROOT; };
-		843A57A724A9A4D600A5441B /* OwnTracksIntents.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OwnTracksIntents.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		843A57A724A9A4D600A5441B /* SauronIntents.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SauronIntents.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		843A57A924A9A4D600A5441B /* IntentHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IntentHandler.h; sourceTree = "<group>"; };
 		843A57AA24A9A4D600A5441B /* IntentHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IntentHandler.m; sourceTree = "<group>"; };
 		843A57AC24A9A4D700A5441B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -224,7 +224,7 @@
 		845299DF1DFA004000A4DC21 /* Friend+CoreDataClass.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "Friend+CoreDataClass.h"; sourceTree = "<group>"; };
 		845299E01DFA004000A4DC21 /* Friend+CoreDataClass.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "Friend+CoreDataClass.m"; sourceTree = "<group>"; };
 		845537C62DB6BEBB00FE7758 /* OwnTracksStorageTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = OwnTracksStorageTests.m; path = Pods/OwnTracksStorageTests.m; sourceTree = SOURCE_ROOT; };
-		8456D0A22B55749E003A45D4 /* OwnTracksTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OwnTracksTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8456D0A22B55749E003A45D4 /* SauronTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SauronTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8456D0A42B55749E003A45D4 /* OwnTracksTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksTests.m; sourceTree = "<group>"; };
 		84595203253DF78200807097 /* Model 13.4.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 13.4.0.xcdatamodel"; sourceTree = "<group>"; };
 		845AA1B21B44245100945856 /* CertificatesTVC.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CertificatesTVC.h; sourceTree = "<group>"; };
@@ -470,8 +470,8 @@
 			isa = PBXGroup;
 			children = (
 				8411B828189FDB140019D2D6 /* Sauron.app */,
-				843A57A724A9A4D600A5441B /* OwnTracksIntents.appex */,
-				8456D0A22B55749E003A45D4 /* OwnTracksTests.xctest */,
+				843A57A724A9A4D600A5441B /* SauronIntents.appex */,
+				8456D0A22B55749E003A45D4 /* SauronTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -717,9 +717,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		8411B827189FDB140019D2D6 /* OwnTracks */ = {
+		8411B827189FDB140019D2D6 /* Sauron */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 8411B85A189FDB140019D2D6 /* Build configuration list for PBXNativeTarget "OwnTracks" */;
+			buildConfigurationList = 8411B85A189FDB140019D2D6 /* Build configuration list for PBXNativeTarget "Sauron" */;
 			buildPhases = (
 				601E55213B519673A2446482 /* [CP] Check Pods Manifest.lock */,
 				8411B824189FDB140019D2D6 /* Sources */,
@@ -735,14 +735,14 @@
 			dependencies = (
 				8452741524A8EF0B00C44340 /* PBXTargetDependency */,
 			);
-			name = OwnTracks;
+			name = Sauron;
 			productName = OwnTracks;
 			productReference = 8411B828189FDB140019D2D6 /* Sauron.app */;
 			productType = "com.apple.product-type.application";
 		};
-		843A57A624A9A4D600A5441B /* OwnTracksIntents */ = {
+		843A57A624A9A4D600A5441B /* SauronIntents */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 843A57B024A9A4D700A5441B /* Build configuration list for PBXNativeTarget "OwnTracksIntents" */;
+			buildConfigurationList = 843A57B024A9A4D700A5441B /* Build configuration list for PBXNativeTarget "SauronIntents" */;
 			buildPhases = (
 				843A57A324A9A4D600A5441B /* Sources */,
 				843A57A424A9A4D600A5441B /* Frameworks */,
@@ -752,14 +752,14 @@
 			);
 			dependencies = (
 			);
-			name = OwnTracksIntents;
+			name = SauronIntents;
 			productName = OwnTracksIntents;
-			productReference = 843A57A724A9A4D600A5441B /* OwnTracksIntents.appex */;
+			productReference = 843A57A724A9A4D600A5441B /* SauronIntents.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		8456D0A12B55749E003A45D4 /* OwnTracksTests */ = {
+		8456D0A12B55749E003A45D4 /* SauronTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 8456D0A82B55749E003A45D4 /* Build configuration list for PBXNativeTarget "OwnTracksTests" */;
+			buildConfigurationList = 8456D0A82B55749E003A45D4 /* Build configuration list for PBXNativeTarget "SauronTests" */;
 			buildPhases = (
 				8456D09E2B55749E003A45D4 /* Sources */,
 				8456D09F2B55749E003A45D4 /* Frameworks */,
@@ -770,9 +770,9 @@
 			dependencies = (
 				8456D0A72B55749E003A45D4 /* PBXTargetDependency */,
 			);
-			name = OwnTracksTests;
+			name = SauronTests;
 			productName = OwnTracksTests;
-			productReference = 8456D0A22B55749E003A45D4 /* OwnTracksTests.xctest */;
+			productReference = 8456D0A22B55749E003A45D4 /* SauronTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -819,7 +819,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 8411B823189FDB140019D2D6 /* Build configuration list for PBXProject "OwnTracks" */;
+			buildConfigurationList = 8411B823189FDB140019D2D6 /* Build configuration list for PBXProject "Sauron" */;
 			compatibilityVersion = "Xcode 12.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -843,9 +843,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				8411B827189FDB140019D2D6 /* OwnTracks */,
-				843A57A624A9A4D600A5441B /* OwnTracksIntents */,
-				8456D0A12B55749E003A45D4 /* OwnTracksTests */,
+				8411B827189FDB140019D2D6 /* Sauron */,
+				843A57A624A9A4D600A5441B /* SauronIntents */,
+				8456D0A12B55749E003A45D4 /* SauronTests */,
 			);
 		};
 /* End PBXProject section */
@@ -1041,12 +1041,12 @@
 		8452741524A8EF0B00C44340 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			platformFilter = ios;
-			target = 843A57A624A9A4D600A5441B /* OwnTracksIntents */;
+			target = 843A57A624A9A4D600A5441B /* SauronIntents */;
 			targetProxy = 8452741424A8EF0B00C44340 /* PBXContainerItemProxy */;
 		};
 		8456D0A72B55749E003A45D4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 8411B827189FDB140019D2D6 /* OwnTracks */;
+			target = 8411B827189FDB140019D2D6 /* Sauron */;
 			targetProxy = 8456D0A62B55749E003A45D4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -1280,7 +1280,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18.5.2;
+				CURRENT_PROJECT_VERSION = 19.0.0;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1294,7 +1294,7 @@
 				"INFOPLIST_FILE[sdk=*]" = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Sauron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1304,7 +1304,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1334,7 +1334,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18.5.2;
+				CURRENT_PROJECT_VERSION = 19.0.0;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1348,7 +1348,7 @@
 				"INFOPLIST_FILE[sdk=*]" = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Sauron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1358,7 +1358,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.0.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
@@ -1463,7 +1463,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18.5.2;
+				CURRENT_PROJECT_VERSION = 19.0.0;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
@@ -1474,7 +1474,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.1;
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.0.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksTests;
@@ -1512,7 +1512,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.1;
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.0.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksTests;
@@ -1531,7 +1531,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		8411B823189FDB140019D2D6 /* Build configuration list for PBXProject "OwnTracks" */ = {
+		8411B823189FDB140019D2D6 /* Build configuration list for PBXProject "Sauron" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8411B858189FDB140019D2D6 /* Debug */,
@@ -1540,7 +1540,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		8411B85A189FDB140019D2D6 /* Build configuration list for PBXNativeTarget "OwnTracks" */ = {
+		8411B85A189FDB140019D2D6 /* Build configuration list for PBXNativeTarget "Sauron" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8411B85B189FDB140019D2D6 /* Debug */,
@@ -1549,7 +1549,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		843A57B024A9A4D700A5441B /* Build configuration list for PBXNativeTarget "OwnTracksIntents" */ = {
+		843A57B024A9A4D700A5441B /* Build configuration list for PBXNativeTarget "SauronIntents" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				843A57B124A9A4D700A5441B /* Debug */,
@@ -1558,7 +1558,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		8456D0A82B55749E003A45D4 /* Build configuration list for PBXNativeTarget "OwnTracksTests" */ = {
+		8456D0A82B55749E003A45D4 /* Build configuration list for PBXNativeTarget "SauronTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8456D0A92B55749E003A45D4 /* Debug */,

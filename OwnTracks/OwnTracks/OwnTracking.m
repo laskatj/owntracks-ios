@@ -564,7 +564,7 @@ static OwnTracking *theInstance = nil;
     json[@"lon"] = waypoint.lon.sixDecimals;
 
     json[@"tst"] = [NSNumber doubleValueWithZeroDecimals:waypoint.tst.timeIntervalSince1970];
-
+    json[@"ver"] = [NSBundle mainBundle].infoDictionary[@"CFBundleVersion"];
     if (fabs(waypoint.tst.timeIntervalSince1970 -
              waypoint.createdAt.timeIntervalSince1970) > 1.0) {
         json[@"created_at"] = [NSNumber doubleValueWithZeroDecimals:waypoint.createdAt.timeIntervalSince1970];
@@ -698,16 +698,15 @@ static OwnTracking *theInstance = nil;
         return;
     }
     
-    NSString *statusTopic = [topic stringByAppendingString:@"/user_status"];
+    // Append a suffix so we don't interfere with location stream
+    NSString *statusTopic = [topic stringByAppendingString:@"/status"];
     
-    // Create dictionary more safely to avoid nil insertion
-    NSMutableDictionary *json = [[NSMutableDictionary alloc] init];
-    json[@"_type"] = @"user_status";
-    if (tid) {
-        json[@"tid"] = tid;
-    }
-    json[@"isActive"] = @(isActive);
-    json[@"timestamp"] = @((long long)([[NSDate date] timeIntervalSince1970] * 1000));
+    NSDictionary *json = @{
+        @"_type": @"user_status",
+        @"tid": tid,
+        @"active": @(isActive),
+        @"tst": @((NSInteger)[[NSDate date] timeIntervalSince1970])
+    };
     
     NSError *error;
     NSData *data = [NSJSONSerialization dataWithJSONObject:json options:0 error:&error];
@@ -716,13 +715,14 @@ static OwnTracking *theInstance = nil;
         return;
     }
     
+    // Use QoS 0 for status messages to avoid affecting badge count (which tracks pending messages)
     [appDelegate.connection sendData:data
                         topic:statusTopic
-                   topicAlias:@(9)
-                          qos:[Settings intForKey:@"qos_preference" inMOC:CoreData.sharedInstance.mainMOC]
+                   topicAlias:@(7)
+                          qos:0
                        retain:NO];
     
-    DDLogInfo(@"[OwnTracking] Published user_status (%@) to %@ (app state: %ld)", isActive ? @"active" : @"inactive", statusTopic, (long)appState);
+    DDLogInfo(@"[OwnTracking] Published user_status (active=%@) to %@ (app state: %ld)", isActive ? @"YES" : @"NO", statusTopic, (long)appState);
 }
 
 @end

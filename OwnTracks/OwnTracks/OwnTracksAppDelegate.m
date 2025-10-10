@@ -1364,11 +1364,11 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
 
     json[@"iOS"] = iOS;
     
+    // Use QoS 0 for device_status to avoid affecting badge count (which tracks pending messages)
     [self.connection sendData:[self jsonToData:json]
-                        topic:[[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC] stringByAppendingString:@"/status"]
+                        topic:[[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC] stringByAppendingString:@"/device_status"]
                    topicAlias:@(8)
-                          qos:[Settings intForKey:@"qos_preference"
-                                            inMOC:CoreData.sharedInstance.mainMOC]
+                          qos:0
                        retain:NO];
 }
 
