@@ -18,6 +18,7 @@
 		8411B83A189FDB140019D2D6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B839189FDB140019D2D6 /* main.m */; };
 		8411B83E189FDB140019D2D6 /* OwnTracksAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B83D189FDB140019D2D6 /* OwnTracksAppDelegate.m */; };
 		8411B843189FDB140019D2D6 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8411B842189FDB140019D2D6 /* Images.xcassets */; };
+		8411B844189FDB140019D2D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8411B845189FDB140019D2D7 /* Assets.xcassets */; };
 		8411B87F189FE35C0019D2D6 /* Model.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 8411B87D189FE35C0019D2D6 /* Model.xcdatamodeld */; };
 		8411B88B189FE79B0019D2D6 /* CoreData.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B889189FE79B0019D2D6 /* CoreData.m */; };
 		8411B88E189FE9940019D2D6 /* Connection.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B88D189FE9940019D2D6 /* Connection.m */; };
@@ -153,7 +154,7 @@
 		8400D9721D83825E00DEA134 /* HTTP.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = HTTP.plist; sourceTree = "<group>"; };
 		8400D9741D84946E00DEA134 /* Model 9.1.7.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 9.1.7.xcdatamodel"; sourceTree = "<group>"; };
 		840BBDD318E4274200DC113C /* Model 6.2.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 6.2.xcdatamodel"; sourceTree = "<group>"; };
-		8411B828189FDB140019D2D6 /* OwnTracks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OwnTracks.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8411B828189FDB140019D2D6 /* Sauron.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sauron.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8411B82B189FDB140019D2D6 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		8411B82D189FDB140019D2D6 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		8411B82F189FDB140019D2D6 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -163,6 +164,7 @@
 		8411B83C189FDB140019D2D6 /* OwnTracksAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksAppDelegate.h; sourceTree = "<group>"; };
 		8411B83D189FDB140019D2D6 /* OwnTracksAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksAppDelegate.m; sourceTree = "<group>"; };
 		8411B842189FDB140019D2D6 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
+		8411B845189FDB140019D2D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8411B849189FDB140019D2D6 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		8411B860189FDD200019D2D6 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		8411B862189FDD300019D2D6 /* OwnTracks.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = OwnTracks.entitlements; sourceTree = "<group>"; };
@@ -467,7 +469,7 @@
 		8411B829189FDB140019D2D6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				8411B828189FDB140019D2D6 /* OwnTracks.app */,
+				8411B828189FDB140019D2D6 /* Sauron.app */,
 				843A57A724A9A4D600A5441B /* OwnTracksIntents.appex */,
 				8456D0A22B55749E003A45D4 /* OwnTracksTests.xctest */,
 			);
@@ -653,6 +655,7 @@
 				84A1737C1B428F3E00CCB7D0 /* Settings */,
 				843B91741C8A14BF00DBD306 /* Storyboard.storyboard */,
 				8411B842189FDB140019D2D6 /* Images.xcassets */,
+				8411B845189FDB140019D2D7 /* Assets.xcassets */,
 				84FAEA7125F01DA100DCD479 /* Launch Screen.storyboard */,
 			);
 			name = UI;
@@ -734,7 +737,7 @@
 			);
 			name = OwnTracks;
 			productName = OwnTracks;
-			productReference = 8411B828189FDB140019D2D6 /* OwnTracks.app */;
+			productReference = 8411B828189FDB140019D2D6 /* Sauron.app */;
 			productType = "com.apple.product-type.application";
 		};
 		843A57A624A9A4D600A5441B /* OwnTracksIntents */ = {
@@ -863,6 +866,7 @@
 				84FAEA7225F01DA100DCD479 /* Launch Screen.storyboard in Resources */,
 				849260442B0373E300F6DC13 /* encryption.json in Resources */,
 				8411B843189FDB140019D2D6 /* Images.xcassets in Resources */,
+				8411B844189FDB140019D2D7 /* Assets.xcassets in Resources */,
 				84E2C4511EC34B3B00BC02CE /* Localizable.strings in Resources */,
 				845AA1BC1B4846AF00945856 /* OwnTracks-64.png in Resources */,
 				8408CA4425F00FB400354FF3 /* InfoPlist.strings in Resources */,
@@ -928,7 +932,8 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\n";
+			shellScript = "
+";
 		};
 		E1F1C1838DEABD333F5AC82C /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -938,9 +943,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-OwnTracks/Pods-OwnTracks-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-OwnTracks/Pods-OwnTracks-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1273,6 +1282,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 18.5.2;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1282,7 +1292,7 @@
 				GCC_PREFIX_HEADER = "OwnTracks/OwnTracks-Prefix.pch";
 				INFOPLIST_FILE = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
 				"INFOPLIST_FILE[sdk=*]" = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = OwnTracks;
+				INFOPLIST_KEY_CFBundleDisplayName = Sauron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1295,8 +1305,8 @@
 					"$(PROJECT_DIR)/OwnTracks",
 				);
 				MARKETING_VERSION = 18.5.2;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.MQTTitude;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
+				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -1326,6 +1336,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 18.5.2;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1335,7 +1346,7 @@
 				GCC_PREFIX_HEADER = "OwnTracks/OwnTracks-Prefix.pch";
 				INFOPLIST_FILE = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
 				"INFOPLIST_FILE[sdk=*]" = "OwnTracks/Base.lproj/OwnTracks-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = OwnTracks;
+				INFOPLIST_KEY_CFBundleDisplayName = Sauron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1349,8 +1360,8 @@
 				);
 				MARKETING_VERSION = 18.5.2;
 				ONLY_ACTIVE_ARCH = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.MQTTitude;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
+				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -1380,6 +1391,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 18.5.2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				INFOPLIST_FILE = OwnTracksIntents/Info.plist;
@@ -1392,7 +1404,7 @@
 				MARKETING_VERSION = 18.5.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.MQTTitude.OwnTracksIntents;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1418,6 +1430,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 18.5.2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				INFOPLIST_FILE = OwnTracksIntents/Info.plist;
@@ -1430,7 +1443,7 @@
 				MARKETING_VERSION = 18.5.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.MQTTitude.OwnTracksIntents;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1453,6 +1466,7 @@
 				CURRENT_PROJECT_VERSION = 18.5.2;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
@@ -1463,7 +1477,7 @@
 				MARKETING_VERSION = 18.5.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.OwnTracksTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1490,6 +1504,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
@@ -1500,7 +1515,7 @@
 				MARKETING_VERSION = 18.5.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.mqttitude.OwnTracksTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
