@@ -41,6 +41,7 @@
 @property (weak, nonatomic) IBOutlet UIButton *UIpublish;
 @property (weak, nonatomic) IBOutlet UITextField *UIsecret;
 @property (weak, nonatomic) IBOutlet UITextField *UIurl;
+@property (weak, nonatomic) IBOutlet UITextField *UIwebappurl;
 @property (weak, nonatomic) IBOutlet UITextField *UIhttpHeaders;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMTemplate;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMCopyright;
@@ -101,6 +102,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.UIDeviceID.delegate = self;
     self.UIpassphrase.delegate = self;
     self.UIurl.delegate = self;
+    self.UIwebappurl.delegate = self;
     self.UIhttpHeaders.delegate = self;
     self.UIOSMTemplate.delegate = self;
     self.UIOSMCopyright.delegate = self;
@@ -363,6 +365,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (self.UIurl)
         [Settings setString:self.UIurl.text
                      forKey:@"url_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIwebappurl)
+        [Settings setString:self.UIwebappurl.text
+                     forKey:@"webappurl_preference"
                       inMOC:CoreData.sharedInstance.mainMOC];
 
     if (self.UIhttpHeaders)
@@ -723,6 +730,13 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [Settings stringForKey:@"url_preference"
                          inMOC:CoreData.sharedInstance.mainMOC];
         self.UIurl.enabled = !locked;
+    }
+
+    if (self.UIwebappurl) {
+        self.UIwebappurl.text =
+        [Settings stringForKey:@"webappurl_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIwebappurl.enabled = !locked;
     }
 
     if (self.UIhttpHeaders) {
@@ -1148,6 +1162,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self updated];
 }
 - (IBAction)urlChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+- (IBAction)webappurlChanged:(UITextField *)sender {
     [self changeWarning];
 }
 - (IBAction)subTopicChanged:(UITextField *)sender {

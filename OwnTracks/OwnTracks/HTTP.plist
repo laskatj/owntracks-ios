@@ -42,5 +42,7 @@
 	<string></string>
 	<key>adapt_preference</key>
 	<integer>0</integer>
+	<key>webappurl_preference</key>
+	<string>https://yourapp.com</string>
 </dict>
 </plist>

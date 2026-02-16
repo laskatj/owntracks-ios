@@ -54,5 +54,7 @@
 - (void)connectionOff;
 - (void)terminateSession;
 - (void)syncProcessing;
+- (void)configFromDictionary:(NSDictionary *)json;
+- (BOOL)processNSURL:(NSURL *)url;
 
 @end

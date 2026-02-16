@@ -70,5 +70,7 @@
 	<integer>0</integer>
 	<key>adapt_preference</key>
 	<integer>0</integer>
+	<key>webappurl_preference</key>
+	<string>https://sauron.tlaska.com</string>
 </dict>
 </plist>

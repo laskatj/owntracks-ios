@@ -127,6 +127,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             object = dictionary[@"password"];
             if (object) [self setString:object forKey:@"pass_preference" inMOC:context];
 
+            object = dictionary[@"webappurl"];
+            if (object) [self setString:(NSString *)object forKey:@"webappurl_preference" inMOC:context];
+
             object = dictionary[@"subQos"];
             if (object) [self setString:object forKey:@"subscriptionqos_preference" inMOC:context];
             
@@ -445,6 +448,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     dict[@"osmCopyright"] =         [Settings theOSMCopyrightInMOC:context];
     dict[@"username"] =             [Settings stringOrZeroForKey:@"user_preference" inMOC:context];
     dict[@"password"] =             [Settings stringOrZeroForKey:@"pass_preference" inMOC:context];
+    dict[@"webappurl"] =            [Settings stringOrZeroForKey:@"webappurl_preference" inMOC:context];
 
     switch ([Settings intForKey:@"mode" inMOC:context]) {
         case CONNECTION_MODE_MQTT:

@@ -115,6 +115,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>owntracks</string>
+				<string>sauron</string>
 			</array>
 		</dict>
 	</array>

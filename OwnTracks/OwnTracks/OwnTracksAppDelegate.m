@@ -316,7 +316,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
     if (url) {
         DDLogVerbose(@"[OwnTracksAppDelegate] URL scheme %@", url.scheme);
         
-        if ([url.scheme isEqualToString:@"owntracks"]) {
+        if ([url.scheme isEqualToString:@"owntracks"] || [url.scheme isEqualToString:@"sauron"]) {
             DDLogVerbose(@"[OwnTracksAppDelegate] URL path %@ query %@", url.path, url.query);
             
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:TRUE];
