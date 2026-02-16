@@ -11,6 +11,6 @@
 #endif
 
 
-FOUNDATION_EXPORT double Pods_OwnTracksVersionNumber;
-FOUNDATION_EXPORT const unsigned char Pods_OwnTracksVersionString[];
+FOUNDATION_EXPORT double Pods_SauronVersionNumber;
+FOUNDATION_EXPORT const unsigned char Pods_SauronVersionString[];
 

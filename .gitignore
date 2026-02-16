@@ -18,3 +18,5 @@ DerivedData
 *.xccheckout
 *.xcsettings
 
+OwnTracks/feedback.json
+OwnTracks/*.xccrashpoint/*

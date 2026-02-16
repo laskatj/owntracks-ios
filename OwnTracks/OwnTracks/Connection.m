@@ -477,7 +477,9 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
     self.state = state_connecting;
     self.lastErrorCode = nil;
 
-    __block NSRunLoop *myRunLoop = [NSRunLoop currentRunLoop];
+    // Use mainRunLoop instead of currentRunLoop since the completion handler
+    // may execute on a different thread where currentRunLoop could be invalid
+    NSRunLoop *myRunLoop = [NSRunLoop mainRunLoop];
 
     NSURLSessionDataTask *dataTask =
     [self.urlSession dataTaskWithRequest:request completionHandler:
@@ -911,12 +913,19 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 
 - (void)startReconnectTimer:(NSRunLoop *)runLoop {
     DDLogInfo(@"[Connection] set reconnectTimer %f", self.reconnectTime);
+    
+    // Use mainRunLoop if runLoop is nil or invalid
+    NSRunLoop *targetRunLoop = runLoop;
+    if (!targetRunLoop) {
+        targetRunLoop = [NSRunLoop mainRunLoop];
+    }
+    
     self.reconnectTimer = [NSTimer timerWithTimeInterval:self.reconnectTime
                                                   target:self
                                                 selector:@selector(reconnect)
                                                 userInfo:Nil
                                                  repeats:FALSE];
-    [runLoop addTimer:self.reconnectTimer forMode:NSDefaultRunLoopMode];
+    [targetRunLoop addTimer:self.reconnectTimer forMode:NSDefaultRunLoopMode];
 }
 
 - (NSData *)encrypt:(NSData *)message {

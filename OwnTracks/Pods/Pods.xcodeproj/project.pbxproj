@@ -22,13 +22,13 @@
 		0D5C759E4E019E2D3FE310DC5974A000 /* crypto_verify_32.h in Headers */ = {isa = PBXBuildFile; fileRef = 298B737F2EFC8D5E695EC7A8C92710C6 /* crypto_verify_32.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		0D8AC104E8B961A0DCEF9FF765287AAA /* MQTTLog.m in Sources */ = {isa = PBXBuildFile; fileRef = 402892CC2E2EB4576820CB4DDEDC46F8 /* MQTTLog.m */; };
 		0EC5C336AE9D087D9F429D454520A35E /* DSJSONSchemaValidationContext.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B47CAFBDD9AAD797ABA39C1C559CA10 /* DSJSONSchemaValidationContext.m */; };
-		0FEAE26AD9312294867260A194B324AB /* Pods-OwnTracks-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 6C5A54F6678FC22F814CF562D1EE4C06 /* Pods-OwnTracks-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		10649E7187B5AB92EC4D7F0D8866F570 /* DDLog+LOGV.h in Headers */ = {isa = PBXBuildFile; fileRef = 6337709239BE208016C508466340518E /* DDLog+LOGV.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		11AF8F05498BFDD98CE3EC267ADED06B /* NSURL+DSJSONReferencing.m in Sources */ = {isa = PBXBuildFile; fileRef = 5782124C36CAF799FAB6239FE6C5E0F5 /* NSURL+DSJSONReferencing.m */; };
 		147358D7CA412C0CB9ACA676F2F79311 /* randombytes.h in Headers */ = {isa = PBXBuildFile; fileRef = 8B647D9428B03759712DEBEA7744520D /* randombytes.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		14D390701B71D34466287F3D3DC8AF33 /* crypto_kdf_blake2b.h in Headers */ = {isa = PBXBuildFile; fileRef = 7672B83A14695789C0A64393D645AAA2 /* crypto_kdf_blake2b.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		15F8B885CCCCF9042F633A4FB949699D /* KeyDerivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371B5F6D9C09071376DAD60CC580CC3A /* KeyDerivation.swift */; };
 		15FD1FED206A96AE7788E975F6514DEA /* DDAssertMacros.h in Headers */ = {isa = PBXBuildFile; fileRef = A1152E814E9704959C3C8AA146D68CE6 /* DDAssertMacros.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		16BFA1B2CA54AA48E322F0F59B39BC56 /* Pods-Sauron-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 6D937ABBD1BFA99FFDE09CDD0B801B88 /* Pods-Sauron-dummy.m */; };
 		174A6438CE0CAC61AD90D6254414099D /* DSJSONSchemaArrayValidator.m in Sources */ = {isa = PBXBuildFile; fileRef = 9916936930AA81E7C64DA7510F1290D3 /* DSJSONSchemaArrayValidator.m */; };
 		179559514EEBA2577833D259426E5E05 /* GenericHash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F44C38A47CCC272C006A2EC09B1B676 /* GenericHash.swift */; };
 		179608F1693C08FA170650A3ABFF0DA9 /* crypto_verify_64.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BD73CDD66C7F12CA9A2907521C63048 /* crypto_verify_64.h */; settings = {ATTRIBUTES = (Private, ); }; };
@@ -121,6 +121,8 @@
 		7BE360E619D5ADCBE9D497C24BE5EC68 /* crypto_core_hsalsa20.h in Headers */ = {isa = PBXBuildFile; fileRef = 73041334C81325EFA02DDBBC10CDFADE /* crypto_core_hsalsa20.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		7EADF190AFFCC263B1EF6E17620CEBC4 /* DSJSONSchemaNumericValidator.h in Headers */ = {isa = PBXBuildFile; fileRef = 7C557DE074290210E8D6657BA3993022 /* DSJSONSchemaNumericValidator.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		7FB01DF1C6749DEE68E44A87952E43A5 /* crypto_generichash.h in Headers */ = {isa = PBXBuildFile; fileRef = 043674BBD3157A2B18B216E401E9E132 /* crypto_generichash.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		7FD22BE8F7EAC4D44C273BCE478B93D0 /* Pods-Sauron-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = F06A4EE3B9F5B15BFF619E50EA7A4DD4 /* Pods-Sauron-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		80B6B4959442BC6C75D9B7FC0502FF2E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
 		819EB917835BFD768035FD20604C508E /* Box.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E18DF85A91A2D4A4B160A039BAB402 /* Box.swift */; };
 		848734CB32D83686BA2ADF54B49112D6 /* CocoaLumberjack.h in Headers */ = {isa = PBXBuildFile; fileRef = F9EEFFAF86E738E316CF44C5F81A3579 /* CocoaLumberjack.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		84C1945554A2AB818C58A6D7C81077FF /* crypto_sign.h in Headers */ = {isa = PBXBuildFile; fileRef = 7A1A7BE4CC59203ACD15C43486E404B4 /* crypto_sign.h */; settings = {ATTRIBUTES = (Private, ); }; };
@@ -137,11 +139,9 @@
 		912087237D8F4D886719EE2DAA7A61F7 /* MQTTLog.h in Headers */ = {isa = PBXBuildFile; fileRef = 63AB2110630884165BDC27BDCE93BE5B /* MQTTLog.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		9302BB6381963DFD79873918F33B1849 /* mqttc-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 2D563C3F5C10D95ABF7DFFFFDA869901 /* mqttc-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		93FA50C36BB35FFECA0C0DF337C0490E /* crypto_hash_sha512.h in Headers */ = {isa = PBXBuildFile; fileRef = B0C88C5A3A8AA6DB8BC20E00BA946600 /* crypto_hash_sha512.h */; settings = {ATTRIBUTES = (Private, ); }; };
-		94993BD9CBBCCB41CB311228554FA231 /* Pods-OwnTracks-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = B65E1D133DCF38AB738E65268F56AFAA /* Pods-OwnTracks-dummy.m */; };
 		96797699323B44EC1038DA2A502C9E58 /* NSDictionary+DSJSONDeepMutableCopy.m in Sources */ = {isa = PBXBuildFile; fileRef = F23C69E4120EE2134B21B97B7E774689 /* NSDictionary+DSJSONDeepMutableCopy.m */; };
 		978A50E77A42C87FEE54A62C3854517E /* crypto_secretstream_xchacha20poly1305.h in Headers */ = {isa = PBXBuildFile; fileRef = ED269F8B88D7B2D683C6C20834E0B5DB /* crypto_secretstream_xchacha20poly1305.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		97DCE58F6AD88A1D2558FDB1FF9110DB /* DSJSONSchemaErrors.m in Sources */ = {isa = PBXBuildFile; fileRef = 78FE763E5C8DD7704FA90F6EDAFF98E6 /* DSJSONSchemaErrors.m */; };
-		9C75DD21226B375FE799D34340A531B2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
 		9F344784BA7A747A795B2FC2E48701D6 /* DSJSONSchema+StandardValidators.m in Sources */ = {isa = PBXBuildFile; fileRef = 1A5D381CD5C3F31D91A16B46201B1CCD /* DSJSONSchema+StandardValidators.m */; };
 		A084A117152FF2D00C3EABF6290C6C29 /* crypto_auth.h in Headers */ = {isa = PBXBuildFile; fileRef = 3FE20CAA7A96383CA2A665C3279DF598 /* crypto_auth.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		A10A3AF029355E631521AE29A18EA0D2 /* DDASLLogger.h in Headers */ = {isa = PBXBuildFile; fileRef = B5AF5DB705813F02B822CBCD0764CD5C /* DDASLLogger.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -187,7 +187,7 @@
 		BF86AD978F86C24F11EE7FBF36CFD562 /* NSObject+DSJSONComparison.m in Sources */ = {isa = PBXBuildFile; fileRef = EC131EC97E65F5BA97BEEABE060D8BEC /* NSObject+DSJSONComparison.m */; };
 		BF94559D4E1D70857F91242B8370CBAC /* crypto_kdf.h in Headers */ = {isa = PBXBuildFile; fileRef = 513152A3479DA5E6605E8AD14FF6D0BD /* crypto_kdf.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		C0B25BD93DEBEE86AAB8FE2AB25724CC /* ShortHash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 404C4C72E68F13FC8F946BFA24B19717 /* ShortHash.swift */; };
-		C0D1AE435FFC82F5CA91B676CB9310C6 /* CocoaLumberjackPrivacy.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjackPrivacy.bundle */; };
+		C0D1AE435FFC82F5CA91B676CB9310C6 /* CocoaLumberjack-CocoaLumberjackPrivacy in Resources */ = {isa = PBXBuildFile; fileRef = 519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjack-CocoaLumberjackPrivacy */; };
 		C1DCBD0BE8C450A127A7941A5D42B379 /* DSJSONSchema+StandardValidators.h in Headers */ = {isa = PBXBuildFile; fileRef = D6D4FE073FA7A0BDE7C6F749B7975ED9 /* DSJSONSchema+StandardValidators.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		C30A242FDE27C3D2F280CC69282C7811 /* ABStaticTableViewController-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 7C5CD8F339781DC34732E5363F5CB254 /* ABStaticTableViewController-dummy.m */; };
 		C425A895CFCD0F15020C13C74DD461A8 /* crypto_pwhash_argon2i.h in Headers */ = {isa = PBXBuildFile; fileRef = 8566906217E9BD53C82566EF273DA859 /* crypto_pwhash_argon2i.h */; settings = {ATTRIBUTES = (Private, ); }; };
@@ -248,26 +248,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		2351E728DD2342837644E3C922F3F85B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 9AC54079097E3E3B70EBE9D712693CE4;
-			remoteInfo = Sodium;
-		};
 		28428071DE2A5313442163066EB36D13 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = E95654B155D25890BE8E26081FCA8265;
 			remoteInfo = CocoaLumberjack;
-		};
-		583EBEFCF875B0F5D148F40D18962567 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B1284C8E6CD9B45E97F433902C9D77F1;
-			remoteInfo = ABStaticTableViewController;
 		};
 		64C07922480F39F84E6F2FDC44F92CA8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -276,33 +262,47 @@
 			remoteGlobalIDString = 276021C4482165D46E0CBBEFB822FE95;
 			remoteInfo = "CocoaLumberjack-CocoaLumberjackPrivacy";
 		};
-		69E09154788CD8D413E06BAAB742C0DD /* PBXContainerItemProxy */ = {
+		8BAD9E5D3D5F9F1B1F544FD6AFBEE36F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = E95654B155D25890BE8E26081FCA8265;
-			remoteInfo = CocoaLumberjack;
+			remoteGlobalIDString = 9AC54079097E3E3B70EBE9D712693CE4;
+			remoteInfo = Sodium;
 		};
-		6D0B6A8C786EF141E4DA1F517E5AD67B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 548A45AC34FA8106E3C61F961FDA5936;
-			remoteInfo = mqttc;
-		};
-		E0A5B11837F3AF785FDE2CA526570D91 /* PBXContainerItemProxy */ = {
+		A60AE5835F2C2B6335C8CD0D7373EF6E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 79E8FCE79597E6EBF96074BD00A72E8E;
 			remoteInfo = DSJSONSchemaValidation;
 		};
+		ABDBFD6B09359F17D5EA388579A3AC1E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B1284C8E6CD9B45E97F433902C9D77F1;
+			remoteInfo = ABStaticTableViewController;
+		};
+		CCC155562804E87D69392D82C1D3C349 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 548A45AC34FA8106E3C61F961FDA5936;
+			remoteInfo = mqttc;
+		};
+		D570EB919E9B7B36C3C0DDFECCB85A7F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E95654B155D25890BE8E26081FCA8265;
+			remoteInfo = CocoaLumberjack;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		008BAF7108458E0138A91AD33BC87415 /* sodium_lib.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = sodium_lib.h; path = Sodium/libsodium/sodium_lib.h; sourceTree = "<group>"; };
 		01019F1878500DBC891C1E295C953701 /* DSJSONSchemaObjectPropertiesValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaObjectPropertiesValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaObjectPropertiesValidator.h; sourceTree = "<group>"; };
-		03BEFD260BACFB00C91978A90427A0D7 /* Clibsodium.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; path = Clibsodium.xcframework; sourceTree = "<group>"; };
+		03BEFD260BACFB00C91978A90427A0D7 /* Clibsodium.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; path = Clibsodium.xcframework; sourceTree = "<group>"; };
 		043674BBD3157A2B18B216E401E9E132 /* crypto_generichash.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_generichash.h; path = Sodium/libsodium/crypto_generichash.h; sourceTree = "<group>"; };
 		0453672C6BC77F0F0E2CB06C723C407A /* DSJSONSchemaFormatValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaFormatValidator.h; path = DSJSONSchemaValidation/include/DSJSONSchemaFormatValidator.h; sourceTree = "<group>"; };
 		045D826F73AA32BA1C86649E56C1A238 /* DDASLLogCapture.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDASLLogCapture.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDASLLogCapture.h; sourceTree = "<group>"; };
@@ -316,12 +316,13 @@
 		0A5548317D9244753245A60043EBF6BA /* DSJSONSchemaNumericValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaNumericValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaNumericValidator.m; sourceTree = "<group>"; };
 		0AA24D1B960EF662E5DE86B14C558552 /* DSJSONSchemaPropertyNamesValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaPropertyNamesValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaPropertyNamesValidator.m; sourceTree = "<group>"; };
 		0AADB95CAF28CE884705EFDB3ABD2B71 /* DSJSONBooleanSchema.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONBooleanSchema.h; path = DSJSONSchemaValidation/include/DSJSONBooleanSchema.h; sourceTree = "<group>"; };
+		0B3CA6FD884F25D36B6CAA935FA49ED4 /* Pods-Sauron-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-Sauron-acknowledgements.markdown"; sourceTree = "<group>"; };
 		0D1E1A647B5CB3BFE8D58F7891CAB30F /* MQTTCoreDataPersistence.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = MQTTCoreDataPersistence.m; path = MQTTClient/MQTTClient/MQTTCoreDataPersistence.m; sourceTree = "<group>"; };
 		0E2CD99D575F4A1E75AAE6DC3923AA90 /* Sodium-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Sodium-Info.plist"; sourceTree = "<group>"; };
+		0E34F06696A9E77E8CCB7EB4E9141836 /* Pods-Sauron-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Sauron-Info.plist"; sourceTree = "<group>"; };
 		0F44C38A47CCC272C006A2EC09B1B676 /* GenericHash.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GenericHash.swift; path = Sodium/GenericHash.swift; sourceTree = "<group>"; };
 		10F0F8BFD99355A2DEFDEB27FDFDA47C /* DDDispatchQueueLogFormatter.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDDispatchQueueLogFormatter.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDDispatchQueueLogFormatter.h; sourceTree = "<group>"; };
 		14E2D092647C9623C0A3443B2FC8DB37 /* MQTTClient.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTClient.h; path = MQTTClient/MQTTClient/MQTTClient.h; sourceTree = "<group>"; };
-		153F97C249AED03FE6E03F1E18B44EDF /* Pods_OwnTracks.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OwnTracks.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		169003042CF3B33B677B3AC1D12CD3FA /* SecretBox.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SecretBox.swift; path = Sodium/SecretBox.swift; sourceTree = "<group>"; };
 		16B7B8CEF1616EA2071BA9AB8605414D /* MQTTInMemoryPersistence.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTInMemoryPersistence.h; path = MQTTClient/MQTTClient/MQTTInMemoryPersistence.h; sourceTree = "<group>"; };
 		17F3D6B6CE263B3155DD4B29DAF2C680 /* DSJSONSchemaValidation-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "DSJSONSchemaValidation-prefix.pch"; sourceTree = "<group>"; };
@@ -329,8 +330,8 @@
 		18607E8D571C42E66DFB8C00963777F8 /* DDFileLogger+Buffering.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DDFileLogger+Buffering.h"; path = "Sources/CocoaLumberjack/include/CocoaLumberjack/DDFileLogger+Buffering.h"; sourceTree = "<group>"; };
 		19E999B7A15A7782F2794E9B7BF85F8A /* DDMultiFormatter.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDMultiFormatter.m; path = Sources/CocoaLumberjack/Extensions/DDMultiFormatter.m; sourceTree = "<group>"; };
 		1A5D381CD5C3F31D91A16B46201B1CCD /* DSJSONSchema+StandardValidators.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = "DSJSONSchema+StandardValidators.m"; path = "DSJSONSchemaValidation/DSJSONSchema+StandardValidators.m"; sourceTree = "<group>"; };
+		1A99571EAEACCA6D2E6E1F30E21988A4 /* Pods-Sauron-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Sauron-acknowledgements.plist"; sourceTree = "<group>"; };
 		1C941DD89AD52859AF3E1A9882577BC9 /* DSJSONSchemaFactory.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaFactory.m; path = DSJSONSchemaValidation/DSJSONSchemaFactory.m; sourceTree = "<group>"; };
-		1CBB23A2EACE37C2557F0D681015241F /* Pods-OwnTracks.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-OwnTracks.modulemap"; sourceTree = "<group>"; };
 		1D15BE5E0E51305386F2FD35C392328F /* MQTTTransport.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTTransport.h; path = MQTTClient/MQTTClient/MQTTTransport.h; sourceTree = "<group>"; };
 		1DD674788BE2612607CB0316B1C629B6 /* DSJSONSchemaReference.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaReference.h; path = DSJSONSchemaValidation/include/DSJSONSchemaReference.h; sourceTree = "<group>"; };
 		1E4CAF26632DE4A6EB4234A6A5A90862 /* NSDictionary+DSJSONComparison.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = "NSDictionary+DSJSONComparison.m"; path = "DSJSONSchemaValidation/NSDictionary+DSJSONComparison.m"; sourceTree = "<group>"; };
@@ -342,6 +343,7 @@
 		252A08077E555443D019984766D3BD09 /* DSJSONSchemaValidation.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = DSJSONSchemaValidation.release.xcconfig; sourceTree = "<group>"; };
 		25E11B0F94F8F5195B773EEB58A6CCC7 /* ABStaticTableViewController.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = ABStaticTableViewController.h; sourceTree = "<group>"; };
 		263F13FE181A1F817151F0075BC9995D /* DSJSONSchemaContainsValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaContainsValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaContainsValidator.h; sourceTree = "<group>"; };
+		26A27F32C3424795DBBD41243010B3A5 /* Pods-Sauron-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-Sauron-frameworks.sh"; sourceTree = "<group>"; };
 		26BA4686E6FC5EB5C672A9D18FDF0F7C /* crypto_aead_xchacha20poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_aead_xchacha20poly1305.h; path = Sodium/libsodium/crypto_aead_xchacha20poly1305.h; sourceTree = "<group>"; };
 		27667B7DDED8D49F6C392FD1DF313FB1 /* CocoaLumberjack.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = CocoaLumberjack.debug.xcconfig; sourceTree = "<group>"; };
 		286B5FCEE48925524E5A6D813774CEE7 /* DSJSONSchemaFormatValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaFormatValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaFormatValidator.m; sourceTree = "<group>"; };
@@ -353,22 +355,22 @@
 		2D563C3F5C10D95ABF7DFFFFDA869901 /* mqttc-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "mqttc-umbrella.h"; sourceTree = "<group>"; };
 		2D63DEE9C135801DB7F272A38555C653 /* crypto_pwhash.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_pwhash.h; path = Sodium/libsodium/crypto_pwhash.h; sourceTree = "<group>"; };
 		2E1212EDDC0F5FCF398CBB7303323BD5 /* DSJSONSchemaDependenciesValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaDependenciesValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaDependenciesValidator.m; sourceTree = "<group>"; };
-		2E8E46FC48056D67AB53541622988A3A /* Pods-OwnTracks.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-OwnTracks.release.xcconfig"; sourceTree = "<group>"; };
 		301DCE396002487CA5AD9A523C2D116E /* DSJSONSchemaValidation.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = DSJSONSchemaValidation.modulemap; sourceTree = "<group>"; };
 		3065B9A0B26FA6CDCF804EAF662DE666 /* DSJSONSchemaConditionalValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaConditionalValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaConditionalValidator.m; sourceTree = "<group>"; };
 		31010AA86DAD725F99D52DFE4C934A55 /* core.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = core.h; path = Sodium/libsodium/core.h; sourceTree = "<group>"; };
 		311C4E6AA49EC6F72FC8366DC5D504B1 /* mqttc-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "mqttc-dummy.m"; sourceTree = "<group>"; };
 		324885A3A7FC57BD17D9BD8BDF4B071D /* MQTTDecoder.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTDecoder.h; path = MQTTClient/MQTTClient/MQTTDecoder.h; sourceTree = "<group>"; };
-		32497A3ACEA14D32D7F8C65D5357128A /* Sodium.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Sodium.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		32497A3ACEA14D32D7F8C65D5357128A /* Sodium */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = Sodium; path = Sodium.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		32E5089EC3E9AC4B93F589BF7D18A16B /* crypto_aead_aes256gcm.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_aead_aes256gcm.h; path = Sodium/libsodium/crypto_aead_aes256gcm.h; sourceTree = "<group>"; };
 		3322E2A4C0612D329F3D07DD17D795C0 /* CocoaLumberjack.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = CocoaLumberjack.release.xcconfig; sourceTree = "<group>"; };
-		34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ABStaticTableViewController.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = ABStaticTableViewController; path = ABStaticTableViewController.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		35F74383FAAB9519467B86D8F3828EFC /* DSJSONSchemaValidation-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "DSJSONSchemaValidation-Info.plist"; sourceTree = "<group>"; };
 		371B5F6D9C09071376DAD60CC580CC3A /* KeyDerivation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KeyDerivation.swift; path = Sodium/KeyDerivation.swift; sourceTree = "<group>"; };
 		372649C65941B19526937C468552C63A /* Sodium-xcframeworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Sodium-xcframeworks.sh"; sourceTree = "<group>"; };
 		380C90F91F02CEE334B52B061C9CB92E /* DDLogMacros.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDLogMacros.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDLogMacros.h; sourceTree = "<group>"; };
 		384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		3C449BD145377DAF65F47C3E5EF922B8 /* DSJSONSchemaStringValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaStringValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaStringValidator.h; sourceTree = "<group>"; };
+		3D2D52919D258D10CA2D7EA9FBE80F1D /* Pods-Sauron.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Sauron.release.xcconfig"; sourceTree = "<group>"; };
 		3E1516E71EC12C1203F39A6308BF78E8 /* MQTTProperties.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = MQTTProperties.m; path = MQTTClient/MQTTClient/MQTTProperties.m; sourceTree = "<group>"; };
 		3EE462BF0870DEA383D837905264F3BB /* Sodium-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Sodium-prefix.pch"; sourceTree = "<group>"; };
 		3FA14E16CD981B72BCC41ED06F3FBE52 /* MQTTTransport.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = MQTTTransport.m; path = MQTTClient/MQTTClient/MQTTTransport.m; sourceTree = "<group>"; };
@@ -395,19 +397,19 @@
 		500C3AEC23C4CAE86C1E23B8CC9C7A64 /* DSJSONSchemaStringValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaStringValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaStringValidator.m; sourceTree = "<group>"; };
 		50A2100892FA8F7CE95C4DE7A180DE5F /* crypto_kx.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_kx.h; path = Sodium/libsodium/crypto_kx.h; sourceTree = "<group>"; };
 		513152A3479DA5E6605E8AD14FF6D0BD /* crypto_kdf.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_kdf.h; path = Sodium/libsodium/crypto_kdf.h; sourceTree = "<group>"; };
-		519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjackPrivacy.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CocoaLumberjackPrivacy.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjack-CocoaLumberjackPrivacy */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = "CocoaLumberjack-CocoaLumberjackPrivacy"; path = CocoaLumberjackPrivacy.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		51FB00AE11895FA7497B7CB4E9EEB337 /* crypto_core_salsa2012.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_core_salsa2012.h; path = Sodium/libsodium/crypto_core_salsa2012.h; sourceTree = "<group>"; };
 		5285FC5119ADA26749889EF7DE9DC3E6 /* DDLegacyMacros.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDLegacyMacros.h; path = "Sources/CocoaLumberjack/Supporting Files/DDLegacyMacros.h"; sourceTree = "<group>"; };
 		543FFB52510AF971E4B32EAC226B7909 /* DSJSONSchemaConstValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaConstValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaConstValidator.h; sourceTree = "<group>"; };
 		54D123743A3A06F9D218D7C602236CB3 /* DSJSONSchemaValidationContext.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaValidationContext.h; path = DSJSONSchemaValidation/include/DSJSONSchemaValidationContext.h; sourceTree = "<group>"; };
 		552E59C373E8C31A9B77704B213BCE72 /* ABStaticTableViewController.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = ABStaticTableViewController.modulemap; sourceTree = "<group>"; };
 		5782124C36CAF799FAB6239FE6C5E0F5 /* NSURL+DSJSONReferencing.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = "NSURL+DSJSONReferencing.m"; path = "DSJSONSchemaValidation/NSURL+DSJSONReferencing.m"; sourceTree = "<group>"; };
+		57C343FDEC1A12C88B565412CA1F14C5 /* Pods-Sauron.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Sauron.debug.xcconfig"; sourceTree = "<group>"; };
 		58E1AF995DF90A2C2CFEC3939BD5B9EC /* DSJSONSchemaValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaValidator.h; path = DSJSONSchemaValidation/include/DSJSONSchemaValidator.h; sourceTree = "<group>"; };
 		5C80F5E4CA4B0DE06EDEB85BEDC7D873 /* MQTTDecoder.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = MQTTDecoder.m; path = MQTTClient/MQTTClient/MQTTDecoder.m; sourceTree = "<group>"; };
 		5D5F9CCB89203C7E42E2AA39543B1AF1 /* crypto_core_salsa208.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_core_salsa208.h; path = Sodium/libsodium/crypto_core_salsa208.h; sourceTree = "<group>"; };
 		60D3172FA92FFED03188BBB52302336E /* DSJSONSchemaStorage.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaStorage.h; path = DSJSONSchemaValidation/include/DSJSONSchemaStorage.h; sourceTree = "<group>"; };
 		619201006241C05B4431DEA5BE219254 /* DDFileLogger+Internal.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DDFileLogger+Internal.h"; path = "Sources/CocoaLumberjack/DDFileLogger+Internal.h"; sourceTree = "<group>"; };
-		627A3E1E2D354AD7171E813557C0581E /* Pods-OwnTracks-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-OwnTracks-acknowledgements.plist"; sourceTree = "<group>"; };
 		6337709239BE208016C508466340518E /* DDLog+LOGV.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DDLog+LOGV.h"; path = "Sources/CocoaLumberjack/include/CocoaLumberjack/DDLog+LOGV.h"; sourceTree = "<group>"; };
 		63AB2110630884165BDC27BDCE93BE5B /* MQTTLog.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTLog.h; path = MQTTClient/MQTTClient/MQTTLog.h; sourceTree = "<group>"; };
 		64A1C9A6929F1927AF20DDDB4DDFBC68 /* crypto_secretbox.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_secretbox.h; path = Sodium/libsodium/crypto_secretbox.h; sourceTree = "<group>"; };
@@ -417,11 +419,12 @@
 		6A29B51976558A158CB69AED8BCBC8EC /* DSJSONSchemaReference.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaReference.m; path = DSJSONSchemaValidation/DSJSONSchemaReference.m; sourceTree = "<group>"; };
 		6A8CD8EF5F12099FB5D07C29536E0BF8 /* DDASLLogger.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDASLLogger.m; path = Sources/CocoaLumberjack/DDASLLogger.m; sourceTree = "<group>"; };
 		6BE4BCDF6C9FF0CC6C6B51F7A15CDACD /* MQTTMessage.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTMessage.h; path = MQTTClient/MQTTClient/MQTTMessage.h; sourceTree = "<group>"; };
-		6C5A54F6678FC22F814CF562D1EE4C06 /* Pods-OwnTracks-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-OwnTracks-umbrella.h"; sourceTree = "<group>"; };
 		6C5BD630F6479B3C01F6BB5699D5176C /* ABStaticTableViewController.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = ABStaticTableViewController.release.xcconfig; sourceTree = "<group>"; };
 		6D510C923552FE0131A2AE3065A177DC /* DDOSLogger.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDOSLogger.m; path = Sources/CocoaLumberjack/DDOSLogger.m; sourceTree = "<group>"; };
+		6D937ABBD1BFA99FFDE09CDD0B801B88 /* Pods-Sauron-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-Sauron-dummy.m"; sourceTree = "<group>"; };
 		6E560FD9BFDC03C78F09A60DD05F633D /* crypto_stream.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_stream.h; path = Sodium/libsodium/crypto_stream.h; sourceTree = "<group>"; };
 		6E5D56B9BE51C1E0052B6DF90231D639 /* Auth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Auth.swift; path = Sodium/Auth.swift; sourceTree = "<group>"; };
+		6F03C2BCE4004DC70A860754157F9047 /* Pods-Sauron.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-Sauron.modulemap"; sourceTree = "<group>"; };
 		71FCF805DEAD2F151E3A20102E51A333 /* DSJSONSchemaArrayValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaArrayValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaArrayValidator.h; sourceTree = "<group>"; };
 		73041334C81325EFA02DDBBC10CDFADE /* crypto_core_hsalsa20.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_core_hsalsa20.h; path = Sodium/libsodium/crypto_core_hsalsa20.h; sourceTree = "<group>"; };
 		74A14143CC03E0CD97FEAA96FB8CD667 /* DSJSONSchema+Protected.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DSJSONSchema+Protected.h"; path = "DSJSONSchemaValidation/DSJSONSchema+Protected.h"; sourceTree = "<group>"; };
@@ -431,6 +434,7 @@
 		779F6EDFD46AD11D15B5A57AEFBC5171 /* Sodium.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Sodium.debug.xcconfig; sourceTree = "<group>"; };
 		78FE763E5C8DD7704FA90F6EDAFF98E6 /* DSJSONSchemaErrors.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaErrors.m; path = DSJSONSchemaValidation/DSJSONSchemaErrors.m; sourceTree = "<group>"; };
 		799381569BEFBE0EFCD5A12771DEED33 /* DDASLLogCapture.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDASLLogCapture.m; path = Sources/CocoaLumberjack/DDASLLogCapture.m; sourceTree = "<group>"; };
+		79CB424501344FDF1D5CDB85AA3C7674 /* Pods-Sauron */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-Sauron"; path = Pods_Sauron.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A1A7BE4CC59203ACD15C43486E404B4 /* crypto_sign.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_sign.h; path = Sodium/libsodium/crypto_sign.h; sourceTree = "<group>"; };
 		7A5ADB430A3A6F061ECE49CDE6EF5B47 /* crypto_core_salsa20.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_core_salsa20.h; path = Sodium/libsodium/crypto_core_salsa20.h; sourceTree = "<group>"; };
 		7BB3A65AF51135CB41184FEBD8F86EC8 /* crypto_stream_salsa2012.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_stream_salsa2012.h; path = Sodium/libsodium/crypto_stream_salsa2012.h; sourceTree = "<group>"; };
@@ -478,7 +482,7 @@
 		9B38B6A363E862C0ACBD022900FC9129 /* DSJSONSchemaCombiningValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaCombiningValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaCombiningValidator.m; sourceTree = "<group>"; };
 		9C5537A70E48CF4C36AE133771F8B0DA /* utils.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = utils.h; path = Sodium/libsodium/utils.h; sourceTree = "<group>"; };
 		9C6E289754A882FBEE2A804A81A6C2A8 /* Bytes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Bytes.swift; path = Sodium/Bytes.swift; sourceTree = "<group>"; };
-		9D940727FF8FB9C785EB98E56350EF41 /* Podfile */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; name = Podfile; path = ../Podfile; sourceTree = SOURCE_ROOT; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		9D940727FF8FB9C785EB98E56350EF41 /* Podfile */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; lastKnownFileType = text; name = Podfile; path = ../Podfile; sourceTree = SOURCE_ROOT; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
 		9E70F39EED454814496CAB89114DC90F /* crypto_stream_xsalsa20.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_stream_xsalsa20.h; path = Sodium/libsodium/crypto_stream_xsalsa20.h; sourceTree = "<group>"; };
 		A1152E814E9704959C3C8AA146D68CE6 /* DDAssertMacros.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDAssertMacros.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDAssertMacros.h; sourceTree = "<group>"; };
 		A1F97ED5A9B8FF8F455A20EE18FD7F52 /* crypto_scalarmult_curve25519.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_scalarmult_curve25519.h; path = Sodium/libsodium/crypto_scalarmult_curve25519.h; sourceTree = "<group>"; };
@@ -494,7 +498,6 @@
 		AC20A7B809DEA8BC9872B0DFC1D8B06B /* MQTTNWTransport.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = MQTTNWTransport.h; path = MQTTClient/MQTTClient/MQTTNWTransport.h; sourceTree = "<group>"; };
 		AC4CFE6D546EA923835CCA35956DA1A1 /* crypto_box.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_box.h; path = Sodium/libsodium/crypto_box.h; sourceTree = "<group>"; };
 		ACB52CA3FB116EA6EB069B5BE030DA8F /* DSJSONBooleanSchema.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONBooleanSchema.m; path = DSJSONSchemaValidation/DSJSONBooleanSchema.m; sourceTree = "<group>"; };
-		ADF9D4B48472501C2F5DD752CD99157F /* Pods-OwnTracks.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-OwnTracks.debug.xcconfig"; sourceTree = "<group>"; };
 		AF0D21D48103393FE8A79242540D8B8E /* DSJSONSchema.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchema.h; path = DSJSONSchemaValidation/include/DSJSONSchema.h; sourceTree = "<group>"; };
 		B06A0C4E26A4FAE7E4A88B0BE0EECE14 /* MQTTSession.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = MQTTSession.m; path = MQTTClient/MQTTClient/MQTTSession.m; sourceTree = "<group>"; };
 		B0C88C5A3A8AA6DB8BC20E00BA946600 /* crypto_hash_sha512.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_hash_sha512.h; path = Sodium/libsodium/crypto_hash_sha512.h; sourceTree = "<group>"; };
@@ -503,14 +506,11 @@
 		B1F17527C30B6AEB67F2C3465256281E /* DDLog.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDLog.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDLog.h; sourceTree = "<group>"; };
 		B33376F5132E44332C5576504844D967 /* DSJSONSchemaTypeValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaTypeValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaTypeValidator.h; sourceTree = "<group>"; };
 		B4BC3A4FABD990AB57B625105C566F43 /* NSURL+DSJSONReferencing.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "NSURL+DSJSONReferencing.h"; path = "DSJSONSchemaValidation/NSURL+DSJSONReferencing.h"; sourceTree = "<group>"; };
-		B5908BAAE8EB9FBDB47492A014A12AB5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Sources/CocoaLumberjack/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		B5908BAAE8EB9FBDB47492A014A12AB5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Sources/CocoaLumberjack/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B5AF5DB705813F02B822CBCD0764CD5C /* DDASLLogger.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DDASLLogger.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/DDASLLogger.h; sourceTree = "<group>"; };
 		B5E18DF85A91A2D4A4B160A039BAB402 /* Box.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Box.swift; path = Sodium/Box.swift; sourceTree = "<group>"; };
-		B65E1D133DCF38AB738E65268F56AFAA /* Pods-OwnTracks-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-OwnTracks-dummy.m"; sourceTree = "<group>"; };
-		B69771ACE77A0F6E7174305369E31382 /* Pods-OwnTracks-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-OwnTracks-Info.plist"; sourceTree = "<group>"; };
 		B74E88CC6C57C9AE715F7D69BF4E4EBD /* DSJSONSchemaValidation.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = DSJSONSchemaValidation.debug.xcconfig; sourceTree = "<group>"; };
 		B77BD9EC72C82AC2623DBB0C5A36FB84 /* DSJSONSchemaCombiningValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaCombiningValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaCombiningValidator.h; sourceTree = "<group>"; };
-		B834F7432D5420D8FD030DABC8BF8A45 /* Pods-OwnTracks-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-OwnTracks-frameworks.sh"; sourceTree = "<group>"; };
 		B926062CA39EF5BC9611457D672C2D16 /* crypto_onetimeauth_poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_onetimeauth_poly1305.h; path = Sodium/libsodium/crypto_onetimeauth_poly1305.h; sourceTree = "<group>"; };
 		B92D1F77DACB0B898547A4B8DFF2B3D1 /* NSString+DSJSONPointer.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = "NSString+DSJSONPointer.m"; path = "DSJSONSchemaValidation/NSString+DSJSONPointer.m"; sourceTree = "<group>"; };
 		BAC30F8A1555498AF2E6A88BD38EDD03 /* NonceGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NonceGenerator.swift; path = Sodium/Generators/NonceGenerator.swift; sourceTree = "<group>"; };
@@ -518,7 +518,7 @@
 		BE189D406005D5C16ABA456AB1345E2B /* ExitCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExitCode.swift; path = Sodium/ExitCode.swift; sourceTree = "<group>"; };
 		BE495805685200BB7CAED8B4C315F33E /* DSJSONSchemaConditionalValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaConditionalValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaConditionalValidator.h; sourceTree = "<group>"; };
 		C13A8757C409A2525BB46949FCB17FB6 /* DSJSONSchemaFactory.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaFactory.h; path = DSJSONSchemaValidation/include/DSJSONSchemaFactory.h; sourceTree = "<group>"; };
-		C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CocoaLumberjack.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = CocoaLumberjack; path = CocoaLumberjack.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		C36454BB2B8046E33D614D1F8D174A69 /* CLIColor.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = CLIColor.h; path = Sources/CocoaLumberjack/include/CocoaLumberjack/CLIColor.h; sourceTree = "<group>"; };
 		C41EBED01288967C8B663721C1ADD9E3 /* DSJSONSchemaEnumValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaEnumValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaEnumValidator.h; sourceTree = "<group>"; };
 		C44678A7248FE1795CEACB25A2C4A4DA /* KeyPairProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KeyPairProtocol.swift; path = Sodium/Generators/KeyPairProtocol.swift; sourceTree = "<group>"; };
@@ -544,7 +544,7 @@
 		D6D4FE073FA7A0BDE7C6F749B7975ED9 /* DSJSONSchema+StandardValidators.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DSJSONSchema+StandardValidators.h"; path = "DSJSONSchemaValidation/DSJSONSchema+StandardValidators.h"; sourceTree = "<group>"; };
 		D6E0B0219EC591E027D030F8858A1EA0 /* DDDispatchQueueLogFormatter.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDDispatchQueueLogFormatter.m; path = Sources/CocoaLumberjack/Extensions/DDDispatchQueueLogFormatter.m; sourceTree = "<group>"; };
 		D76B8F1B1F866FEDA75C40C310D1E5FD /* DSJSONSchemaContentValidator.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = DSJSONSchemaContentValidator.h; path = DSJSONSchemaValidation/DSJSONSchemaContentValidator.h; sourceTree = "<group>"; };
-		D79FBD1D89BFB57207FCEF664FE86845 /* mqttc.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = mqttc.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		D79FBD1D89BFB57207FCEF664FE86845 /* mqttc */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = mqttc; path = mqttc.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D9D56E4756C30BF772BB41FCFDB5FE63 /* DDContextFilterLogFormatter+Deprecated.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "DDContextFilterLogFormatter+Deprecated.h"; path = "Sources/CocoaLumberjack/include/CocoaLumberjack/DDContextFilterLogFormatter+Deprecated.h"; sourceTree = "<group>"; };
 		DB082D1877E488203D6C8ABE32A8411D /* crypto_aead_chacha20poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_aead_chacha20poly1305.h; path = Sodium/libsodium/crypto_aead_chacha20poly1305.h; sourceTree = "<group>"; };
 		DB09492EBBF84C037CE69E5717B46188 /* CocoaLumberjack.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = CocoaLumberjack.modulemap; sourceTree = "<group>"; };
@@ -555,9 +555,8 @@
 		E1635F3AD456A2BDD894130B8D9251A7 /* crypto_secretbox_xchacha20poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_secretbox_xchacha20poly1305.h; path = Sodium/libsodium/crypto_secretbox_xchacha20poly1305.h; sourceTree = "<group>"; };
 		E2549946DA3647F3FF5A3003804FA899 /* DSJSONSchemaEnumValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaEnumValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaEnumValidator.m; sourceTree = "<group>"; };
 		E26C2392586FC0220CB5A5286319EFBB /* DDTTYLogger.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DDTTYLogger.m; path = Sources/CocoaLumberjack/DDTTYLogger.m; sourceTree = "<group>"; };
-		E507A68990B4FBD4A7A57DC4B0135C0B /* Pods-OwnTracks-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-OwnTracks-acknowledgements.markdown"; sourceTree = "<group>"; };
 		E695EE03ED7124974A8AC8EC49DF2828 /* crypto_shorthash.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_shorthash.h; path = Sodium/libsodium/crypto_shorthash.h; sourceTree = "<group>"; };
-		E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DSJSONSchemaValidation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = DSJSONSchemaValidation; path = DSJSONSchemaValidation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E8FB82E354321F1501EF1345075C53E2 /* crypto_pwhash_argon2id.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_pwhash_argon2id.h; path = Sodium/libsodium/crypto_pwhash_argon2id.h; sourceTree = "<group>"; };
 		E9BAF996ED25A6BC13A2F74291723FD4 /* crypto_stream_chacha20.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_stream_chacha20.h; path = Sodium/libsodium/crypto_stream_chacha20.h; sourceTree = "<group>"; };
 		EAAC5083C8D4502E6C9D536C090C1094 /* crypto_box_curve25519xchacha20poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_box_curve25519xchacha20poly1305.h; path = Sodium/libsodium/crypto_box_curve25519xchacha20poly1305.h; sourceTree = "<group>"; };
@@ -567,6 +566,7 @@
 		ED269F8B88D7B2D683C6C20834E0B5DB /* crypto_secretstream_xchacha20poly1305.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_secretstream_xchacha20poly1305.h; path = Sodium/libsodium/crypto_secretstream_xchacha20poly1305.h; sourceTree = "<group>"; };
 		EE6263763C7C0F104A4D590D15D17D5E /* DSJSONSchemaSpecification.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaSpecification.m; path = DSJSONSchemaValidation/DSJSONSchemaSpecification.m; sourceTree = "<group>"; };
 		F02C729F85676E4EBAD18DA4657E9866 /* DSJSONSchemaContentValidator.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DSJSONSchemaContentValidator.m; path = DSJSONSchemaValidation/DSJSONSchemaContentValidator.m; sourceTree = "<group>"; };
+		F06A4EE3B9F5B15BFF619E50EA7A4DD4 /* Pods-Sauron-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-Sauron-umbrella.h"; sourceTree = "<group>"; };
 		F23C69E4120EE2134B21B97B7E774689 /* NSDictionary+DSJSONDeepMutableCopy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = "NSDictionary+DSJSONDeepMutableCopy.m"; path = "DSJSONSchemaValidation/NSDictionary+DSJSONDeepMutableCopy.m"; sourceTree = "<group>"; };
 		F522F717E12A1D3EB0D0AB66657C1721 /* runtime.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = runtime.h; path = Sodium/libsodium/runtime.h; sourceTree = "<group>"; };
 		F5D576F8E24DDFD97D6F1C4A819C91FD /* crypto_auth_hmacsha512.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = crypto_auth_hmacsha512.h; path = Sodium/libsodium/crypto_auth_hmacsha512.h; sourceTree = "<group>"; };
@@ -590,14 +590,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				721CDA4CA97CA0C2292EB1A571847FE1 /* Foundation.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9FC99C9C950CFE9C5CBCC20CBE435199 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				9C75DD21226B375FE799D34340A531B2 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -633,6 +625,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DDEE479C6F9C8A3D8B99C45D3ABB79A3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				80B6B4959442BC6C75D9B7FC0502FF2E /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -652,29 +652,21 @@
 			path = "../Target Support Files/CocoaLumberjack";
 			sourceTree = "<group>";
 		};
-		2DFCB45F064CD829D1A3997FA12955BA /* Pods-OwnTracks */ = {
+		42582B2C7911DF3697AA7A5BBFFACACC /* Pods-Sauron */ = {
 			isa = PBXGroup;
 			children = (
-				1CBB23A2EACE37C2557F0D681015241F /* Pods-OwnTracks.modulemap */,
-				E507A68990B4FBD4A7A57DC4B0135C0B /* Pods-OwnTracks-acknowledgements.markdown */,
-				627A3E1E2D354AD7171E813557C0581E /* Pods-OwnTracks-acknowledgements.plist */,
-				B65E1D133DCF38AB738E65268F56AFAA /* Pods-OwnTracks-dummy.m */,
-				B834F7432D5420D8FD030DABC8BF8A45 /* Pods-OwnTracks-frameworks.sh */,
-				B69771ACE77A0F6E7174305369E31382 /* Pods-OwnTracks-Info.plist */,
-				6C5A54F6678FC22F814CF562D1EE4C06 /* Pods-OwnTracks-umbrella.h */,
-				ADF9D4B48472501C2F5DD752CD99157F /* Pods-OwnTracks.debug.xcconfig */,
-				2E8E46FC48056D67AB53541622988A3A /* Pods-OwnTracks.release.xcconfig */,
+				6F03C2BCE4004DC70A860754157F9047 /* Pods-Sauron.modulemap */,
+				0B3CA6FD884F25D36B6CAA935FA49ED4 /* Pods-Sauron-acknowledgements.markdown */,
+				1A99571EAEACCA6D2E6E1F30E21988A4 /* Pods-Sauron-acknowledgements.plist */,
+				6D937ABBD1BFA99FFDE09CDD0B801B88 /* Pods-Sauron-dummy.m */,
+				26A27F32C3424795DBBD41243010B3A5 /* Pods-Sauron-frameworks.sh */,
+				0E34F06696A9E77E8CCB7EB4E9141836 /* Pods-Sauron-Info.plist */,
+				F06A4EE3B9F5B15BFF619E50EA7A4DD4 /* Pods-Sauron-umbrella.h */,
+				57C343FDEC1A12C88B565412CA1F14C5 /* Pods-Sauron.debug.xcconfig */,
+				3D2D52919D258D10CA2D7EA9FBE80F1D /* Pods-Sauron.release.xcconfig */,
 			);
-			name = "Pods-OwnTracks";
-			path = "Target Support Files/Pods-OwnTracks";
-			sourceTree = "<group>";
-		};
-		3438EBF3B048F7861056CCBDBE183ACB /* Targets Support Files */ = {
-			isa = PBXGroup;
-			children = (
-				2DFCB45F064CD829D1A3997FA12955BA /* Pods-OwnTracks */,
-			);
-			name = "Targets Support Files";
+			name = "Pods-Sauron";
+			path = "Target Support Files/Pods-Sauron";
 			sourceTree = "<group>";
 		};
 		5789CBE07D8014A22619BD36D5EAFA7C /* MinL */ = {
@@ -714,21 +706,8 @@
 				79FFCC3929C4D9728561CAD07403DCC7 /* Core */,
 				195503518E995D76363482C888E27FEC /* Support Files */,
 			);
+			name = CocoaLumberjack;
 			path = CocoaLumberjack;
-			sourceTree = "<group>";
-		};
-		67D1ECC67EA09EC27CECD362DB016554 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController.framework */,
-				C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack.framework */,
-				519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjackPrivacy.bundle */,
-				E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation.framework */,
-				D79FBD1D89BFB57207FCEF664FE86845 /* mqttc.framework */,
-				153F97C249AED03FE6E03F1E18B44EDF /* Pods_OwnTracks.framework */,
-				32497A3ACEA14D32D7F8C65D5357128A /* Sodium.framework */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		75B840B15D0806150B7DE5C9A2DF6660 /* Pods */ = {
@@ -750,6 +729,7 @@
 				860E8520246FC053BA08B43DEEE267B3 /* ABStaticTableViewController.m */,
 				E0B21F9A2A533964B4777A16F311F052 /* Support Files */,
 			);
+			name = ABStaticTableViewController;
 			path = ABStaticTableViewController;
 			sourceTree = "<group>";
 		};
@@ -903,6 +883,7 @@
 				B1B5B9C62E1AA90C5F5D9178A79EEA46 /* Frameworks */,
 				7B6CF0B4AB9B2380F38CE0D21A70DDB0 /* Support Files */,
 			);
+			name = Sodium;
 			path = Sodium;
 			sourceTree = "<group>";
 		};
@@ -1006,7 +987,16 @@
 				5782124C36CAF799FAB6239FE6C5E0F5 /* NSURL+DSJSONReferencing.m */,
 				8D4CD3AF40ED48159154C40D22510899 /* Support Files */,
 			);
+			name = DSJSONSchemaValidation;
 			path = DSJSONSchemaValidation;
+			sourceTree = "<group>";
+		};
+		B1606E17F7EE6F738A59A9AFCA8B9782 /* Targets Support Files */ = {
+			isa = PBXGroup;
+			children = (
+				42582B2C7911DF3697AA7A5BBFFACACC /* Pods-Sauron */,
+			);
+			name = "Targets Support Files";
 			sourceTree = "<group>";
 		};
 		B1B5B9C62E1AA90C5F5D9178A79EEA46 /* Frameworks */ = {
@@ -1017,14 +1007,28 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		B42EF53E7E330B3DB771F3E1D09604B8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController */,
+				C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack */,
+				519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjack-CocoaLumberjackPrivacy */,
+				E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation */,
+				D79FBD1D89BFB57207FCEF664FE86845 /* mqttc */,
+				79CB424501344FDF1D5CDB85AA3C7674 /* Pods-Sauron */,
+				32497A3ACEA14D32D7F8C65D5357128A /* Sodium */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		CF1408CF629C7361332E53B88F7BD30C = {
 			isa = PBXGroup;
 			children = (
 				9D940727FF8FB9C785EB98E56350EF41 /* Podfile */,
 				D210D550F4EA176C3123ED886F8F87F5 /* Frameworks */,
 				75B840B15D0806150B7DE5C9A2DF6660 /* Pods */,
-				67D1ECC67EA09EC27CECD362DB016554 /* Products */,
-				3438EBF3B048F7861056CCBDBE183ACB /* Targets Support Files */,
+				B42EF53E7E330B3DB771F3E1D09604B8 /* Products */,
+				B1606E17F7EE6F738A59A9AFCA8B9782 /* Targets Support Files */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1065,6 +1069,7 @@
 				5789CBE07D8014A22619BD36D5EAFA7C /* MinL */,
 				F2B30D1BD42FF411B8BFB7B3FAF349A0 /* Support Files */,
 			);
+			name = mqttc;
 			path = mqttc;
 			sourceTree = "<group>";
 		};
@@ -1187,6 +1192,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		80ED679E656FFDDB7F50D78B383A2FE0 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7FD22BE8F7EAC4D44C273BCE478B93D0 /* Pods-Sauron-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		85189E377624DC0F87C3D711AEBDEAF4 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -1253,14 +1266,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		BBC5EB3446D87559B56C9983F4163D81 /* Headers */ = {
-			isa = PBXHeadersBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				0FEAE26AD9312294867260A194B324AB /* Pods-OwnTracks-umbrella.h in Headers */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D973BECD8FEF070EA47278A6A451177C /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -1287,7 +1292,7 @@
 			);
 			name = "CocoaLumberjack-CocoaLumberjackPrivacy";
 			productName = CocoaLumberjackPrivacy;
-			productReference = 519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjackPrivacy.bundle */;
+			productReference = 519AF98C92B517DD023896CD077EBFD4 /* CocoaLumberjack-CocoaLumberjackPrivacy */;
 			productType = "com.apple.product-type.bundle";
 		};
 		548A45AC34FA8106E3C61F961FDA5936 /* mqttc */ = {
@@ -1306,7 +1311,7 @@
 			);
 			name = mqttc;
 			productName = mqttc;
-			productReference = D79FBD1D89BFB57207FCEF664FE86845 /* mqttc.framework */;
+			productReference = D79FBD1D89BFB57207FCEF664FE86845 /* mqttc */;
 			productType = "com.apple.product-type.framework";
 		};
 		79E8FCE79597E6EBF96074BD00A72E8E /* DSJSONSchemaValidation */ = {
@@ -1324,7 +1329,7 @@
 			);
 			name = DSJSONSchemaValidation;
 			productName = DSJSONSchemaValidation;
-			productReference = E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation.framework */;
+			productReference = E878210F89988B287333E48AFA7D360C /* DSJSONSchemaValidation */;
 			productType = "com.apple.product-type.framework";
 		};
 		9AC54079097E3E3B70EBE9D712693CE4 /* Sodium */ = {
@@ -1343,7 +1348,7 @@
 			);
 			name = Sodium;
 			productName = Sodium;
-			productReference = 32497A3ACEA14D32D7F8C65D5357128A /* Sodium.framework */;
+			productReference = 32497A3ACEA14D32D7F8C65D5357128A /* Sodium */;
 			productType = "com.apple.product-type.framework";
 		};
 		B1284C8E6CD9B45E97F433902C9D77F1 /* ABStaticTableViewController */ = {
@@ -1361,30 +1366,30 @@
 			);
 			name = ABStaticTableViewController;
 			productName = ABStaticTableViewController;
-			productReference = 34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController.framework */;
+			productReference = 34A749E313A4A55976C011527DF03B68 /* ABStaticTableViewController */;
 			productType = "com.apple.product-type.framework";
 		};
-		B9EE78846755BE52CF868196039C0140 /* Pods-OwnTracks */ = {
+		BCEE8259B54A1878D6647DEF61C41D9C /* Pods-Sauron */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 246706239F0C9631CFBF210B3C914A2F /* Build configuration list for PBXNativeTarget "Pods-OwnTracks" */;
+			buildConfigurationList = D030F0DE6DF42C12512421D54AF7C1DB /* Build configuration list for PBXNativeTarget "Pods-Sauron" */;
 			buildPhases = (
-				BBC5EB3446D87559B56C9983F4163D81 /* Headers */,
-				BD421CA1A4BC37E5932A5B5EDDA8C0D2 /* Sources */,
-				9FC99C9C950CFE9C5CBCC20CBE435199 /* Frameworks */,
-				CE28A9057F4CA7BD0EAF233DA564863B /* Resources */,
+				80ED679E656FFDDB7F50D78B383A2FE0 /* Headers */,
+				F09DFED004F06B660473988306E887E5 /* Sources */,
+				DDEE479C6F9C8A3D8B99C45D3ABB79A3 /* Frameworks */,
+				63E4FD0C996865809DF3D332098734BB /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				2A78AF61956E504A6E15366A6EEDE0B6 /* PBXTargetDependency */,
-				1FDEE1365C70FEB84BE377B9128317EF /* PBXTargetDependency */,
-				BB6BEAFFE39793C7A49B2BEFFBBD554E /* PBXTargetDependency */,
-				26C946E30B7E33E1807067798E711509 /* PBXTargetDependency */,
-				7D2194F4F69C26200DA542D7024C8E96 /* PBXTargetDependency */,
+				245DB3B6A84751DEAD42A1B9A392DAFA /* PBXTargetDependency */,
+				17CEEDB026635930A544BB1440E58624 /* PBXTargetDependency */,
+				CE8E3853748850E2A8F3B3137EEE9521 /* PBXTargetDependency */,
+				865ED14F8A3150CACC0BB218B9DA6076 /* PBXTargetDependency */,
+				04EBEDFD55EB6FA014E1730FFE2CBDB4 /* PBXTargetDependency */,
 			);
-			name = "Pods-OwnTracks";
-			productName = Pods_OwnTracks;
-			productReference = 153F97C249AED03FE6E03F1E18B44EDF /* Pods_OwnTracks.framework */;
+			name = "Pods-Sauron";
+			productName = Pods_Sauron;
+			productReference = 79CB424501344FDF1D5CDB85AA3C7674 /* Pods-Sauron */;
 			productType = "com.apple.product-type.framework";
 		};
 		E95654B155D25890BE8E26081FCA8265 /* CocoaLumberjack */ = {
@@ -1403,7 +1408,7 @@
 			);
 			name = CocoaLumberjack;
 			productName = CocoaLumberjack;
-			productReference = C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack.framework */;
+			productReference = C261436D14052AE3C35F240BCD155CAC /* CocoaLumberjack */;
 			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
@@ -1413,7 +1418,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 1600;
 			};
 			buildConfigurationList = 4821239608C13582E20E6DA73FD5F1F9 /* Build configuration list for PBXProject "Pods" */;
 			compatibilityVersion = "Xcode 12.0";
@@ -1424,7 +1429,9 @@
 				en,
 			);
 			mainGroup = CF1408CF629C7361332E53B88F7BD30C;
-			productRefGroup = 67D1ECC67EA09EC27CECD362DB016554 /* Products */;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B42EF53E7E330B3DB771F3E1D09604B8 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -1433,7 +1440,7 @@
 				276021C4482165D46E0CBBEFB822FE95 /* CocoaLumberjack-CocoaLumberjackPrivacy */,
 				79E8FCE79597E6EBF96074BD00A72E8E /* DSJSONSchemaValidation */,
 				548A45AC34FA8106E3C61F961FDA5936 /* mqttc */,
-				B9EE78846755BE52CF868196039C0140 /* Pods-OwnTracks */,
+				BCEE8259B54A1878D6647DEF61C41D9C /* Pods-Sauron */,
 				9AC54079097E3E3B70EBE9D712693CE4 /* Sodium */,
 			);
 		};
@@ -1454,6 +1461,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		63E4FD0C996865809DF3D332098734BB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6DCE98E85CE66BBE6A243F4C8E01E3D3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1465,7 +1479,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0D1AE435FFC82F5CA91B676CB9310C6 /* CocoaLumberjackPrivacy.bundle in Resources */,
+				C0D1AE435FFC82F5CA91B676CB9310C6 /* CocoaLumberjack-CocoaLumberjackPrivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1474,13 +1488,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A375F8C765A9756B27CB85AD64683081 /* PrivacyInfo.xcprivacy in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CE28A9057F4CA7BD0EAF233DA564863B /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1502,13 +1509,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Sodium/Sodium-xcframeworks-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy XCFrameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Sodium/Sodium-xcframeworks-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1546,14 +1549,6 @@
 			files = (
 				B00837F0AC13B6E7E43F338AA344C2FC /* ABStaticTableViewController.m in Sources */,
 				C30A242FDE27C3D2F280CC69282C7811 /* ABStaticTableViewController-dummy.m in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		BD421CA1A4BC37E5932A5B5EDDA8C0D2 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				94993BD9CBBCCB41CB311228554FA231 /* Pods-OwnTracks-dummy.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1655,38 +1650,46 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F09DFED004F06B660473988306E887E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				16BFA1B2CA54AA48E322F0F59B39BC56 /* Pods-Sauron-dummy.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		04EBEDFD55EB6FA014E1730FFE2CBDB4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = mqttc;
+			target = 548A45AC34FA8106E3C61F961FDA5936 /* mqttc */;
+			targetProxy = CCC155562804E87D69392D82C1D3C349 /* PBXContainerItemProxy */;
+		};
 		0EA8D2057008830D90D65002F05ECC16 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = CocoaLumberjack;
 			target = E95654B155D25890BE8E26081FCA8265 /* CocoaLumberjack */;
 			targetProxy = 28428071DE2A5313442163066EB36D13 /* PBXContainerItemProxy */;
 		};
-		1FDEE1365C70FEB84BE377B9128317EF /* PBXTargetDependency */ = {
+		17CEEDB026635930A544BB1440E58624 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = CocoaLumberjack;
 			target = E95654B155D25890BE8E26081FCA8265 /* CocoaLumberjack */;
-			targetProxy = 69E09154788CD8D413E06BAAB742C0DD /* PBXContainerItemProxy */;
+			targetProxy = D570EB919E9B7B36C3C0DDFECCB85A7F /* PBXContainerItemProxy */;
 		};
-		26C946E30B7E33E1807067798E711509 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = Sodium;
-			target = 9AC54079097E3E3B70EBE9D712693CE4 /* Sodium */;
-			targetProxy = 2351E728DD2342837644E3C922F3F85B /* PBXContainerItemProxy */;
-		};
-		2A78AF61956E504A6E15366A6EEDE0B6 /* PBXTargetDependency */ = {
+		245DB3B6A84751DEAD42A1B9A392DAFA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = ABStaticTableViewController;
 			target = B1284C8E6CD9B45E97F433902C9D77F1 /* ABStaticTableViewController */;
-			targetProxy = 583EBEFCF875B0F5D148F40D18962567 /* PBXContainerItemProxy */;
+			targetProxy = ABDBFD6B09359F17D5EA388579A3AC1E /* PBXContainerItemProxy */;
 		};
-		7D2194F4F69C26200DA542D7024C8E96 /* PBXTargetDependency */ = {
+		865ED14F8A3150CACC0BB218B9DA6076 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			name = mqttc;
-			target = 548A45AC34FA8106E3C61F961FDA5936 /* mqttc */;
-			targetProxy = 6D0B6A8C786EF141E4DA1F517E5AD67B /* PBXContainerItemProxy */;
+			name = Sodium;
+			target = 9AC54079097E3E3B70EBE9D712693CE4 /* Sodium */;
+			targetProxy = 8BAD9E5D3D5F9F1B1F544FD6AFBEE36F /* PBXContainerItemProxy */;
 		};
 		AFC7000F79EA7094ED8E3E0A665FAD5C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1694,15 +1697,55 @@
 			target = 276021C4482165D46E0CBBEFB822FE95 /* CocoaLumberjack-CocoaLumberjackPrivacy */;
 			targetProxy = 64C07922480F39F84E6F2FDC44F92CA8 /* PBXContainerItemProxy */;
 		};
-		BB6BEAFFE39793C7A49B2BEFFBBD554E /* PBXTargetDependency */ = {
+		CE8E3853748850E2A8F3B3137EEE9521 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = DSJSONSchemaValidation;
 			target = 79E8FCE79597E6EBF96074BD00A72E8E /* DSJSONSchemaValidation */;
-			targetProxy = E0A5B11837F3AF785FDE2CA526570D91 /* PBXContainerItemProxy */;
+			targetProxy = A60AE5835F2C2B6335C8CD0D7373EF6E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		0FEC7029EDDC2F42636E6025AFAC2C5B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3D2D52919D258D10CA2D7EA9FBE80F1D /* Pods-Sauron.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = "Target Support Files/Pods-Sauron/Pods-Sauron-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Sauron/Pods-Sauron.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
 		19CC8506C5C38E511031C0D1A5204C1B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 8E34C205EF9B4CCA9E2FE69D04B10BF9 /* mqttc.debug.xcconfig */;
@@ -1722,7 +1765,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/mqttc/mqttc-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1736,45 +1779,6 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
 				SWIFT_INSTALL_OBJC_HEADER = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Debug;
-		};
-		243972669C1DBC79BD5967D27A7CEB9B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = ADF9D4B48472501C2F5DD752CD99157F /* Pods-OwnTracks.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_MODULE_VERIFIER = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				INFOPLIST_FILE = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks-Info.plist";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.modulemap";
-				OTHER_LDFLAGS = "";
-				OTHER_LIBTOOLFLAGS = "";
-				PODS_ROOT = "$(SRCROOT)";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
-				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
@@ -1799,7 +1803,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/DSJSONSchemaValidation/DSJSONSchemaValidation-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1838,7 +1842,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/Sodium/Sodium-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1920,46 +1924,6 @@
 			};
 			name = Release;
 		};
-		4255FF506F7570CC9AC8AC0E6C1AB7A5 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 2E8E46FC48056D67AB53541622988A3A /* Pods-OwnTracks.release.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_MODULE_VERIFIER = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				INFOPLIST_FILE = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks-Info.plist";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.modulemap";
-				OTHER_LDFLAGS = "";
-				OTHER_LIBTOOLFLAGS = "";
-				PODS_ROOT = "$(SRCROOT)";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
-				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Release;
-		};
 		5B2F04FA6D1093158FBA21AB12D9C044 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = DBFA63B524C3DA7AB94041ADF5A37B0E /* Sodium.release.xcconfig */;
@@ -1979,7 +1943,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/Sodium/Sodium-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2008,7 +1972,7 @@
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/CocoaLumberjack";
 				IBSC_MODULE = CocoaLumberjack;
 				INFOPLIST_FILE = "Target Support Files/CocoaLumberjack/ResourceBundle-CocoaLumberjackPrivacy-CocoaLumberjack-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = CocoaLumberjackPrivacy;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -2036,7 +2000,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/mqttc/mqttc-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2076,7 +2040,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/CocoaLumberjack/CocoaLumberjack-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2116,7 +2080,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/CocoaLumberjack/CocoaLumberjack-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2154,7 +2118,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/ABStaticTableViewController/ABStaticTableViewController-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2193,7 +2157,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/ABStaticTableViewController/ABStaticTableViewController-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2231,7 +2195,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Target Support Files/DSJSONSchemaValidation/DSJSONSchemaValidation-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2260,7 +2224,7 @@
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/CocoaLumberjack";
 				IBSC_MODULE = CocoaLumberjack;
 				INFOPLIST_FILE = "Target Support Files/CocoaLumberjack/ResourceBundle-CocoaLumberjackPrivacy-CocoaLumberjack-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = CocoaLumberjackPrivacy;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -2268,6 +2232,45 @@
 				WRAPPER_EXTENSION = bundle;
 			};
 			name = Release;
+		};
+		D3714D8CCDBE6D7F045A02FD3778817B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 57C343FDEC1A12C88B565412CA1F14C5 /* Pods-Sauron.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = "Target Support Files/Pods-Sauron/Pods-Sauron-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Sauron/Pods-Sauron.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
 		};
 		F4FF6A0D1970CA9705974E3CB2134802 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -2338,15 +2341,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		246706239F0C9631CFBF210B3C914A2F /* Build configuration list for PBXNativeTarget "Pods-OwnTracks" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				243972669C1DBC79BD5967D27A7CEB9B /* Debug */,
-				4255FF506F7570CC9AC8AC0E6C1AB7A5 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		4821239608C13582E20E6DA73FD5F1F9 /* Build configuration list for PBXProject "Pods" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -2379,6 +2373,15 @@
 			buildConfigurations = (
 				2675084ADF8057ABA9F01F521D020A14 /* Debug */,
 				B440D516840FC7A0AB3609BFF1C61DEA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D030F0DE6DF42C12512421D54AF7C1DB /* Build configuration list for PBXNativeTarget "Pods-Sauron" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3714D8CCDBE6D7F045A02FD3778817B /* Debug */,
+				0FEC7029EDDC2F42636E6025AFAC2C5B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

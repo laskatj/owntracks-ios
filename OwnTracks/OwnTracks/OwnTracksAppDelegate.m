@@ -1043,6 +1043,15 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                  backgroundTimeRemaining > 24 * 3600 ? @"∞": @(floor(backgroundTimeRemaining)).stringValue);
 #endif
     
+    if (state.intValue == state_connected) {
+        // Publish status as soon as connection is established, if app is active
+        UIApplicationState appState = [UIApplication sharedApplication].applicationState;
+        if (appState == UIApplicationStateActive) {
+            DDLogInfo(@"[OwnTracksAppDelegate] Connection established while app is active, publishing status");
+            [[OwnTracking sharedInstance] publishStatus:YES];
+        }
+    }
+    
     if (state.intValue == state_starting) {
         if (self.backgroundTask) {
             if (self.bgTimer) {
@@ -1097,7 +1106,13 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                  [NSString stringWithFormat:@"%@...", [dataString substringToIndex:LEN2PRINT]]);
 #endif
     
+    __weak typeof(self) weakSelf = self;
     [CoreData.sharedInstance.queuedMOC performBlock:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        
         (void)[[OwnTracking sharedInstance] processMessage:topic
                                                       data:data
                                                   retained:retained
@@ -1141,17 +1156,17 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                             NSString *action = dictionary[@"action"];
                             if (action && [action isKindOfClass:[NSString class]]) {
                                 if ([action isEqualToString:@"dump"]) {
-                                    [self dump];
+                                    [strongSelf dump];
                                     
                                 } else if ([action isEqualToString:@"status"]) {
-                                    [self status];
+                                    [strongSelf status];
 
                                 } else if ([action isEqualToString:@"reportLocation"]) {
                                     if (([LocationManager sharedInstance].monitoring == LocationMonitoringSignificant ||
                                         [LocationManager sharedInstance].monitoring == LocationMonitoringMove) &&
                                         [Settings boolForKey:@"allowremotelocation_preference"
                                                        inMOC:CoreData.sharedInstance.queuedMOC]) {
-                                        [self performSelectorOnMainThread:@selector(reportLocation)
+                                        [strongSelf performSelectorOnMainThread:@selector(reportLocation)
                                                                withObject:nil
                                                             waitUntilDone:NO];
                                     }
@@ -1161,33 +1176,33 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                     NSNumber *to = dictionary[@"to"];
                                     if ((!from || [from isKindOfClass:[NSNumber class]]) &&
                                         (!to || [to isKindOfClass:[NSNumber class]])) {
-                                        [self stepsFrom:from to:to];
+                                        [strongSelf stepsFrom:from to:to];
                                     } else {
                                         DDLogWarn(@"[OwnTracksAppDelegate] from and to must be numbers");
                                     }
                                     
                                 } else if ([action isEqualToString:@"waypoints"]) {
-                                    [self performSelectorOnMainThread:@selector(waypoints)
+                                    [strongSelf performSelectorOnMainThread:@selector(waypoints)
                                                            withObject:nil
                                                         waitUntilDone:NO];
                                                                         
                                 } else if ([action isEqualToString:@"setWaypoints"]) {
-                                    [self performSelectorOnMainThread:@selector(performSetWaypoints:)
+                                    [strongSelf performSelectorOnMainThread:@selector(performSetWaypoints:)
                                                            withObject:dictionary
                                                         waitUntilDone:NO];
                                     
                                 } else if ([action isEqualToString:@"clearWaypoints"]) {
-                                    [self performSelectorOnMainThread:@selector(performClearWaypoints:)
+                                    [strongSelf performSelectorOnMainThread:@selector(performClearWaypoints:)
                                                            withObject:dictionary
                                                         waitUntilDone:NO];
                                     
                                 } else if ([action isEqualToString:@"setConfiguration"]) {
-                                    [self performSelectorOnMainThread:@selector(performSetConfiguration:)
+                                    [strongSelf performSelectorOnMainThread:@selector(performSetConfiguration:)
                                                            withObject:dictionary
                                                         waitUntilDone:NO];
                                     
                                 } else if ([action isEqualToString:@"response"]) {
-                                    [self performSelectorOnMainThread:@selector(performResponse:)
+                                    [strongSelf performSelectorOnMainThread:@selector(performResponse:)
                                                            withObject:dictionary
                                                         waitUntilDone:NO];
                                     
@@ -1210,14 +1225,14 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 DDLogWarn(@"[OwnTracksAppDelegate] JSON is not an object");
             }
         }
-        @synchronized (self.inQueue) {
-            self.inQueue = @((self.inQueue).unsignedLongValue - 1);
-            if (self.inQueue.intValue == 0) {
+        @synchronized (strongSelf.inQueue) {
+            strongSelf.inQueue = @((strongSelf.inQueue).unsignedLongValue - 1);
+            if (strongSelf.inQueue.intValue == 0) {
                 [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
             }
         }
         DDLogVerbose(@"[OwnTracksAppDelegate] handleMessage done inQueue=%@",
-                     self.inQueue);
+                     strongSelf.inQueue);
     }];
     
     return true;

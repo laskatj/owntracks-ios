@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		73E486C3060A00AFA424FB27 /* Pods_OwnTracks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8900A3EAFD109D20F95E6DD8 /* Pods_OwnTracks.framework */; };
+		6F96424309D0FAF52D234D4E /* Pods_Sauron.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 193A11F6D1065D89670EB00E /* Pods_Sauron.framework */; };
 		84001C141C78982800413E5B /* Queue+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 84001C111C78982800413E5B /* Queue+CoreDataProperties.m */; };
 		8400D9731D83825E00DEA134 /* HTTP.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8400D9721D83825E00DEA134 /* HTTP.plist */; };
 		8408CA4425F00FB400354FF3 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 84F9622525F008EC007A391A /* InfoPlist.strings */; };
@@ -145,6 +145,8 @@
 
 /* Begin PBXFileReference section */
 		0A2FDE06B0FB716EB485F358 /* Pods_OwnTracksWrist_WatchKit_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OwnTracksWrist_WatchKit_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B595FED5262D658D7AB357A /* Pods-Sauron.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sauron.release.xcconfig"; path = "Target Support Files/Pods-Sauron/Pods-Sauron.release.xcconfig"; sourceTree = "<group>"; };
+		193A11F6D1065D89670EB00E /* Pods_Sauron.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sauron.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		3BB208567F97092FB552528E /* Pods-OwnTracksWrist WatchKit Extension.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit Extension.release.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit Extension/Pods-OwnTracksWrist WatchKit Extension.release.xcconfig"; sourceTree = "<group>"; };
 		794B1518CFE4BFD07F305FFB /* Pods-OwnTracks.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracks.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.debug.xcconfig"; sourceTree = "<group>"; };
 		84001C0D1C78729200413E5B /* iAd.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = iAd.framework; path = System/Library/Frameworks/iAd.framework; sourceTree = SDKROOT; };
@@ -386,9 +388,9 @@
 		84FAEA7125F01DA100DCD479 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		84FD93052353950100CCEC3B /* OwnTracksEditTVC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksEditTVC.h; sourceTree = "<group>"; };
 		84FD93062353950100CCEC3B /* OwnTracksEditTVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksEditTVC.m; sourceTree = "<group>"; };
-		8900A3EAFD109D20F95E6DD8 /* Pods_OwnTracks.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OwnTracks.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		96DD60728B6E7C01CD032AF5 /* Pods-OwnTracksWrist WatchKit App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit App.release.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit App/Pods-OwnTracksWrist WatchKit App.release.xcconfig"; sourceTree = "<group>"; };
 		9DBE9F76099A512C36F126BC /* Pods-OwnTracks.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracks.release.xcconfig"; path = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.release.xcconfig"; sourceTree = "<group>"; };
+		A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sauron.debug.xcconfig"; path = "Target Support Files/Pods-Sauron/Pods-Sauron.debug.xcconfig"; sourceTree = "<group>"; };
 		B1AC89F92E2FDF3400E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Storyboard.strings"; sourceTree = "<group>"; };
 		B1AC89FA2E2FDF3500E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Intents.strings"; sourceTree = "<group>"; };
 		B1AC89FB2E2FDF3700E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -419,8 +421,8 @@
 				8411B832189FDB140019D2D6 /* CoreData.framework in Frameworks */,
 				8411B830189FDB140019D2D6 /* UIKit.framework in Frameworks */,
 				8411B82C189FDB140019D2D6 /* Foundation.framework in Frameworks */,
-				73E486C3060A00AFA424FB27 /* Pods_OwnTracks.framework in Frameworks */,
 				84C3F45E2CF09F9B004DB332 /* PhotosUI.framework in Frameworks */,
+				6F96424309D0FAF52D234D4E /* Pods_Sauron.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,6 +452,8 @@
 				3BB208567F97092FB552528E /* Pods-OwnTracksWrist WatchKit Extension.release.xcconfig */,
 				BB060471B4BDB6B94FD6C4A2 /* Pods-OwnTracksWrist WatchKit App.debug.xcconfig */,
 				96DD60728B6E7C01CD032AF5 /* Pods-OwnTracksWrist WatchKit App.release.xcconfig */,
+				A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */,
+				0B595FED5262D658D7AB357A /* Pods-Sauron.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -508,8 +512,8 @@
 				8411B831189FDB140019D2D6 /* CoreData.framework */,
 				8411B849189FDB140019D2D6 /* XCTest.framework */,
 				84D3072E1ACD644500FACB9E /* NotificationCenter.framework */,
-				8900A3EAFD109D20F95E6DD8 /* Pods_OwnTracks.framework */,
 				0A2FDE06B0FB716EB485F358 /* Pods_OwnTracksWrist_WatchKit_App.framework */,
+				193A11F6D1065D89670EB00E /* Pods_Sauron.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -909,7 +913,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-OwnTracks-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-Sauron-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -941,19 +945,19 @@
 			files = (
 			);
 			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-OwnTracks/Pods-OwnTracks-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
 			inputPaths = (
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-OwnTracks/Pods-OwnTracks-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks-${CONFIGURATION}-output-files.xcfilelist",
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-OwnTracks/Pods-OwnTracks-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -1269,7 +1273,7 @@
 		};
 		8411B85B189FDB140019D2D6 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 794B1518CFE4BFD07F305FFB /* Pods-OwnTracks.debug.xcconfig */;
+			baseConfigurationReference = A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -1280,7 +1284,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19.0.0;
+				CURRENT_PROJECT_VERSION = 19.0.2;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1304,7 +1308,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.0.0;
+				MARKETING_VERSION = 19.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1323,7 +1327,7 @@
 		};
 		8411B85C189FDB140019D2D6 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 9DBE9F76099A512C36F126BC /* Pods-OwnTracks.release.xcconfig */;
+			baseConfigurationReference = 0B595FED5262D658D7AB357A /* Pods-Sauron.release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -1334,7 +1338,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19.0.0;
+				CURRENT_PROJECT_VERSION = 19.0.2;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1358,7 +1362,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.0.0;
+				MARKETING_VERSION = 19.0.2;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;

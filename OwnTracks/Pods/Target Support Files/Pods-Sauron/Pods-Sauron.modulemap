@@ -1,0 +1,6 @@
+framework module Pods_Sauron {
+  umbrella header "Pods-Sauron-umbrella.h"
+
+  export *
+  module * { export * }
+}
