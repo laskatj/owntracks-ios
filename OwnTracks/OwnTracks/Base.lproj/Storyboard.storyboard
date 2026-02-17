@@ -1800,11 +1800,12 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                     </tabBar>
                     <connections>
-                        <segue destination="HEo-wr-wj3" kind="relationship" relationship="viewControllers" id="Nni-Ga-qRj"/>
-                        <segue destination="v5R-yR-9TY" kind="relationship" relationship="viewControllers" id="Jhc-sN-0Bg"/>
+                        <segue destination="WebAppMap-Nav" kind="relationship" relationship="viewControllers" id="WebAppMap-Tab-Segue"/>
+                        <segue destination="WebAppFriends-Nav" kind="relationship" relationship="viewControllers" id="WebAppFriends-Tab-Segue"/>
                         <segue destination="gCm-FQ-VzQ" kind="relationship" relationship="viewControllers" id="xbH-k7-yqP"/>
                         <segue destination="TPg-fQ-Bo1" kind="relationship" relationship="viewControllers" id="tGd-Zo-34j"/>
-                        <segue destination="WebApp-Nav-01" kind="relationship" relationship="viewControllers" id="WebApp-Tab-Segue"/>
+                        <segue destination="HEo-wr-wj3" kind="relationship" relationship="viewControllers" id="Nni-Ga-qRj"/>
+                        <segue destination="v5R-yR-9TY" kind="relationship" relationship="viewControllers" id="Jhc-sN-0Bg"/>
                     </connections>
                 </tabBarController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="xcy-TD-F58" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -1841,6 +1842,68 @@
                 <placeholder placeholderIdentifier="IBFirstResponder" id="WebApp-Nav-FR" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
             <point key="canvasLocation" x="-100" y="-800"/>
+        </scene>
+        <!--Web App Map-->
+        <scene sceneID="WebApp-Map-Scene">
+            <objects>
+                <viewController id="WebAppMap-VC" customClass="WebAppViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="WebAppMap-View">
+                        <rect key="frame" x="0.0" y="0.0" width="390" height="844"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <viewLayoutGuide key="safeArea" id="WebAppMap-SafeArea"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                    </view>
+                    <tabBarItem key="tabBarItem" title="Map" image="OwnTracks" id="WebAppMap-TabItem" tag="98"/>
+                    <navigationItem key="navigationItem" title="Map" id="WebAppMap-NavItem"/>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="WebAppMap-FR" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-100" y="-600"/>
+        </scene>
+        <!--Web App Map Nav-->
+        <scene sceneID="WebApp-Map-Nav-Scene">
+            <objects>
+                <navigationController id="WebAppMap-Nav" customClass="NavigationController" sceneMemberID="viewController">
+                    <navigationBar key="navigationBar" contentMode="scaleToFill" id="WebAppMap-NavBar"/>
+                    <nil name="viewControllers"/>
+                    <connections>
+                        <segue destination="WebAppMap-VC" kind="relationship" relationship="rootViewController" id="WebAppMap-Root-Segue"/>
+                    </connections>
+                </navigationController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="WebAppMap-Nav-FR" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-100" y="-400"/>
+        </scene>
+        <!--Web App Friends-->
+        <scene sceneID="WebApp-Friends-Scene">
+            <objects>
+                <viewController id="WebAppFriends-VC" customClass="WebAppViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="WebAppFriends-View">
+                        <rect key="frame" x="0.0" y="0.0" width="390" height="844"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <viewLayoutGuide key="safeArea" id="WebAppFriends-SafeArea"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                    </view>
+                    <tabBarItem key="tabBarItem" title="Friends" image="Friends" id="WebAppFriends-TabItem" tag="99"/>
+                    <navigationItem key="navigationItem" title="Friends" id="WebAppFriends-NavItem"/>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="WebAppFriends-FR" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-100" y="-200"/>
+        </scene>
+        <!--Web App Friends Nav-->
+        <scene sceneID="WebApp-Friends-Nav-Scene">
+            <objects>
+                <navigationController id="WebAppFriends-Nav" customClass="NavigationController" sceneMemberID="viewController">
+                    <navigationBar key="navigationBar" contentMode="scaleToFill" id="WebAppFriends-NavBar"/>
+                    <nil name="viewControllers"/>
+                    <connections>
+                        <segue destination="WebAppFriends-VC" kind="relationship" relationship="rootViewController" id="WebAppFriends-Root-Segue"/>
+                    </connections>
+                </navigationController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="WebAppFriends-Nav-FR" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-100" y="0"/>
         </scene>
         <!--Friends-->
         <scene sceneID="URT-Sd-JCB">

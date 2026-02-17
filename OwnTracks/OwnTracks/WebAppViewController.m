@@ -62,6 +62,18 @@ static NSString * const kWebAppMessageHandlerName = @"owntracks";
         NSURL *url = [NSURL URLWithString:urlString];
         if (url) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *path = components.path ?: @"";
+            if (path.length > 0 && [path hasSuffix:@"/"]) {
+                path = [path substringToIndex:path.length - 1];
+            }
+            if (self.tabBarItem.tag == 98) {
+                path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
+            }
+            if (path.length == 0) {
+                path = @"/";
+            }
+            components.path = path;
+
             NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
             [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
             if ([self appNeedsProvisioning]) {
