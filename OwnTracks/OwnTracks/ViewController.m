@@ -1082,6 +1082,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
     int ignoreInaccurateLocations = [Settings intForKey:@"ignoreinaccuratelocations_preference"
                                                       inMOC:CoreData.sharedInstance.mainMOC];
     CLLocation *location = self.mapView.userLocation.location;
+    if (!location) {
+        location = [LocationManager sharedInstance].location;
+    }
 
     DDLogVerbose(@"[ViewController] sendNow %dm %d %@ %@ %@ %@",
                  ignoreInaccurateLocations, validIds, location, poi, image, imageName);

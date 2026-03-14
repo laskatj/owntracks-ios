@@ -764,67 +764,81 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [Settings intForKey:@"mode"
                       inMOC:CoreData.sharedInstance.mainMOC];
 
-        // hide MQTT related rows if not MQTT mode
-        NSArray <NSIndexPath *> *mqttPaths = @[
-            [NSIndexPath indexPathForRow:6 inSection:0], // host
-            [NSIndexPath indexPathForRow:7 inSection:0], // port / websockets
-            [NSIndexPath indexPathForRow:8 inSection:0], // protocol / tls
-            [NSIndexPath indexPathForRow:0 inSection:1], // subTopic
-            [NSIndexPath indexPathForRow:1 inSection:1], // clientId
-            [NSIndexPath indexPathForRow:9 inSection:1], // subQos
-            [NSIndexPath indexPathForRow:10 inSection:1], // keepAlive
-            [NSIndexPath indexPathForRow:11 inSection:1], // pubQos
-            [NSIndexPath indexPathForRow:17 inSection:1], // sub
-            [NSIndexPath indexPathForRow:19 inSection:1], // pubRetain
-            [NSIndexPath indexPathForRow:20 inSection:1] // cleanSession
-        ];
+        // Only run animated row visibility updates when this table view is on screen.
+        BOOL tableVisible = (self.view.window != nil);
 
-        for (NSIndexPath *indexPath in mqttPaths) {
-            if ([self isRowVisible:indexPath] && mode != CONNECTION_MODE_MQTT) {
-                [self deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-            } else if (![self isRowVisible:indexPath] && mode == CONNECTION_MODE_MQTT) {
-                [self insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-            }
-        }
+        if (tableVisible) {
+        @try {
+            // hide MQTT related rows if not MQTT mode
+            // Storyboard: section 0 = Connection, section 1 = Web App, section 2 = Expert Mode
+            NSArray <NSIndexPath *> *mqttPaths = @[
+                [NSIndexPath indexPathForRow:6 inSection:0], // host
+                [NSIndexPath indexPathForRow:7 inSection:0], // port / websockets
+                [NSIndexPath indexPathForRow:8 inSection:0], // protocol / tls
+                [NSIndexPath indexPathForRow:0 inSection:2], // subTopic (Expert Mode)
+                [NSIndexPath indexPathForRow:1 inSection:2], // clientId
+                [NSIndexPath indexPathForRow:10 inSection:2], // subQos
+                [NSIndexPath indexPathForRow:11 inSection:2], // keepAlive
+                [NSIndexPath indexPathForRow:12 inSection:2], // pubQos
+                [NSIndexPath indexPathForRow:19 inSection:2], // sub
+                [NSIndexPath indexPathForRow:21 inSection:2], // pubRetain
+                [NSIndexPath indexPathForRow:22 inSection:2] // cleanSession
+            ];
 
-        if (self.UIUserID) {
-            if (self.UIAuth) {
-                self.UIUserID.enabled = !locked;
+            for (NSIndexPath *indexPath in mqttPaths) {
+                if ([self isRowVisible:indexPath] && mode != CONNECTION_MODE_MQTT) {
+                    [self deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                } else if (![self isRowVisible:indexPath] && mode == CONNECTION_MODE_MQTT) {
+                    [self insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                }
             }
-        }
-        if (self.UIUsePassword) {
-            if (self.UIAuth) {
-                self.UIUsePassword.enabled = !locked && self.UIAuth.on;
-            }
-        }
-        if (self.UIPassword) {
-            if (self.UIAuth) {
-                self.UIPassword.enabled = !locked && self.UIAuth.on && self.UIUsePassword.on;
-            }
-        }
 
-        // hide HTTP related rows if not in HTTP mode
-        NSArray <NSIndexPath *> *httpPaths = @[
-            [NSIndexPath indexPathForRow:13 inSection:0], // url
-            [NSIndexPath indexPathForRow:22 inSection:1] // httpHeaders
-        ];
-
-        for (NSIndexPath *indexPath in httpPaths) {
-            if ([self isRowVisible:indexPath] && mode != CONNECTION_MODE_HTTP) {
-                [self deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-            } else if (![self isRowVisible:indexPath] && mode == CONNECTION_MODE_HTTP) {
-                [self insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (self.UIUserID) {
+                if (self.UIAuth) {
+                    self.UIUserID.enabled = !locked;
+                }
             }
+            if (self.UIUsePassword) {
+                if (self.UIAuth) {
+                    self.UIUsePassword.enabled = !locked && self.UIAuth.on;
+                }
+            }
+            if (self.UIPassword) {
+                if (self.UIAuth) {
+                    self.UIPassword.enabled = !locked && self.UIAuth.on && self.UIUsePassword.on;
+                }
+            }
+
+            // hide HTTP related rows if not in HTTP mode
+            NSArray <NSIndexPath *> *httpPaths = @[
+                [NSIndexPath indexPathForRow:13 inSection:0], // url
+                [NSIndexPath indexPathForRow:24 inSection:2] // httpHeaders (Expert Mode)
+            ];
+
+            for (NSIndexPath *indexPath in httpPaths) {
+                if ([self isRowVisible:indexPath] && mode != CONNECTION_MODE_HTTP) {
+                    [self deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                } else if (![self isRowVisible:indexPath] && mode == CONNECTION_MODE_HTTP) {
+                    [self insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                }
+            }
+
+            // hide mode row if locked
+            if (self.UImodeSwitch) {
+                NSIndexPath *modeIndexPath = [NSIndexPath indexPathForRow:0 inSection:0];
+                if ([self isRowVisible:modeIndexPath] && locked) {
+                    [self deleteRowsAtIndexPaths:@[modeIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                } else if (![self isRowVisible:modeIndexPath] && !locked) {
+                    [self insertRowsAtIndexPaths:@[modeIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+                }
+            }
+        } @catch (NSException *exception) {
+            // Table view state out of sync (e.g. wrong VC or visibility dict); avoid crash.
+            // Reset visibility so all rows/sections show; otherwise table can appear cut off (grey below).
+            self.rowsVisibility = nil;
+            self.sectionsVisibility = nil;
+            [self.tableView reloadData];
         }
-
-        // hide mode row if locked
-        if (self.UImodeSwitch) {
-            NSIndexPath *modeIndexPath = [NSIndexPath indexPathForRow:0 inSection:0];
-            if ([self isRowVisible:modeIndexPath] && locked) {
-                [self deleteRowsAtIndexPaths:@[modeIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-            } else if (![self isRowVisible:modeIndexPath] && !locked) {
-                [self insertRowsAtIndexPaths:@[modeIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-            }
         }
     }
 

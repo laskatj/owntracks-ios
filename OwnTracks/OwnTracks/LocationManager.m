@@ -446,7 +446,7 @@ static LocationManager *theInstance = nil;
                                 message:
                  NSLocalizedString(@"App is not allowed to use location services in background",
                                    @"Location Manager error message")
-            ];
+                                    url:UIApplicationOpenSettingsURLString];
             DDLogInfo(@"[LocationManager] %@", @"App is not allowed to use location services in background");
             break;
         case kCLAuthorizationStatusNotDetermined:

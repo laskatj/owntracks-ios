@@ -4,22 +4,35 @@
 //
 //  Web App tab: hosts a WKWebView loading the configured web app URL.
 //  Supports postMessage from the web app for provisioning (type: "config").
+//  When tag==98 (Map tab), shows a compact header with tracking controls.
 //
 
 #import "WebAppViewController.h"
 #import "Settings.h"
 #import "CoreData.h"
 #import "OwnTracksAppDelegate.h"
+#import "LocationManager.h"
+#import "Waypoint+CoreDataClass.h"
+#import "StatusTVC.h"
+#import "ViewController.h"
+#import "NavigationController.h"
 #import <WebKit/WebKit.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 static NSString * const kWebAppMessageHandlerName = @"owntracks";
+static const CGFloat kMapHeaderHeight = 44.0;
+static const CGFloat kMapHeaderPadding = 6.0;
 
 @interface WebAppViewController () <WKNavigationDelegate, WKScriptMessageHandler>
 @property (strong, nonatomic) WKWebView *webView;
 @property (strong, nonatomic) UILabel *placeholderLabel;
+@property (strong, nonatomic) UIView *mapHeaderView;
+@property (strong, nonatomic) UISegmentedControl *modes;
+@property (strong, nonatomic) UILabel *accuracyLabel;
+@property (strong, nonatomic) NSTimer *accuracyTimer;
+@property (nonatomic) BOOL observingMonitoring;
 @end
 
 @implementation WebAppViewController
@@ -44,16 +57,242 @@ static NSString * const kWebAppMessageHandlerName = @"owntracks";
     self.placeholderLabel.textColor = [UIColor secondaryLabelColor];
     [self.view addSubview:self.placeholderLabel];
 
+    if (self.tabBarItem.tag == 98) {
+        [self setupMapHeader];
+    }
+
     [self loadWebAppURL];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (self.tabBarItem.tag == 98) {
+        [[LocationManager sharedInstance] authorize];
+        [self.navigationController setNavigationBarHidden:YES animated:animated];
+        [self updateMoveButton];
+        [self updateAccuracyLabel];
+        [self startAccuracyTimer];
+        if (!self.observingMonitoring) {
+            [[LocationManager sharedInstance] addObserver:self forKeyPath:@"monitoring" options:NSKeyValueObservingOptionNew context:NULL];
+            self.observingMonitoring = YES;
+        }
+    }
     [self loadWebAppURL];
 }
 
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    if (self.tabBarItem.tag == 98) {
+        [self.navigationController setNavigationBarHidden:NO animated:animated];
+        [self stopAccuracyTimer];
+        if (self.observingMonitoring) {
+            [[LocationManager sharedInstance] removeObserver:self forKeyPath:@"monitoring"];
+            self.observingMonitoring = NO;
+        }
+    }
+}
+
 - (void)dealloc {
+    [self stopAccuracyTimer];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:kWebAppMessageHandlerName];
+}
+
+#pragma mark - Map header (tag == 98)
+
+- (void)setupMapHeader {
+    self.mapHeaderView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.mapHeaderView.backgroundColor = [UIColor systemBackgroundColor];
+    self.mapHeaderView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.mapHeaderView];
+
+    NSLayoutConstraint *headerTop = [NSLayoutConstraint constraintWithItem:self.mapHeaderView attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self.view.safeAreaLayoutGuide attribute:NSLayoutAttributeTop multiplier:1 constant:0];
+    NSLayoutConstraint *headerLead = [NSLayoutConstraint constraintWithItem:self.mapHeaderView attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self.view attribute:NSLayoutAttributeLeading multiplier:1 constant:0];
+    NSLayoutConstraint *headerTrail = [NSLayoutConstraint constraintWithItem:self.view attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeTrailing multiplier:1 constant:0];
+    NSLayoutConstraint *headerHeight = [NSLayoutConstraint constraintWithItem:self.mapHeaderView attribute:NSLayoutAttributeHeight relatedBy:NSLayoutRelationEqual toItem:nil attribute:NSLayoutAttributeNotAnAttribute multiplier:1 constant:kMapHeaderHeight];
+    [NSLayoutConstraint activateConstraints:@[headerTop, headerLead, headerTrail, headerHeight]];
+
+    UIButton *infoBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [infoBtn setImage:[UIImage imageNamed:@"Info"] forState:UIControlStateNormal];
+    infoBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [infoBtn addTarget:self action:@selector(mapHeaderInfoPressed) forControlEvents:UIControlEventTouchUpInside];
+    [self.mapHeaderView addSubview:infoBtn];
+
+    UIButton *mapBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [mapBtn setImage:[UIImage systemImageNamed:@"map"] forState:UIControlStateNormal];
+    mapBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [mapBtn addTarget:self action:@selector(mapHeaderAskForMapPressed) forControlEvents:UIControlEventTouchUpInside];
+    [self.mapHeaderView addSubview:mapBtn];
+
+    self.accuracyLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.accuracyLabel.font = [UIFont systemFontOfSize:11];
+    self.accuracyLabel.textColor = [UIColor secondaryLabelColor];
+    self.accuracyLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.mapHeaderView addSubview:self.accuracyLabel];
+
+    UIButton *shareBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [shareBtn setImage:[UIImage systemImageNamed:@"square.and.arrow.up"] forState:UIControlStateNormal];
+    shareBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [shareBtn addTarget:self action:@selector(mapHeaderSharePressed) forControlEvents:UIControlEventTouchUpInside];
+    [self.mapHeaderView addSubview:shareBtn];
+
+    self.modes = [[UISegmentedControl alloc] initWithItems:@[
+        NSLocalizedString(@"Quiet", @"Quiet"),
+        NSLocalizedString(@"Manual", @"Manual"),
+        NSLocalizedString(@"Significant", @"Significant"),
+        NSLocalizedString(@"Move", @"Move")
+    ]];
+    self.modes.apportionsSegmentWidthsByContent = YES;
+    self.modes.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modes.backgroundColor = [UIColor colorNamed:@"modesColor"];
+    UIFont *smallFont = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
+    [self.modes setTitleTextAttributes:@{ NSFontAttributeName: smallFont } forState:UIControlStateNormal];
+    [self.modes setTitleTextAttributes:@{ NSFontAttributeName: smallFont } forState:UIControlStateSelected];
+    [self.modes addTarget:self action:@selector(mapHeaderModesChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.mapHeaderView addSubview:self.modes];
+
+    CGFloat pad = kMapHeaderPadding;
+    [NSLayoutConstraint activateConstraints:@[
+        [NSLayoutConstraint constraintWithItem:infoBtn attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeLeading multiplier:1 constant:pad],
+        [NSLayoutConstraint constraintWithItem:infoBtn attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeCenterY multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:mapBtn attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:infoBtn attribute:NSLayoutAttributeTrailing multiplier:1 constant:6],
+        [NSLayoutConstraint constraintWithItem:mapBtn attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeCenterY multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.modes attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:mapBtn attribute:NSLayoutAttributeTrailing multiplier:1 constant:8],
+        [NSLayoutConstraint constraintWithItem:self.modes attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeCenterY multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.accuracyLabel attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:shareBtn attribute:NSLayoutAttributeLeading multiplier:1 constant:-6],
+        [NSLayoutConstraint constraintWithItem:self.accuracyLabel attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeCenterY multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:shareBtn attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeTrailing multiplier:1 constant:-pad],
+        [NSLayoutConstraint constraintWithItem:shareBtn attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeCenterY multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.modes attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self.accuracyLabel attribute:NSLayoutAttributeLeading multiplier:1 constant:-8],
+    ]];
+    [self.accuracyLabel setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [self.modes setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+
+    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
+    NSLayoutConstraint *webTop = [NSLayoutConstraint constraintWithItem:self.webView attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeBottom multiplier:1 constant:0];
+    NSLayoutConstraint *webLead = [NSLayoutConstraint constraintWithItem:self.webView attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self.view attribute:NSLayoutAttributeLeading multiplier:1 constant:0];
+    NSLayoutConstraint *webTrail = [NSLayoutConstraint constraintWithItem:self.view attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self.webView attribute:NSLayoutAttributeTrailing multiplier:1 constant:0];
+    NSLayoutConstraint *webBottom = [NSLayoutConstraint constraintWithItem:self.view attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:self.webView attribute:NSLayoutAttributeBottom multiplier:1 constant:0];
+    [NSLayoutConstraint activateConstraints:@[webTop, webLead, webTrail, webBottom]];
+    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [NSLayoutConstraint constraintWithItem:self.placeholderLabel attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self.mapHeaderView attribute:NSLayoutAttributeBottom multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.placeholderLabel attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self.view attribute:NSLayoutAttributeLeading multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.view attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self.placeholderLabel attribute:NSLayoutAttributeTrailing multiplier:1 constant:0],
+        [NSLayoutConstraint constraintWithItem:self.view attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:self.placeholderLabel attribute:NSLayoutAttributeBottom multiplier:1 constant:0],
+    ]];
+}
+
+- (void)mapHeaderInfoPressed {
+    UIViewController *status = [self.storyboard instantiateViewControllerWithIdentifier:@"StatusTVC"];
+    if (status) {
+        [self.navigationController setNavigationBarHidden:NO animated:NO];
+        [self.navigationController pushViewController:status animated:YES];
+    }
+}
+
+- (void)mapHeaderAskForMapPressed {
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Map Interaction", @"Title map interaction")
+                                                               message:NSLocalizedString(@"Do you want the map to allow interaction? If you choose yes, the map provider may analyze your tile requests", @"Message map interaction")
+                                                        preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Yes", @"Yes button title") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"noMap"];
+    }]];
+    [ac addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"No", @"No button title") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        [[NSUserDefaults standardUserDefaults] setInteger:-1 forKey:@"noMap"];
+    }]];
+    [self presentViewController:ac animated:YES completion:nil];
+}
+
+- (void)mapHeaderSharePressed {
+    ViewController *mapVC = [self nativeMapViewController];
+    if (mapVC && [mapVC respondsToSelector:@selector(actionPressed:)]) {
+        [mapVC performSelector:@selector(actionPressed:) withObject:nil];
+    }
+}
+
+- (ViewController *)nativeMapViewController {
+    UITabBarController *tbc = self.tabBarController;
+    if (!tbc) return nil;
+    for (UIViewController *vc in tbc.viewControllers) {
+        if ([vc isKindOfClass:[UINavigationController class]]) {
+            UIViewController *top = [(UINavigationController *)vc topViewController];
+            if ([top isKindOfClass:[ViewController class]]) {
+                return (ViewController *)top;
+            }
+        }
+    }
+    return nil;
+}
+
+- (void)mapHeaderModesChanged:(UISegmentedControl *)segmentedControl {
+    LocationMonitoring monitoring;
+    switch (segmentedControl.selectedSegmentIndex) {
+        case 3: monitoring = LocationMonitoringMove; break;
+        case 2: monitoring = LocationMonitoringSignificant; break;
+        case 1: monitoring = LocationMonitoringManual; break;
+        case 0:
+        default: monitoring = LocationMonitoringQuiet; break;
+    }
+    if (monitoring != [LocationManager sharedInstance].monitoring) {
+        [LocationManager sharedInstance].monitoring = monitoring;
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"downgraded"];
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"adapted"];
+        [Settings setInt:(int)[LocationManager sharedInstance].monitoring forKey:@"monitoring_preference" inMOC:CoreData.sharedInstance.mainMOC];
+        [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
+        [self updateMoveButton];
+    }
+}
+
+- (void)updateMoveButton {
+    if (!self.modes) return;
+    BOOL locked = [Settings theLockedInMOC:CoreData.sharedInstance.mainMOC];
+    self.modes.enabled = !locked;
+    switch ([LocationManager sharedInstance].monitoring) {
+        case LocationMonitoringMove:    self.modes.selectedSegmentIndex = 3; break;
+        case LocationMonitoringSignificant: self.modes.selectedSegmentIndex = 2; break;
+        case LocationMonitoringManual:  self.modes.selectedSegmentIndex = 1; break;
+        case LocationMonitoringQuiet:
+        default:                         self.modes.selectedSegmentIndex = 0; break;
+    }
+    for (NSInteger i = 0; i < self.modes.numberOfSegments; i++) {
+        NSString *title = [self.modes titleForSegmentAtIndex:i];
+        if ([title hasSuffix:@"#"]) title = [title substringToIndex:title.length - 1];
+        if ([title hasSuffix:@"!"]) title = [title substringToIndex:title.length - 1];
+        [self.modes setTitle:title forSegmentAtIndex:i];
+    }
+    NSInteger idx = self.modes.selectedSegmentIndex;
+    NSString *title = [self.modes titleForSegmentAtIndex:idx];
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"downgraded"]) {
+        if (![title hasSuffix:@"!"]) title = [title stringByAppendingString:@"!"];
+    }
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"adapted"]) {
+        if (![title hasSuffix:@"#"]) title = [title stringByAppendingString:@"#"];
+    }
+    [self.modes setTitle:title forSegmentAtIndex:idx];
+}
+
+- (void)updateAccuracyLabel {
+    if (!self.accuracyLabel) return;
+    CLLocation *location = [LocationManager sharedInstance].location;
+    self.accuracyLabel.text = [Waypoint CLLocationAccuracyText:location];
+}
+
+- (void)startAccuracyTimer {
+    [self stopAccuracyTimer];
+    self.accuracyTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+        [self updateAccuracyLabel];
+    }];
+}
+
+- (void)stopAccuracyTimer {
+    [self.accuracyTimer invalidate];
+    self.accuracyTimer = nil;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
+    if ([keyPath isEqualToString:@"monitoring"] && object == [LocationManager sharedInstance]) {
+        [self updateMoveButton];
+    }
 }
 
 - (void)loadWebAppURL {
@@ -78,6 +317,10 @@ static NSString * const kWebAppMessageHandlerName = @"owntracks";
             [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
             if ([self appNeedsProvisioning]) {
                 [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
+                NSString *deviceName = [UIDevice currentDevice].name;
+                if (deviceName.length > 0) {
+                    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
+                }
             }
             components.queryItems = queryItems;
             NSURL *finalURL = components.URL;
