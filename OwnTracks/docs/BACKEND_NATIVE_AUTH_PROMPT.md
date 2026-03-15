@@ -4,66 +4,82 @@ Use this prompt when implementing or updating the backend so the iOS app can pas
 
 ---
 
+## How the iOS app uses this endpoint
+
+After completing native OIDC via `ASWebAuthenticationSession` (system browser sheet), the iOS app loads `/auth/native-callback?access_token=<JWT>` **directly inside the `WKWebView`**. It does **not** use `NSURLSession` to call this endpoint.
+
+This is the key architectural constraint: the WebView's HTTP request machinery runs in a separate OS process (the WebContent process). Cookies received as `Set-Cookie` response headers from a request *made by the WebView* are stored directly in the WebContent process — no cross-process sync required. The very next navigation (your redirect to `/map`) therefore carries the session cookie.
+
+Any approach that involves native code fetching the token exchange endpoint and injecting the cookie into `WKHTTPCookieStore` suffers from an unavoidable synchronization lag between the UI process and the WebContent process, causing the `/map` request to arrive without the cookie.
+
+---
+
 ## Contract
 
 ### Endpoint
 
 **`GET /auth/native-callback?access_token=<JWT>`**
 
-- Same host (and path base, if any) as the web app (e.g. `https://sauron-dev.tlaska.com/auth/native-callback`).
-- The iOS app obtains `access_token` via ASWebAuthenticationSession + PKCE and then either loads this URL in a WebView or has the web app call it (same origin).
+- Same host (and path base, if any) as the web app (e.g. `https://sauron-dev.example.com/auth/native-callback`).
 
 ### Required behavior
 
-1. **Validate** `access_token` (e.g. with your IdP or token introspection). If invalid or missing, return 401 or 302 to your login/error page.
+1. **Validate** `access_token` against your IdP or via token introspection. If invalid or missing, return 401 or redirect to your login/error page.
 2. **Set the session cookie** on the response:
-   - One `Set-Cookie` header with your session cookie (e.g. `.AspNetCore.NativeSession` or your app’s session cookie name).
-   - Attributes: `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax`.
-   - Omit `Domain` or set it to the request host so the cookie applies to the same origin.
-3. **Respond with HTTP 200** (not 302) so the client can read headers and body.
+   - `Set-Cookie: <your-session-cookie>=...; Path=/; Secure; HttpOnly; SameSite=Lax`
+   - Omit `Domain` or set it to the exact request host.
+3. **Redirect to `/map`** — the redirect *must* come in the same HTTP response that carries `Set-Cookie`, so the WebView stores the cookie before it fetches `/map`.
 
-### Response body (choose one)
+### Recommended response: 302 redirect
 
-**Option A – Redirect page (typical)**  
-Return HTML that redirects to the app after a short delay so the browser has time to store the cookie before the next request:
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="refresh" content="2;url=/map">
-</head>
-<body>Signing you in...</body>
-</html>
+```
+HTTP/1.1 302 Found
+Location: /map
+Set-Cookie: .AspNetCore.Session=<value>; Path=/; Secure; HttpOnly; SameSite=Lax
 ```
 
-- Use a delay of **at least 1–2 seconds** (e.g. `content="2;url=/map"` or `setTimeout(..., 2000)`).  
-- `url` must be **same-origin** (e.g. `/map` or `https://your-host/map`), not the IdP.
+This is the simplest and most reliable option. The WebView receives `Set-Cookie`, stores the cookie, then follows the `Location` header to `/map` — all within the same WebContent process, no timing issues.
 
-**Option B – One-shot (recommended for iOS)**  
-Return the **same HTML your app serves for `/map`** (e.g. your SPA shell) in the response body, still with `Set-Cookie` on this response. Then the client does not need a second request to load the app; the single response sets the cookie and delivers the page, which avoids iOS WKWebView not sending the cookie on the next navigation.
+### Alternative response: 200 with immediate JavaScript redirect
 
-- Status: **200**
-- Headers: `Set-Cookie` as above, plus your normal `Content-Type: text/html`, etc.
-- Body: the same HTML you would return for `GET /map` when the user is authenticated (or at least the same SPA shell).
+If a 302 is inconvenient (e.g. your framework always writes a body), return 200 with an **immediate** JavaScript redirect. Do **not** use a timed delay — the SPA must not initialize before the redirect fires:
 
-### Verification with curl
+```html
+HTTP/1.1 200 OK
+Set-Cookie: .AspNetCore.Session=<value>; Path=/; Secure; HttpOnly; SameSite=Lax
+Content-Type: text/html
 
-1. Get a valid `access_token` (e.g. from the iOS app logs or your IdP).
-2. Run:
+<!DOCTYPE html>
+<html><head>
+  <script>window.location.replace('/map');</script>
+</head><body></body></html>
+```
+
+> **Do not** use `<meta http-equiv="refresh" content="2;url=/map">` with a delay, and do not load your React/SPA bundle on this page. If the SPA initializes before the redirect, it will check auth state, find no session, and redirect to the IdP — losing the cookie before `/map` is ever loaded.
+
+### What to avoid
+
+| Pattern | Why it fails |
+|---|---|
+| `meta-refresh` with delay ≥ 1 s | SPA JS runs, checks auth, redirects to IdP before cookie is sent to `/map` |
+| Return 200 + full SPA bundle | Same: SPA initializes, re-checks auth, cookie never reaches `/map` |
+| Native `NSURLSession` fetch + `WKHTTPCookieStore` injection | Cross-process sync lag; WebView makes the `/map` request before the cookie arrives |
+
+---
+
+## Verification with curl
+
+1. Get a valid `access_token` from the iOS app logs or your IdP.
+2. Test the endpoint:
    ```bash
-   curl -v -c cookies.txt "https://YOUR_HOST/auth/native-callback?access_token=VALID_TOKEN"
+   curl -v -L -c cookies.txt "https://YOUR_HOST/auth/native-callback?access_token=VALID_TOKEN"
    ```
-   - Must return **200** and a **Set-Cookie** header with `Path=/`.
-3. Then:
+   - Must set a `Set-Cookie` header and follow through to `/map` returning **200** with app content.
+3. Test a subsequent authenticated request:
    ```bash
    curl -v -b cookies.txt "https://YOUR_HOST/map"
    ```
    - Must return **200** with app content, **not** 302 to the IdP.
-
-### Optional: SPA shell for unauthenticated `/map`
-
-If **`GET /map`** (or your app root) returns **200** with your SPA shell even when there is no session cookie (and the SPA then shows login or redirects client-side), the iOS app can use a “token in fragment” flow: it loads `https://YOUR_HOST/map#access_token=...`, and the page (or an injected script) calls `GET /auth/native-callback?access_token=...` and then navigates to `/map`. That flow relies on the first request to `/map` not being redirected to the IdP.
 
 ---
 
@@ -72,10 +88,8 @@ If **`GET /map`** (or your app root) returns **200** with your SPA shell even wh
 | Item | Requirement |
 |------|-------------|
 | URL | `GET /auth/native-callback?access_token=<JWT>` |
-| Validation | Validate token; 401/302 if invalid |
-| Cookie | One `Set-Cookie`, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax` |
-| Status | 200 |
-| Body | Option A: HTML with delayed same-origin redirect to `/map` (delay ≥ 1–2 s). Option B: Same HTML as authenticated `/map` (one-shot). |
-| Redirect target | Same origin only (e.g. `/map`), never to the IdP in this response |
-
-Implement the above so the embedded iOS app can complete native OAuth and land the user in the web app with a valid session.
+| Validation | Validate token; 401/redirect if invalid |
+| Cookie | `Set-Cookie`, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax` |
+| Redirect | 302 to `/map` (preferred) **or** 200 + `window.location.replace('/map')` |
+| Redirect timing | Immediate — no delay, no SPA initialization on this page |
+| Redirect target | Same origin (e.g. `/map`), never to the IdP |

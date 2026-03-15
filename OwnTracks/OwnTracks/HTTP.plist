@@ -42,14 +42,11 @@
 	<string></string>
 	<key>adapt_preference</key>
 	<integer>0</integer>
-<<<<<<< Updated upstream
-=======
 	<key>webappurl_preference</key>
-	<string>https://yourapp.com</string>
+	<string></string>
 	<key>oidc_discovery_url_preference</key>
-	<string>https://identity.tlaska.com/application/o/sauron/.well-known/openid-configuration</string>
+	<string></string>
 	<key>oauth_client_id_preference</key>
-	<string>d8ntY1AOtH6UaYE9QGRfy1AXKmKVH9wmwcl0bSJJ</string>
->>>>>>> Stashed changes
+	<string></string>
 </dict>
 </plist>

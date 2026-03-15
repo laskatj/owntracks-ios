@@ -677,8 +677,6 @@
                                     </tableViewCell>
                                 </cells>
                             </tableViewSection>
-<<<<<<< Updated upstream
-=======
                             <tableViewSection headerTitle="Web App" id="WebApp-Section">
                                 <cells>
                                     <tableViewCell contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="WebApp-URL-Cell">
@@ -764,7 +762,6 @@
                                     </tableViewCell>
                                 </cells>
                             </tableViewSection>
->>>>>>> Stashed changes
                             <tableViewSection headerTitle="Expert Mode" id="NRQ-7X-SLM">
                                 <cells>
                                     <tableViewCell tag="2" contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="hx7-wj-39C">
@@ -1831,12 +1828,9 @@
                         <outlet property="UIsubTopic" destination="suj-kA-G3U" id="ojd-rd-q75"/>
                         <outlet property="UItrackerid" destination="dUg-TH-IQ0" id="17R-jS-PUg"/>
                         <outlet property="UIurl" destination="pD2-Zj-Toq" id="sdO-19-1bJ"/>
-<<<<<<< Updated upstream
-=======
                         <outlet property="UIwebappurl" destination="WebApp-URL-Field" id="WebApp-URL-Outlet"/>
                         <outlet property="UIoidcDiscoveryURL" destination="OIDC-Discovery-URL-Field" id="OIDC-Discovery-URL-Outlet"/>
                         <outlet property="UIoauthClientId" destination="OAuth-Client-ID-Field" id="OAuth-Client-ID-Outlet"/>
->>>>>>> Stashed changes
                         <outlet property="createCardButton" destination="7rX-Bq-DGb" id="V9S-zi-hVj"/>
                         <outlet property="toursButton" destination="tiK-11-lia" id="Rxn-5u-N9i"/>
                     </connections>

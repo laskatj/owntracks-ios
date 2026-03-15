@@ -22,13 +22,10 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
-// #region agent log
-static int _loadTokenCallCount = 0;
 static void _debugDecide(NSURL *requestURL, BOOL inCooldown, BOOL isIdPHost, NSString *branch) {
-    DDLogInfo(@"[DEBUG-2514a7] decidePolicy host=%@ path=%@ inCooldown=%d isIdPHost=%d branch=%@",
+    DDLogInfo(@"[WebAppViewController] decidePolicy host=%@ path=%@ inCooldown=%d isIdPHost=%d branch=%@",
               requestURL.host ?: @"", requestURL.path ?: @"", inCooldown, isIdPHost, branch ?: @"allow");
 }
-// #endregion
 
 static NSString * const kWebAppMessageHandlerName = @"owntracks";
 static const CGFloat kMapHeaderHeight = 44.0;
@@ -60,14 +57,6 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
 
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     [config.userContentController addScriptMessageHandler:self name:kWebAppMessageHandlerName];
-    // When URL has #access_token=: fetch native-callback with token (same-origin, gets Set-Cookie), then navigate to /map so cookie is set before navigation.
-    NSString *fragmentScript = @"(function(){ var h = window.location.hash || ''; var i = h.indexOf('access_token='); if (i === -1) return; var token = decodeURIComponent(h.substring(i + 13).split('&')[0]); if (!token) return; var url = window.location.pathname.replace(/\\/map.*$/, '') + '/auth/native-callback?access_token=' + encodeURIComponent(token); fetch(url, { credentials: 'include' }).then(function(){ window.location.href = '/map'; }).catch(function(){ window.location.href = '/map'; }); })();";
-    WKUserScript *scriptFragment = [[WKUserScript alloc] initWithSource:fragmentScript injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
-    [config.userContentController addUserScript:scriptFragment];
-    // On native-callback page: remove meta refresh and fetch /map with credentials. Only replace document if response is 200 (else we might be writing IdP login page and trigger cancelled nav -999).
-    NSString *fetchScript = @"(function(){ var p = window.location.pathname || ''; if (p.indexOf('native-callback') === -1) return; var m = document.querySelector('meta[http-equiv=\\'refresh\\']'); if (m) m.remove(); fetch('/map', { credentials: 'include', redirect: 'follow' }).then(function(r){ if (r.ok && r.status === 200) return r.text(); return Promise.reject(new Error('status ' + r.status)); }).then(function(html){ document.open(); document.write(html); document.close(); }).catch(function(){ window.location.href = '/map'; }); })();";
-    WKUserScript *script = [[WKUserScript alloc] initWithSource:fetchScript injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:YES];
-    [config.userContentController addUserScript:script];
 
     self.webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
     self.webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -465,7 +454,7 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
             __strong typeof(wself) sself = wself;
             if (!sself) return;
             if (error) {
-                DDLogWarn(@"[DEBUG-2514a7] Native auth failed: %@", error.localizedDescription);
+                DDLogWarn(@"[WebAppViewController] Native auth failed: %@", error.localizedDescription);
                 UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Sign-in unavailable", @"Native auth failed title")
                                                                                message:error.localizedDescription
                                                                         preferredStyle:UIAlertControllerStyleAlert];
@@ -479,114 +468,40 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
 }
 
 - (void)loadWebViewWithAccessToken:(NSString *)accessToken {
-    // #region agent log
-    _loadTokenCallCount++;
-    DDLogInfo(@"[DEBUG-2514a7] loadWebViewWithAccessToken call #%d", _loadTokenCallCount);
-    // #endregion
+    // Load the native-callback endpoint directly inside the WKWebView.
+    //
+    // Why not NSURLSession + WKHTTPCookieStore injection?
+    // WKWebView splits across two OS processes: the UI process (your app) and the
+    // WebContent process (where HTTP requests run). Cookies written via
+    // WKHTTPCookieStore from the UI process are synced to the WebContent process
+    // asynchronously — there is no callback for when that sync finishes.
+    // Navigating immediately after setCookie: therefore races the sync and the
+    // WebContent process sends the very next request without the cookie.
+    //
+    // By loading the native-callback URL *inside* the WebView, the WebContent
+    // process receives the Set-Cookie response header directly and stores the
+    // cookie in its own store. The backend's redirect (302 or JS/meta-refresh)
+    // to /map is then executed by the same process, so the cookie is guaranteed
+    // to be present on the /map request.
     if (!accessToken.length || !self.webAppOrigin) return;
     NSURL *base = self.webAppBaseURL ?: self.webAppOrigin;
     NSString *basePath = (base.path.length > 0 && ![base.path isEqualToString:@"/"]) ? base.path : @"";
-    NSString *path = basePath.length > 0 ? [basePath stringByAppendingPathComponent:@"auth/native-callback"] : kDefaultNativeCallbackPath;
-    if (path.length == 0) path = kDefaultNativeCallbackPath;
+    NSString *callbackPath = basePath.length > 0
+        ? [basePath stringByAppendingPathComponent:@"auth/native-callback"]
+        : kDefaultNativeCallbackPath;
     NSURLComponents *c = [NSURLComponents componentsWithURL:base resolvingAgainstBaseURL:NO];
-    c.path = path;
+    c.path = callbackPath;
     c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:accessToken] ];
     NSURL *callbackURL = c.URL;
     if (!callbackURL) return;
-    NSURLComponents *redacted = [NSURLComponents componentsWithURL:callbackURL resolvingAgainstBaseURL:NO];
-    redacted.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:@"<redacted>"] ];
-    DDLogInfo(@"[DEBUG-2514a7] GET token exchange → %@", redacted.URL.absoluteString);
-    DDLogInfo(@"[DEBUG-2514a7] access_token (for curl): %@", accessToken);
 
-    __weak typeof(self) wself = self;
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:callbackURL completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-        NSHTTPURLResponse *httpResponse = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
-        DDLogInfo(@"[DEBUG-2514a7] Callback response: status=%ld error=%@", (long)(httpResponse.statusCode), error.localizedDescription ?: @"(none)");
-        if (httpResponse.statusCode != 200 || !httpResponse.URL) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(wself) sself = wself;
-                if (!sself) return;
-                DDLogInfo(@"[DEBUG-2514a7] Callback returned %ld, loading callback URL in WebView", (long)(httpResponse ? httpResponse.statusCode : 0));
-                sself.lastNativeCallbackLoadTime = [NSDate date];
-                [sself.webView loadRequest:[NSURLRequest requestWithURL:callbackURL]];
-            });
-            return;
-        }
-        NSArray<NSHTTPCookie *> *cookies = [NSHTTPCookie cookiesWithResponseHeaderFields:[httpResponse allHeaderFields] forURL:httpResponse.URL];
-        if (cookies.count == 0) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(wself) sself = wself;
-                if (!sself) return;
-                DDLogInfo(@"[DEBUG-2514a7] No Set-Cookie in callback response, loading callback URL in WebView");
-                sself.lastNativeCallbackLoadTime = [NSDate date];
-                [sself.webView loadRequest:[NSURLRequest requestWithURL:callbackURL]];
-            });
-            return;
-        }
-        // Inject cookies as-parsed from the response (backend already sends path=/, e.g. .AspNetCore.NativeSession).
-        // Rebuilding with cookieWithProperties: can fail for names like ".AspNetCore.NativeSession".
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(wself) sself = wself;
-            if (!sself) return;
-            WKHTTPCookieStore *store = sself.webView.configuration.websiteDataStore.httpCookieStore;
-            dispatch_group_t group = dispatch_group_create();
-            for (NSHTTPCookie *cookie in cookies) {
-                dispatch_group_enter(group);
-                [store setCookie:cookie completionHandler:^{ dispatch_group_leave(group); }];
-            }
-            dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-                __strong typeof(wself) sself2 = wself;
-                if (!sself2) return;
-                NSMutableArray *names = [NSMutableArray arrayWithCapacity:cookies.count];
-                for (NSHTTPCookie *c in cookies) [names addObject:(c.name ?: @"?")];
-                DDLogInfo(@"[DEBUG-2514a7] Injected %lu cookie(s) names=%@ path=%@", (unsigned long)cookies.count, names, [cookies.firstObject path] ?: @"?");
-                sself2.lastNativeCallbackLoadTime = [NSDate date];
-                [sself2.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *allCookies) {
-                    NSString *host = sself2.webAppOrigin.host ?: @"";
-                    NSArray *forHost = [allCookies filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSHTTPCookie *c, NSDictionary *b) { return (c.domain && ([c.domain isEqualToString:host] || [host hasSuffix:c.domain])); }]];
-                    DDLogInfo(@"[DEBUG-2514a7] Cookie store after inject: %lu cookie(s) for host %@", (unsigned long)forHost.count, host);
-                }];
-                // WKWebView does not send the cookie on next navigation or fetch (store has it but requests show Cookie absent). Load app URL with token in fragment so the web app can exchange it via JS (same-origin request from the page will receive Set-Cookie).
-                [sself2 loadWebAppURLWithAccessTokenInFragment:accessToken];
-            });
-        });
-    }];
-    [task resume];
-}
-
-- (void)loadWebAppURLWithAccessTokenInFragment:(NSString *)accessToken {
-    if (!accessToken.length || !self.webAppOrigin) return;
-    NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
-    if (urlString.length == 0) return;
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return;
-    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-    NSString *path = components.path ?: @"";
-    if (path.length > 0 && [path hasSuffix:@"/"]) path = [path substringToIndex:path.length - 1];
-    if (self.tabBarItem.tag == 98) path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
-    if (path.length == 0) path = @"/";
-    components.path = path;
-    NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
-    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
-    if ([self appNeedsProvisioning]) {
-        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
-        NSString *deviceName = [UIDevice currentDevice].name;
-        if (deviceName.length > 0) [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
-    }
-    components.queryItems = queryItems;
-    NSURL *finalURL = components.URL;
-    if (!finalURL) return;
-    NSString *withFragment = [[finalURL.absoluteString stringByAppendingString:@"#access_token="] stringByAppendingString:[accessToken stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLFragmentAllowedCharacterSet]]];
-    NSURL *urlWithFragment = [NSURL URLWithString:withFragment];
-    if (!urlWithFragment) return;
+    DDLogInfo(@"[WebAppViewController] Loading native-callback in WebView for token exchange");
     self.placeholderLabel.hidden = YES;
     self.webView.hidden = NO;
-    [self setWebAppOriginFromURL:url];
     if (self.loginButton) self.loginButton.hidden = NO;
     else [self updateLogInBarButton];
-    [self fetchDiscoveryAndUpdateLoginButton];
-    DDLogInfo(@"[DEBUG-2514a7] Loading web app with token in fragment (web app must read hash and exchange token)");
-    [self.webView loadRequest:[NSURLRequest requestWithURL:urlWithFragment]];
+    self.lastNativeCallbackLoadTime = [NSDate date];
+    [self.webView loadRequest:[NSURLRequest requestWithURL:callbackURL]];
 }
 
 - (BOOL)appNeedsProvisioning {
@@ -650,19 +565,19 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
             NSString *cookieVal = headers[@"Cookie"];
             if (!cookieVal) cookieVal = headers[@"cookie"];
             if (cookieVal.length > 0) {
-                DDLogInfo(@"[DEBUG-2514a7] request headers: Cookie <present length=%lu>", (unsigned long)cookieVal.length);
+                DDLogInfo(@"[WebAppViewController] request headers: Cookie <present length=%lu>", (unsigned long)cookieVal.length);
             } else {
-                DDLogInfo(@"[DEBUG-2514a7] request headers: Cookie <absent> (allHeaderFields count=%lu)", (unsigned long)headers.count);
+                DDLogInfo(@"[WebAppViewController] request headers: Cookie <absent> (allHeaderFields count=%lu)", (unsigned long)headers.count);
             }
         } else {
-            DDLogInfo(@"[DEBUG-2514a7] request headers: (nil or empty — WKWebView may not expose headers to app)");
+            DDLogInfo(@"[WebAppViewController] request headers: (nil or empty — WKWebView may not expose headers to app)");
         }
     }
     // #endregion
     // Cooldown: if we see IdP navigation right after token handoff, cancel and reload web app (cookie may not have been sent).
     if (self.lastNativeCallbackLoadTime && [[NSDate date] timeIntervalSinceDate:self.lastNativeCallbackLoadTime] < kNativeCallbackInterceptCooldown) {
         if (self.oidcAuthorizationEndpointURL && requestURL.host && [requestURL.host isEqualToString:self.oidcAuthorizationEndpointURL.host]) {
-            DDLogInfo(@"[DEBUG-2514a7] Reloading web app after native-callback (skip IdP page)");
+            DDLogInfo(@"[WebAppViewController] Reloading web app after native-callback (skip IdP page)");
             self.lastNativeCallbackLoadTime = nil;
             self.skipNextIdpIntercept = YES;
             decisionHandler(WKNavigationActionPolicyCancel);
@@ -682,7 +597,7 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
         [requestURL.host isEqualToString:self.oidcAuthorizationEndpointURL.host] &&
         (requestURL.scheme.length == 0 || [requestURL.scheme isEqualToString:self.oidcAuthorizationEndpointURL.scheme]) &&
         ([requestURL.path isEqualToString:self.oidcAuthorizationEndpointURL.path] || [requestURL.path hasPrefix:self.oidcAuthorizationEndpointURL.path])) {
-        DDLogInfo(@"[DEBUG-2514a7] Intercepting IdP navigation, launching native auth");
+        DDLogInfo(@"[WebAppViewController] Intercepting IdP navigation, launching native auth");
         decisionHandler(WKNavigationActionPolicyCancel);
         NSURL *oidcURL = nil;
         NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
@@ -711,7 +626,7 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
         NSString *path = requestURL.path;
         NSString *loginPath = [self.discoveryLoginPath hasPrefix:@"/"] ? self.discoveryLoginPath : [@"/" stringByAppendingString:self.discoveryLoginPath];
         if ([path isEqualToString:loginPath] || [path hasPrefix:[loginPath stringByAppendingString:@"/"]]) {
-            DDLogInfo(@"[DEBUG-2514a7] Intercepting login path, launching native auth");
+            DDLogInfo(@"[WebAppViewController] Intercepting login path, launching native auth");
             decisionHandler(WKNavigationActionPolicyCancel);
             NSURL *oidcURL = nil;
             NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
@@ -738,11 +653,11 @@ static const NSTimeInterval kNativeCallbackInterceptCooldown = 15.0;  // seconds
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    DDLogWarn(@"[DEBUG-2514a7] didFailNavigation: %@", error.localizedDescription);
+    DDLogWarn(@"[WebAppViewController] didFailNavigation: %@", error.localizedDescription);
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    DDLogWarn(@"[DEBUG-2514a7] didFailProvisionalNavigation: %@", error.localizedDescription);
+    DDLogWarn(@"[WebAppViewController] didFailProvisionalNavigation: %@", error.localizedDescription);
 }
 
 @end
