@@ -16,6 +16,12 @@ typedef NS_ENUM(int, ConnectionMode) {
     CONNECTION_MODE_HTTP = 3
 };
 
+// OIDC settings keys
+#define SETTINGS_OIDC_ENABLED       @"oidc_enabled_preference"
+#define SETTINGS_OIDC_ISSUER        @"oidc_issuer_preference"
+#define SETTINGS_OIDC_CLIENT_ID     @"oidc_clientid_preference"
+#define SETTINGS_OIDC_REDIRECT_SCHEME @"oidc_redirect_scheme_preference"
+
 @interface Settings : NSObject
 
 + (NSError * _Nullable)fromStream:(NSInputStream * _Nonnull)input

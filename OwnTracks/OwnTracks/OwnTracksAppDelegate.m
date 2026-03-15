@@ -7,6 +7,7 @@
 //
 
 #import "OwnTracksAppDelegate.h"
+#import "OIDCManager.h"
 #import <UserNotifications/UserNotifications.h>
 #import <BackgroundTasks/BackgroundTasks.h>
 
@@ -312,7 +313,27 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
            openURL:(NSURL *)url
            options:(NSDictionary<NSString *,id> *)options {
     DDLogInfo(@"[OwnTracksAppDelegate] openURL %@ options %@", url, options);
-    
+
+    // Let AppAuth handle its own redirect URL before any other processing.
+    // OIDCManager.currentAuthorizationFlow is an OIDExternalUserAgentSession when in-flight.
+    OIDCManager *oidcManager = [OIDCManager sharedInstance];
+    id authFlow = oidcManager.currentAuthorizationFlow;
+    if (authFlow && [authFlow respondsToSelector:@selector(resumeExternalUserAgentFlowWithURL:)]) {
+        // Use NSInvocation to properly capture the BOOL return value
+        NSMethodSignature *sig = [authFlow methodSignatureForSelector:@selector(resumeExternalUserAgentFlowWithURL:)];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        inv.target = authFlow;
+        inv.selector = @selector(resumeExternalUserAgentFlowWithURL:);
+        [inv setArgument:&url atIndex:2];
+        [inv invoke];
+        BOOL handled = NO;
+        [inv getReturnValue:&handled];
+        if (handled) {
+            oidcManager.currentAuthorizationFlow = nil;
+            return YES;
+        }
+    }
+
     if (url) {
         DDLogVerbose(@"[OwnTracksAppDelegate] URL scheme %@", url.scheme);
         

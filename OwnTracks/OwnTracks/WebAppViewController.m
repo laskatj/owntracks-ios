@@ -11,6 +11,7 @@
 #import "Settings.h"
 #import "CoreData.h"
 #import "OwnTracksAppDelegate.h"
+#import "OIDCManager.h"
 #import "LocationManager.h"
 #import "Waypoint+CoreDataClass.h"
 #import "StatusTVC.h"
@@ -295,43 +296,105 @@ static const CGFloat kMapHeaderPadding = 6.0;
     }
 }
 
-- (void)loadWebAppURL {
+/// Builds the final NSURL for the web app (with path routing and query params).
+/// Returns nil if the URL is not configured or invalid.
+- (NSURL *)buildWebAppURL {
     NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
-    if (urlString.length > 0) {
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (url) {
-            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-            NSString *path = components.path ?: @"";
-            if (path.length > 0 && [path hasSuffix:@"/"]) {
-                path = [path substringToIndex:path.length - 1];
-            }
-            if (self.tabBarItem.tag == 98) {
-                path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
-            }
-            if (path.length == 0) {
-                path = @"/";
-            }
-            components.path = path;
+    if (urlString.length == 0) return nil;
 
-            NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
-            [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
-            if ([self appNeedsProvisioning]) {
-                [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
-                NSString *deviceName = [UIDevice currentDevice].name;
-                if (deviceName.length > 0) {
-                    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
-                }
-            }
-            components.queryItems = queryItems;
-            NSURL *finalURL = components.URL;
-            if (finalURL) {
-                self.placeholderLabel.hidden = YES;
-                self.webView.hidden = NO;
-                [self.webView loadRequest:[NSURLRequest requestWithURL:finalURL]];
-                return;
-            }
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return nil;
+
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    NSString *path = components.path ?: @"";
+    if (path.length > 0 && [path hasSuffix:@"/"]) {
+        path = [path substringToIndex:path.length - 1];
+    }
+    if (self.tabBarItem.tag == 98) {
+        path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
+    }
+    if (path.length == 0) {
+        path = @"/";
+    }
+    components.path = path;
+
+    NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
+    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
+    if ([self appNeedsProvisioning]) {
+        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
+        NSString *deviceName = [UIDevice currentDevice].name;
+        if (deviceName.length > 0) {
+            [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
         }
     }
+    components.queryItems = queryItems;
+    return components.URL;
+}
+
+/// Loads the web app URL. If OIDC is enabled, obtains a fresh access token first
+/// and passes it as a Bearer Authorization header so the server can set a session cookie.
+- (void)loadWebAppURL {
+    NSURL *finalURL = [self buildWebAppURL];
+    if (!finalURL) {
+        self.placeholderLabel.hidden = NO;
+        self.webView.hidden = YES;
+        return;
+    }
+
+    BOOL oidcEnabled = [Settings boolForKey:SETTINGS_OIDC_ENABLED inMOC:CoreData.sharedInstance.mainMOC];
+    if (!oidcEnabled) {
+        self.placeholderLabel.hidden = YES;
+        self.webView.hidden = NO;
+        [self.webView loadRequest:[NSURLRequest requestWithURL:finalURL]];
+        return;
+    }
+
+    // OIDC mode: obtain a fresh access token, then load with Bearer header.
+    // The server receives the Bearer token on the first HTML request, validates it,
+    // and responds with Set-Cookie. WKWebView stores and reuses that cookie automatically.
+    [[OIDCManager sharedInstance] freshAccessToken:^(NSString *accessToken, NSError *error) {
+        if (error || !accessToken) {
+            // No valid session — start the OIDC auth flow
+            DDLogInfo(@"[WebAppViewController] No valid OIDC token, starting auth flow.");
+            [[OIDCManager sharedInstance] startAuthFromViewController:self
+                                                           completion:^(NSString *token, NSError *authError) {
+                if (authError || !token) {
+                    DDLogError(@"[WebAppViewController] OIDC auth failed: %@", authError.localizedDescription);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self showOIDCError:authError];
+                    });
+                    return;
+                }
+                [self loadWebAppURLWithToken:token finalURL:finalURL];
+            }];
+            return;
+        }
+        [self loadWebAppURLWithToken:accessToken finalURL:finalURL];
+    }];
+}
+
+/// Loads the given URL in the web view with an Authorization: Bearer header.
+- (void)loadWebAppURLWithToken:(NSString *)accessToken finalURL:(NSURL *)finalURL {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:finalURL];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", accessToken]
+       forHTTPHeaderField:@"Authorization"];
+        self.placeholderLabel.hidden = YES;
+        self.webView.hidden = NO;
+        DDLogInfo(@"[WebAppViewController] Loading web app with Bearer token.");
+        [self.webView loadRequest:request];
+    });
+}
+
+/// Shows an alert when OIDC authentication fails.
+- (void)showOIDCError:(NSError *)error {
+    NSString *message = error.localizedDescription ?: NSLocalizedString(@"Authentication failed.", @"OIDC error fallback");
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:NSLocalizedString(@"Sign In Failed", @"OIDC error title")
+                         message:message
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
     self.placeholderLabel.hidden = NO;
     self.webView.hidden = YES;
 }
@@ -391,6 +454,44 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     DDLogWarn(@"[WebAppViewController] didFailProvisionalNavigation: %@", error.localizedDescription);
+}
+
+/// Intercepts 401 responses. When OIDC is enabled, refreshes the token and reloads.
+- (void)webView:(WKWebView *)webView
+    decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse
+                      decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
+    BOOL oidcEnabled = [Settings boolForKey:SETTINGS_OIDC_ENABLED inMOC:CoreData.sharedInstance.mainMOC];
+    if (!oidcEnabled) {
+        decisionHandler(WKNavigationResponsePolicyAllow);
+        return;
+    }
+
+    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)navigationResponse.response;
+    if ([httpResponse isKindOfClass:[NSHTTPURLResponse class]] && httpResponse.statusCode == 401) {
+        DDLogInfo(@"[WebAppViewController] 401 received — attempting token refresh.");
+        decisionHandler(WKNavigationResponsePolicyCancel);
+
+        [[OIDCManager sharedInstance] freshAccessToken:^(NSString *accessToken, NSError *error) {
+            if (error || !accessToken) {
+                // Refresh failed — re-authenticate from scratch
+                [[OIDCManager sharedInstance] startAuthFromViewController:self
+                                                               completion:^(NSString *newToken, NSError *authError) {
+                    if (newToken) {
+                        [self loadWebAppURL];
+                    } else {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self showOIDCError:authError];
+                        });
+                    }
+                }];
+                return;
+            }
+            [self loadWebAppURL];
+        }];
+        return;
+    }
+
+    decisionHandler(WKNavigationResponsePolicyAllow);
 }
 
 @end

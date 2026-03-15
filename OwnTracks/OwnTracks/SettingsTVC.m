@@ -10,6 +10,7 @@
 #import "CertificatesTVC.h"
 #import "TabBarController.h"
 #import "OwnTracksAppDelegate.h"
+#import "OIDCManager.h"
 #import "Settings.h"
 #import "Friend+CoreDataClass.h"
 #import "CoreData.h"
@@ -42,6 +43,9 @@
 @property (weak, nonatomic) IBOutlet UITextField *UIsecret;
 @property (weak, nonatomic) IBOutlet UITextField *UIurl;
 @property (weak, nonatomic) IBOutlet UITextField *UIwebappurl;
+@property (weak, nonatomic) IBOutlet UISwitch *UIoidcEnabled;
+@property (weak, nonatomic) IBOutlet UITextField *UIoidcIssuer;
+@property (weak, nonatomic) IBOutlet UITextField *UIoidcClientId;
 @property (weak, nonatomic) IBOutlet UITextField *UIhttpHeaders;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMTemplate;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMCopyright;
@@ -103,6 +107,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.UIpassphrase.delegate = self;
     self.UIurl.delegate = self;
     self.UIwebappurl.delegate = self;
+    self.UIoidcIssuer.delegate = self;
+    self.UIoidcClientId.delegate = self;
     self.UIhttpHeaders.delegate = self;
     self.UIOSMTemplate.delegate = self;
     self.UIOSMCopyright.delegate = self;
@@ -370,6 +376,21 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (self.UIwebappurl)
         [Settings setString:self.UIwebappurl.text
                      forKey:@"webappurl_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIoidcEnabled)
+        [Settings setBool:self.UIoidcEnabled.on
+                   forKey:SETTINGS_OIDC_ENABLED
+                    inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIoidcIssuer)
+        [Settings setString:self.UIoidcIssuer.text
+                     forKey:SETTINGS_OIDC_ISSUER
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIoidcClientId)
+        [Settings setString:self.UIoidcClientId.text
+                     forKey:SETTINGS_OIDC_CLIENT_ID
                       inMOC:CoreData.sharedInstance.mainMOC];
 
     if (self.UIhttpHeaders)
@@ -737,6 +758,27 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [Settings stringForKey:@"webappurl_preference"
                          inMOC:CoreData.sharedInstance.mainMOC];
         self.UIwebappurl.enabled = !locked;
+    }
+
+    if (self.UIoidcEnabled) {
+        self.UIoidcEnabled.on =
+        [Settings boolForKey:SETTINGS_OIDC_ENABLED
+                       inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoidcEnabled.enabled = !locked;
+    }
+
+    if (self.UIoidcIssuer) {
+        self.UIoidcIssuer.text =
+        [Settings stringForKey:SETTINGS_OIDC_ISSUER
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoidcIssuer.enabled = !locked;
+    }
+
+    if (self.UIoidcClientId) {
+        self.UIoidcClientId.text =
+        [Settings stringForKey:SETTINGS_OIDC_CLIENT_ID
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoidcClientId.enabled = !locked;
     }
 
     if (self.UIhttpHeaders) {
@@ -1180,6 +1222,27 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 }
 - (IBAction)webappurlChanged:(UITextField *)sender {
     [self changeWarning];
+}
+- (IBAction)oidcEnabledChanged:(UISwitch *)sender {
+    [self updateValues];
+    [self updated];
+}
+- (IBAction)oidcIssuerChanged:(UITextField *)sender {
+    [self updateValues];
+    [self updated];
+}
+- (IBAction)oidcClientIdChanged:(UITextField *)sender {
+    [self updateValues];
+    [self updated];
+}
+- (IBAction)oidcSignOutPressed:(UIButton *)sender {
+    [[OIDCManager sharedInstance] clearSession];
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:NSLocalizedString(@"Signed Out", @"OIDC sign out title")
+                         message:NSLocalizedString(@"OIDC session cleared. You will be prompted to sign in again when opening the Web App.", @"OIDC sign out message")
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 - (IBAction)subTopicChanged:(UITextField *)sender {
     [self changeWarning];

@@ -10,6 +10,7 @@ pod 'CocoaLumberjack'
 pod 'DSJSONSchemaValidation'
 #pod 'libsodium'
 pod 'Sodium'
+pod 'AppAuth'
 end
 
 post_install do |installer|

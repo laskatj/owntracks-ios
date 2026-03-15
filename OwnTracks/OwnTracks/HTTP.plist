@@ -44,5 +44,13 @@
 	<integer>0</integer>
 	<key>webappurl_preference</key>
 	<string>https://yourapp.com</string>
+	<key>oidc_enabled_preference</key>
+	<false/>
+	<key>oidc_issuer_preference</key>
+	<string></string>
+	<key>oidc_clientid_preference</key>
+	<string></string>
+	<key>oidc_redirect_scheme_preference</key>
+	<string>owntracks</string>
 </dict>
 </plist>
