@@ -19,9 +19,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "8456D0A12B55749E003A45D4"
-               BuildableName = "OwnTracksTests.xctest"
-               BlueprintName = "OwnTracksTests"
-               ReferencedContainer = "container:OwnTracks.xcodeproj">
+               BuildableName = "SauronTests.xctest"
+               BlueprintName = "SauronTests"
+               ReferencedContainer = "container:Sauron.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -41,9 +41,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8411B827189FDB140019D2D6"
-            BuildableName = "OwnTracks.app"
-            BlueprintName = "OwnTracks"
-            ReferencedContainer = "container:OwnTracks.xcodeproj">
+            BuildableName = "Sauron.app"
+            BlueprintName = "Sauron"
+            ReferencedContainer = "container:Sauron.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -57,9 +57,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8411B827189FDB140019D2D6"
-            BuildableName = "OwnTracks.app"
-            BlueprintName = "OwnTracks"
-            ReferencedContainer = "container:OwnTracks.xcodeproj">
+            BuildableName = "Sauron.app"
+            BlueprintName = "Sauron"
+            ReferencedContainer = "container:Sauron.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>
