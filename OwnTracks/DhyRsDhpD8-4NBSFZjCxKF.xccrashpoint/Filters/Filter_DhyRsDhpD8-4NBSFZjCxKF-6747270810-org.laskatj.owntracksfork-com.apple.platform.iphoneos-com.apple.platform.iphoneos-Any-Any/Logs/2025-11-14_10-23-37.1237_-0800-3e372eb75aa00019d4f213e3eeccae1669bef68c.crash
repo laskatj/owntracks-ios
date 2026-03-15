@@ -1,0 +1,358 @@
+Incident Identifier: DBD6CEA8-11D1-4852-BC4C-514BA8B243AC
+Distributor ID:      com.apple.TestFlight
+Hardware Model:      iPhone14,5
+Process:             Sauron [47112]
+Path:                /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Sauron
+Identifier:          org.laskatj.owntracksfork
+Version:             19.0.1 (19.0.1)
+AppStoreTools:       17A323
+AppVariant:          1:iPhone14,5:26
+Beta:                YES
+Code Type:           ARM-64 (Native)
+Role:                Non UI
+Parent Process:      launchd [1]
+Coalition:           org.laskatj.owntracksfork [51999]
+
+Date/Time:           2025-11-14 10:23:37.1237 -0800
+Launch Time:         2025-11-14 09:58:04.2207 -0800
+OS Version:          iPhone OS 26.0.1 (23A355)
+Release Type:        User
+Baseband Version:    5.02.02
+Report Version:      104
+
+Exception Type:  EXC_BAD_ACCESS (SIGSEGV)
+Exception Subtype: KERN_INVALID_ADDRESS at 0x0000000000000008
+Exception Codes: 0x0000000000000001, 0x0000000000000008
+VM Region Info: 0x8 is not in any region.  Bytes before following region: 4375773176
+      REGION TYPE                 START - END      [ VSIZE] PRT/MAX SHRMOD  REGION DETAIL
+      UNUSED SPACE AT START
+--->  
+      __TEXT                   104d10000-104d14000 [   16K] r-x/r-x SM=COW  /var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Sauron
+Termination Reason: SIGNAL 11 Segmentation fault: 11
+Terminating Process: exc handler [47112]
+
+Triggered by Thread:  14
+
+
+Thread 0:
+0   libsystem_kernel.dylib        	0x00000002479ada54 kevent_id + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d75b995c _dispatch_kq_poll + 228 (event_kevent.c:780)
+2   libdispatch.dylib             	0x00000001d75ba344 _dispatch_event_loop_wait_for_ownership + 424 (event_kevent.c:2343)
+3   libdispatch.dylib             	0x00000001d75a6b84 __DISPATCH_WAIT_FOR_QUEUE__ + 340 (queue.c:1728)
+4   libdispatch.dylib             	0x00000001d75a6758 _dispatch_sync_f_slow + 148 (queue.c:1823)
+5   CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+6   mqttc                         	0x00000001050229a8 -[MQTTCoreDataPersistence allFlowsforClientId:incomingFlag:] + 220 (MQTTCoreDataPersistence.m:445)
+7   mqttc                         	0x0000000105033120 -[MQTTSession tell] + 72 (MQTTSession.m:1780)
+8   mqttc                         	0x000000010502dfa4 -[MQTTSession closeInternal] + 1572 (MQTTSession.m:817)
+9   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+10  mqttc                         	0x0000000105032cfc -[MQTTSession protocolError:] + 48 (MQTTSession.m:1738)
+11  mqttc                         	0x000000010502e120 -[MQTTSession connackTimeout:] + 300 (MQTTSession.m:826)
+12  mqttc                         	0x00000001050352d8 __36-[MQTTSession mqttTransportDidOpen:]_block_invoke + 64 (MQTTSession.m:2221)
+13  Foundation                    	0x000000019d3b38dc __NSFireTimer + 96 (NSTimer.m:280)
+14  CoreFoundation                	0x000000019fc0fda0 __CFRUNLOOP_IS_CALLING_OUT_TO_A_TIMER_CALLBACK_FUNCTION__ + 32 (CFRunLoop.c:1837)
+15  CoreFoundation                	0x000000019fc0fa60 __CFRunLoopDoTimer + 980 (CFRunLoop.c:2468)
+16  CoreFoundation                	0x000000019fc0f5d4 __CFRunLoopDoTimers + 280 (CFRunLoop.c:2599)
+17  CoreFoundation                	0x000000019fbdec94 __CFRunLoopRun + 1816 (CFRunLoop.c:3150)
+18  CoreFoundation                	0x000000019fbddc44 _CFRunLoopRunSpecificWithOptions + 532 (CFRunLoop.c:3462)
+19  GraphicsServices              	0x000000023efb2498 GSEventRunModal + 120 (GSEvent.c:2049)
+20  UIKitCore                     	0x00000001a5558ddc -[UIApplication _run] + 792 (UIApplication.m:3899)
+21  UIKitCore                     	0x00000001a54fdb0c UIApplicationMain + 336 (UIApplication.m:5574)
+22  Sauron                        	0x0000000104d1404c main + 76 (main.m:15)
+23  dyld                          	0x000000019cc56e28 start + 7116 (dyldMain.cpp:1477)
+
+Thread 1 name:
+Thread 1:
+0   libsystem_kernel.dylib        	0x00000002479adcd4 mach_msg2_trap + 8 (:-1)
+1   libsystem_kernel.dylib        	0x00000002479b12f8 mach_msg2_internal + 76 (mach_msg.c:201)
+2   libsystem_kernel.dylib        	0x00000002479b1214 mach_msg_overwrite + 428 (mach_msg.c:0)
+3   libsystem_kernel.dylib        	0x00000002479b105c mach_msg + 24 (mach_msg.c:323)
+4   CoreFoundation                	0x000000019fc08a08 __CFRunLoopServiceMachPort + 160 (CFRunLoop.c:2650)
+5   CoreFoundation                	0x000000019fbdea20 __CFRunLoopRun + 1188 (CFRunLoop.c:3035)
+6   CoreFoundation                	0x000000019fbddc44 _CFRunLoopRunSpecificWithOptions + 532 (CFRunLoop.c:3462)
+7   Foundation                    	0x000000019dc24734 -[NSRunLoop(NSRunLoop) runMode:beforeDate:] + 212 (NSRunLoop.m:375)
+8   Foundation                    	0x000000019dc2490c -[NSRunLoop(NSRunLoop) runUntilDate:] + 64 (NSRunLoop.m:422)
+9   UIKitCore                     	0x00000001a5529fe8 -[UIEventFetcher threadMain] + 408 (UIEventFetcher.m:1333)
+10  Foundation                    	0x000000019d2f6d3c __NSThread__start__ + 732 (NSThread.m:997)
+11  libsystem_pthread.dylib       	0x00000001faa1244c _pthread_start + 136 (pthread.c:931)
+12  libsystem_pthread.dylib       	0x00000001faa0e8cc thread_start + 8 (:-1)
+
+Thread 2:
+0   libsystem_kernel.dylib        	0x00000002479adcd4 mach_msg2_trap + 8 (:-1)
+1   libsystem_kernel.dylib        	0x00000002479b12f8 mach_msg2_internal + 76 (mach_msg.c:201)
+2   libsystem_kernel.dylib        	0x00000002479b1214 mach_msg_overwrite + 428 (mach_msg.c:0)
+3   libsystem_kernel.dylib        	0x00000002479b105c mach_msg + 24 (mach_msg.c:323)
+4   CoreFoundation                	0x000000019fc08a08 __CFRunLoopServiceMachPort + 160 (CFRunLoop.c:2650)
+5   CoreFoundation                	0x000000019fbdea20 __CFRunLoopRun + 1188 (CFRunLoop.c:3035)
+6   CoreFoundation                	0x000000019fbddc44 _CFRunLoopRunSpecificWithOptions + 532 (CFRunLoop.c:3462)
+7   Foundation                    	0x000000019dc24734 -[NSRunLoop(NSRunLoop) runMode:beforeDate:] + 212 (NSRunLoop.m:375)
+8   Foundation                    	0x000000019dc2490c -[NSRunLoop(NSRunLoop) runUntilDate:] + 64 (NSRunLoop.m:422)
+9   Sauron                        	0x0000000104d47adc -[Connection main] + 628 (Connection.m:141)
+10  Foundation                    	0x000000019d2f6d3c __NSThread__start__ + 732 (NSThread.m:997)
+11  libsystem_pthread.dylib       	0x00000001faa1244c _pthread_start + 136 (pthread.c:931)
+12  libsystem_pthread.dylib       	0x00000001faa0e8cc thread_start + 8 (:-1)
+
+Thread 3 name:
+Thread 3:
+0   libsystem_kernel.dylib        	0x00000002479adcd4 mach_msg2_trap + 8 (:-1)
+1   libsystem_kernel.dylib        	0x00000002479b12f8 mach_msg2_internal + 76 (mach_msg.c:201)
+2   libsystem_kernel.dylib        	0x00000002479b1214 mach_msg_overwrite + 428 (mach_msg.c:0)
+3   libsystem_kernel.dylib        	0x00000002479b105c mach_msg + 24 (mach_msg.c:323)
+4   CoreFoundation                	0x000000019fc08a08 __CFRunLoopServiceMachPort + 160 (CFRunLoop.c:2650)
+5   CoreFoundation                	0x000000019fbdea20 __CFRunLoopRun + 1188 (CFRunLoop.c:3035)
+6   CoreFoundation                	0x000000019fbddc44 _CFRunLoopRunSpecificWithOptions + 532 (CFRunLoop.c:3462)
+7   CoreFoundation                	0x000000019fc5d42c CFRunLoopRun + 64 (CFRunLoop.c:3479)
+8   CoreMotion                    	0x00000001b7ab6b1c CLMotionCore::runMotionThread(void*) + 1676 (CLMotionCore.mm:375)
+9   libsystem_pthread.dylib       	0x00000001faa1244c _pthread_start + 136 (pthread.c:931)
+10  libsystem_pthread.dylib       	0x00000001faa0e8cc thread_start + 8 (:-1)
+
+Thread 4:
+0   libsystem_kernel.dylib        	0x00000002479ada54 kevent_id + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d75b995c _dispatch_kq_poll + 228 (event_kevent.c:780)
+2   libdispatch.dylib             	0x00000001d75ba344 _dispatch_event_loop_wait_for_ownership + 424 (event_kevent.c:2343)
+3   libdispatch.dylib             	0x00000001d75a6b84 __DISPATCH_WAIT_FOR_QUEUE__ + 340 (queue.c:1728)
+4   libdispatch.dylib             	0x00000001d75a6758 _dispatch_sync_f_slow + 148 (queue.c:1823)
+5   CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+6   mqttc                         	0x00000001050229a8 -[MQTTCoreDataPersistence allFlowsforClientId:incomingFlag:] + 220 (MQTTCoreDataPersistence.m:445)
+7   mqttc                         	0x0000000105033120 -[MQTTSession tell] + 72 (MQTTSession.m:1780)
+8   mqttc                         	0x000000010502dfa4 -[MQTTSession closeInternal] + 1572 (MQTTSession.m:817)
+9   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+10  mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+11  mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+12  mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+13  libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+14  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+15  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+16  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+17  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+18  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+19  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+20  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 5:
+
+Thread 6:
+
+Thread 7:
+
+Thread 8:
+0   libobjc.A.dylib               	0x000000019cbd3038 objc_msgSend + 56 (:-1)
+1   libsystem_trace.dylib         	0x00000001c403b230 _os_log_fmt_flatten_object_impl + 100 (format.m:341)
+2   libsystem_trace.dylib         	0x00000001c4039090 _os_log_impl_flatten_and_send + 2344 (log.c:2939)
+3   libsystem_trace.dylib         	0x00000001c403b884 _os_log + 168 (log.c:3061)
+4   libsystem_trace.dylib         	0x00000001c403b1c4 _os_log_impl + 28 (log.c:3079)
+5   RunningBoardServices          	0x00000001ab186ddc -[RBSConnection async_observedProcessStatesDidChange:completion:] + 456 (RBSConnection.m:1035)
+6   RunningBoardServices          	0x00000001ab188208 __32-[RBSConnection _handleMessage:]_block_invoke.215 + 188 (RBSConnection.m:1212)
+7   libsystem_trace.dylib         	0x00000001c403daf0 _os_activity_initiate_impl + 64 (activity.c:137)
+8   RunningBoardServices          	0x00000001ab187c3c -[RBSConnection _handleMessage:] + 1104 (RBSConnection.m:1212)
+9   RunningBoardServices          	0x00000001ab188588 __37-[RBSConnection _lock_setConnection:]_block_invoke + 80 (RBSConnection.m:1296)
+10  libxpc.dylib                  	0x00000001b39c9834 _xpc_connection_call_event_handler + 112 (connection.c:833)
+11  libxpc.dylib                  	0x00000001b39cb418 _xpc_connection_mach_event + 1332 (connection.c:2441)
+12  libdispatch.dylib             	0x00000001d75b0834 _dispatch_client_callout4 + 16 (client_callout.mm:116)
+13  libdispatch.dylib             	0x00000001d75b30b4 _dispatch_mach_msg_invoke + 464 (mach.c:2520)
+14  libdispatch.dylib             	0x00000001d759f2d0 _dispatch_lane_serial_drain + 332 (queue.c:3991)
+15  libdispatch.dylib             	0x00000001d75b3e1c _dispatch_mach_invoke + 472 (mach.c:2870)
+16  libdispatch.dylib             	0x00000001d759f2d0 _dispatch_lane_serial_drain + 332 (queue.c:3991)
+17  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+18  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+19  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+20  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+21  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 9:
+
+Thread 10:
+0   libsystem_kernel.dylib        	0x00000002479ada54 kevent_id + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d75b995c _dispatch_kq_poll + 228 (event_kevent.c:780)
+2   libdispatch.dylib             	0x00000001d75ba344 _dispatch_event_loop_wait_for_ownership + 424 (event_kevent.c:2343)
+3   libdispatch.dylib             	0x00000001d75a6b84 __DISPATCH_WAIT_FOR_QUEUE__ + 340 (queue.c:1728)
+4   libdispatch.dylib             	0x00000001d75a6758 _dispatch_sync_f_slow + 148 (queue.c:1823)
+5   CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+6   mqttc                         	0x0000000105020674 -[MQTTCoreDataFlow commandType] + 124 (MQTTCoreDataPersistence.m:98)
+7   mqttc                         	0x000000010502dbf0 -[MQTTSession closeInternal] + 624 (MQTTSession.m:777)
+8   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+9   mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+10  mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+11  mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+12  libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+13  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+14  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+15  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+16  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+17  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+18  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+19  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 11:
+
+Thread 12:
+
+Thread 13:
+
+Thread 14 Crashed:
+0   CoreFoundation                	0x000000019fc2037c CFRunLoopAddTimer + 136 (CFRunLoop.c:4041)
+1   Sauron                        	0x0000000104d4bbe8 -[Connection startReconnectTimer:] + 232 (Connection.m:919)
+2   Sauron                        	0x0000000104d4afa8 -[Connection handleEvent:event:error:] + 832 (Connection.m:719)
+3   mqttc                         	0x000000010502dd18 -[MQTTSession closeInternal] + 920 (MQTTSession.m:789)
+4   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+5   mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+6   mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+7   mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+8   libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+9   libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+10  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+11  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+12  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+13  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+14  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+15  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 15:
+
+Thread 16:
+0   libsystem_kernel.dylib        	0x00000002479ada54 kevent_id + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d75b995c _dispatch_kq_poll + 228 (event_kevent.c:780)
+2   libdispatch.dylib             	0x00000001d75ba344 _dispatch_event_loop_wait_for_ownership + 424 (event_kevent.c:2343)
+3   libdispatch.dylib             	0x00000001d75a6b84 __DISPATCH_WAIT_FOR_QUEUE__ + 340 (queue.c:1728)
+4   libdispatch.dylib             	0x00000001d75a6758 _dispatch_sync_f_slow + 148 (queue.c:1823)
+5   CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+6   mqttc                         	0x00000001050229a8 -[MQTTCoreDataPersistence allFlowsforClientId:incomingFlag:] + 220 (MQTTCoreDataPersistence.m:445)
+7   mqttc                         	0x0000000105033120 -[MQTTSession tell] + 72 (MQTTSession.m:1780)
+8   mqttc                         	0x000000010502dfa4 -[MQTTSession closeInternal] + 1572 (MQTTSession.m:817)
+9   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+10  mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+11  mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+12  mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+13  libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+14  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+15  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+16  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+17  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+18  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+19  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+20  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 17:
+0   libobjc.A.dylib               	0x000000019cbd5428 AutoreleasePoolPage::releaseUntil(objc_object**) + 268 (NSObject.mm:1039)
+1   CoreData                      	0x00000001a21c7c88 -[NSCompoundPredicateOperator(_NSCoreDataSQLPredicateCategories) minimalFormInContext:ofPredicates:] + 448 (_NSCoreDataSQLPredicateCategories.m:159)
+2   CoreData                      	0x00000001a21c842c -[NSCompoundPredicate(_NSCoreDataSQLPredicateCategories) minimalFormInContext:] + 72 (_NSCoreDataSQLPredicateCategories.m:278)
+3   CoreData                      	0x00000001a22c7bb4 -[NSSQLGenerator initializeContextForRequest:ignoreInheritance:nestingLevel:] + 1088 (NSSQLGenerator.m:548)
+4   CoreData                      	0x00000001a22c7d70 -[NSSQLGenerator newSQLStatementForRequest:ignoreInheritance:countOnly:nestingLevel:nestIsWhereScoped:requestContext:] + 136 (NSSQLGenerator.m:645)
+5   CoreData                      	0x00000001a22cd3ec -[NSSQLiteAdapter _newStatementForFetchRequestContext:ignoreInheritance:countOnly:nestingLevel:] + 116 (NSSQLiteAdapter.m:381)
+6   CoreData                      	0x00000001a210f2b0 -[NSSQLFetchRequestContext _createStatement] + 52 (NSSQLFetchRequestContext.m:333)
+7   CoreData                      	0x00000001a210f3a8 -[NSSQLFetchRequestContext fetchStatement] + 152 (NSSQLFetchRequestContext.m:321)
+8   CoreData                      	0x00000001a23a6c28 -[NSSQLFetchRequestContext executeRequestCore:] + 28 (NSSQLFetchRequestContext.m:520)
+9   CoreData                      	0x00000001a21d1c2c -[NSSQLStoreRequestContext executeRequestUsingConnection:] + 232 (NSSQLStoreRequestContext.m:183)
+10  CoreData                      	0x00000001a22615c4 __52-[NSSQLDefaultConnectionManager handleStoreRequest:]_block_invoke + 76 (NSSQLConnectionManager.m:308)
+11  CoreData                      	0x00000001a22d8570 __37-[NSSQLiteConnection performAndWait:]_block_invoke + 48 (NSSQLiteConnection.m:788)
+12  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+13  libdispatch.dylib             	0x00000001d75a68c0 _dispatch_lane_barrier_sync_invoke_and_complete + 56 (queue.c:1128)
+14  CoreData                      	0x00000001a22d8458 -[NSSQLiteConnection performAndWait:] + 176 (NSSQLiteConnection.m:785)
+15  CoreData                      	0x00000001a22614f4 -[NSSQLDefaultConnectionManager handleStoreRequest:] + 248 (NSSQLConnectionManager.m:303)
+16  CoreData                      	0x00000001a238821c -[NSSQLCoreDispatchManager routeStoreRequest:] + 228 (NSSQLCoreDispatchManager.m:55)
+17  CoreData                      	0x00000001a22a5b98 -[NSSQLCore dispatchRequest:withRetries:] + 228 (NSSQLCore.m:4060)
+18  CoreData                      	0x00000001a22a8aa8 -[NSSQLCore executeRequest:withContext:error:] + 3096 (NSSQLCore.m:3010)
+19  CoreData                      	0x00000001a2271e30 __65-[NSPersistentStoreCoordinator executeRequest:withContext:error:]_block_invoke.494 + 4660 (NSPersistentStoreCoordinator.m:2933)
+20  CoreData                      	0x00000001a2266d70 -[NSPersistentStoreCoordinator _routeHeavyweightBlock:] + 268 (NSPersistentStoreCoordinator.m:648)
+21  CoreData                      	0x00000001a2270310 -[NSPersistentStoreCoordinator executeRequest:withContext:error:] + 1184 (NSPersistentStoreCoordinator.m:2707)
+22  CoreData                      	0x00000001a222cdec -[NSManagedObjectContext executeFetchRequest:error:] + 752 (NSManagedObjectContext.m:2238)
+23  mqttc                         	0x0000000105022c20 __60-[MQTTCoreDataPersistence allFlowsforClientId:incomingFlag:]_block_invoke + 272 (MQTTCoreDataPersistence.m:455)
+24  CoreData                      	0x00000001a2109a4c developerSubmittedBlockToNSManagedObjectContextPerform + 228 (NSManagedObjectContext.m:3981)
+25  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+26  libdispatch.dylib             	0x00000001d75a6ce4 _dispatch_sync_invoke_and_complete_recurse + 64 (queue.c:1104)
+27  libdispatch.dylib             	0x00000001d75a6774 _dispatch_sync_f_slow + 176 (queue.c:1834)
+28  CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+29  mqttc                         	0x00000001050229a8 -[MQTTCoreDataPersistence allFlowsforClientId:incomingFlag:] + 220 (MQTTCoreDataPersistence.m:445)
+30  mqttc                         	0x0000000105033120 -[MQTTSession tell] + 72 (MQTTSession.m:1780)
+31  mqttc                         	0x000000010502dfa4 -[MQTTSession closeInternal] + 1572 (MQTTSession.m:817)
+32  mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+33  mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+34  mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+35  mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+36  libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+37  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+38  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+39  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+40  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+41  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+42  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+43  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 18:
+0   libsystem_kernel.dylib        	0x00000002479b410c __ulock_wait + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d7598c6c _dlock_wait + 56 (lock.c:326)
+2   libdispatch.dylib             	0x00000001d7598fd8 _dispatch_group_wait_slow + 56 (semaphore.c:214)
+3   CocoaLumberjack               	0x0000000104f096b0 -[DDLog lt_log:] + 344 (DDLog.m:763)
+4   CocoaLumberjack               	0x0000000104f084dc __40-[DDLog queueLogMessage:asynchronously:]_block_invoke + 32 (DDLog.m:329)
+5   libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+6   libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+7   libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+8   libdispatch.dylib             	0x00000001d759ff44 _dispatch_lane_invoke + 388 (queue.c:4082)
+9   libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+10  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+11  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+12  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 19:
+
+Thread 20:
+0   libsystem_kernel.dylib        	0x00000002479ada54 kevent_id + 8 (:-1)
+1   libdispatch.dylib             	0x00000001d75b995c _dispatch_kq_poll + 228 (event_kevent.c:780)
+2   libdispatch.dylib             	0x00000001d75ba344 _dispatch_event_loop_wait_for_ownership + 424 (event_kevent.c:2343)
+3   libdispatch.dylib             	0x00000001d75a6b84 __DISPATCH_WAIT_FOR_QUEUE__ + 340 (queue.c:1728)
+4   libdispatch.dylib             	0x00000001d75a6758 _dispatch_sync_f_slow + 148 (queue.c:1823)
+5   CoreData                      	0x00000001a223159c -[NSManagedObjectContext performBlockAndWait:] + 308 (NSManagedObjectContext.m:4105)
+6   mqttc                         	0x0000000105020674 -[MQTTCoreDataFlow commandType] + 124 (MQTTCoreDataPersistence.m:98)
+7   mqttc                         	0x000000010502dbf0 -[MQTTSession closeInternal] + 624 (MQTTSession.m:777)
+8   mqttc                         	0x0000000105032df4 -[MQTTSession error:error:] + 152 (MQTTSession.m:1749)
+9   mqttc                         	0x0000000105032c20 -[MQTTSession connectionError:] + 48 (MQTTSession.m:1726)
+10  mqttc                         	0x0000000105035388 -[MQTTSession mqttTransport:didFailWithError:] + 124 (MQTTSession.m:2254)
+11  mqttc                         	0x00000001050295cc __23-[MQTTNWTransport read]_block_invoke + 360 (MQTTNWTransport.m:94)
+12  libdispatch.dylib             	0x00000001d7596adc _dispatch_call_block_and_release + 32 (init.c:1575)
+13  libdispatch.dylib             	0x00000001d75b07ec _dispatch_client_callout + 16 (client_callout.mm:85)
+14  libdispatch.dylib             	0x00000001d759f468 _dispatch_lane_serial_drain + 740 (queue.c:3991)
+15  libdispatch.dylib             	0x00000001d759ff78 _dispatch_lane_invoke + 440 (queue.c:4082)
+16  libdispatch.dylib             	0x00000001d75aa3ec _dispatch_root_queue_drain_deferred_wlh + 292 (queue.c:7265)
+17  libdispatch.dylib             	0x00000001d75a9ce4 _dispatch_workloop_worker_thread + 692 (queue.c:6859)
+18  libsystem_pthread.dylib       	0x00000001faa0f3b8 _pthread_wqthread + 292 (pthread.c:2696)
+19  libsystem_pthread.dylib       	0x00000001faa0e8c0 start_wqthread + 8 (:-1)
+
+Thread 21:
+
+
+Thread 14 crashed with ARM Thread State (64-bit):
+    x0: 0x000000000000002b   x1: 0x0000000000000000   x2: 0x000000020be37958   x3: 0xfffffffffffffffa
+    x4: 0x000000019ff3b862   x5: 0x000000019dfc17af   x6: 0xffffffffbfc007ff   x7: 0xfffff0003ffff800
+    x8: 0x0000000000000008   x9: 0x00000bb3a0002b80  x10: 0x000000000000082c  x11: 0x0000000000000000
+   x12: 0x0000000000000005  x13: 0x00000001523ae7a0  x14: 0x000000020a157048  x15: 0x000000020a157048
+   x16: 0x000000019fc202f4  x17: 0x000000020bc3b6f0  x18: 0x0000000000000000  x19: 0x000000010554a270
+   x20: 0x0000000000000000  x21: 0x000000020be37958  x22: 0x000000020a159000  x23: 0x0000000000000000
+   x24: 0x0000000104f24110  x25: 0x0000000154118500  x26: 0x8d96abf8a02586b4  x27: 0x0000000104d7abc8
+   x28: 0x0000000104d87000   fp: 0x000000016b6ee2e0   lr: 0x000000019fc20354
+    sp: 0x000000016b6ee290   pc: 0x000000019fc2037c cpsr: 0x60001000
+   esr: 0x92000006 (Data Abort) byte read Translation fault
+
+
+Binary Images:
+        0x104d10000 -         0x104d73fff Sauron arm64  <d154ea25b4e534efa9f46b031a83344e> /var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Sauron
+        0x104da8000 -         0x104daffff ABStaticTableViewController arm64  <9e3abcb98eef3287be88b96a0e2fef89> /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Frameworks/ABStaticTableViewController.framework/ABStaticTableViewController
+        0x104efc000 -         0x104f1bfff CocoaLumberjack arm64  <d7ec4caf2d2837c4a83fbb9ca3378a4e> /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Frameworks/CocoaLumberjack.framework/CocoaLumberjack
+        0x104f50000 -         0x104f6bfff DSJSONSchemaValidation arm64  <1d49387b24aa369fb4253f0b779b8750> /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Frameworks/DSJSONSchemaValidation.framework/DSJSONSchemaValidation
+        0x104fa0000 -         0x104fdffff Sodium arm64  <7951e2f9329a3a54bf0d9f42391e8c34> /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Frameworks/Sodium.framework/Sodium
+        0x10501c000 -         0x105047fff mqttc arm64  <7f5fcacc37e9311ea1fcc91b39525463> /private/var/containers/Bundle/Application/ED6590A4-C277-4769-9C5D-0671575B090C/Sauron.app/Frameworks/mqttc.framework/mqttc
+        0x105948000 -         0x105953fff libobjc-trampolines.dylib arm64e  <3f2a8bfdcd6c3784b0ce8813d842bbbd> /private/preboot/Cryptexes/OS/usr/lib/libobjc-trampolines.dylib
+        0x19cbd0000 -         0x19cc21adf libobjc.A.dylib arm64e  <677d64df97cd3525a709c4c0ad1a0c69> /usr/lib/libobjc.A.dylib
+        0x19cc52000 -         0x19ccf0ac7 dyld arm64e  <9dc3471211aa3b1dafe001b95a6e40d3> /usr/lib/dyld
+        0x19d295000 -         0x19e0c527f Foundation arm64e  <0555af5420753f2dbc40733e55eee95a> /System/Library/Frameworks/Foundation.framework/Foundation
+        0x19fbc1000 -         0x1a014bc3f CoreFoundation arm64e  <973e47e588f03367b9d446d5cb999b75> /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+        0x1a2108000 -         0x1a2493d3f CoreData arm64e  <0b782824510d3b74b5026f191d215166> /System/Library/Frameworks/CoreData.framework/CoreData
+        0x1a54af000 -         0x1a785673f UIKitCore arm64e  <c98eab32b2733430b0c546522c904cbb> /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore
+        0x1ab163000 -         0x1ab1c4fdf RunningBoardServices arm64e  <efcd92abe5813b9b838e7125bc4ea72d> /System/Library/PrivateFrameworks/RunningBoardServices.framework/RunningBoardServices
+        0x1b39b8000 -         0x1b3a01d9f libxpc.dylib arm64e  <74a41d83975236118a0977f9b964254e> /usr/lib/system/libxpc.dylib
+        0x1b7aa2000 -         0x1b7ef7d9f CoreMotion arm64e  <972569b528ca3e2795a558140147d197> /System/Library/Frameworks/CoreMotion.framework/CoreMotion
+        0x1c4037000 -         0x1c405717f libsystem_trace.dylib arm64e  <167d32d57c353da3b11a6bb32a21e8b9> /usr/lib/system/libsystem_trace.dylib
+        0x1d7595000 -         0x1d75db25f libdispatch.dylib arm64e  <d34ac6a910dc35359944e3efc5994788> /usr/lib/system/libdispatch.dylib
+        0x1faa0e000 -         0x1faa1a44f libsystem_pthread.dylib arm64e  <ee8d950328ad35508a10ffa752f91f9f> /usr/lib/system/libsystem_pthread.dylib
+        0x23efb1000 -         0x23efb97ff GraphicsServices arm64e  <4eb73f50cdf2316194c00f3e7002b67c> /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices
+        0x2479ad000 -         0x2479e7cfb libsystem_kernel.dylib arm64e  <1daee906c3853b1083740fb0096755e0> /usr/lib/system/libsystem_kernel.dylib
+
+EOF

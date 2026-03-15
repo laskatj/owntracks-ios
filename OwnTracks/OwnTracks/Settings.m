@@ -127,6 +127,18 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             object = dictionary[@"password"];
             if (object) [self setString:object forKey:@"pass_preference" inMOC:context];
 
+<<<<<<< Updated upstream
+=======
+            object = dictionary[@"webappurl"];
+            if (object) [self setString:(NSString *)object forKey:@"webappurl_preference" inMOC:context];
+
+            object = dictionary[@"oidc_discovery_url"];
+            if (object) [self setString:(NSString *)object forKey:@"oidc_discovery_url_preference" inMOC:context];
+
+            object = dictionary[@"oauth_client_id"];
+            if (object) [self setString:(NSString *)object forKey:@"oauth_client_id_preference" inMOC:context];
+
+>>>>>>> Stashed changes
             object = dictionary[@"subQos"];
             if (object) [self setString:object forKey:@"subscriptionqos_preference" inMOC:context];
             
@@ -445,6 +457,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     dict[@"osmCopyright"] =         [Settings theOSMCopyrightInMOC:context];
     dict[@"username"] =             [Settings stringOrZeroForKey:@"user_preference" inMOC:context];
     dict[@"password"] =             [Settings stringOrZeroForKey:@"pass_preference" inMOC:context];
+<<<<<<< Updated upstream
+=======
+    dict[@"webappurl"] =            [Settings stringOrZeroForKey:@"webappurl_preference" inMOC:context];
+    dict[@"oidc_discovery_url"] =   [Settings stringOrZeroForKey:@"oidc_discovery_url_preference" inMOC:context];
+    dict[@"oauth_client_id"] =      [Settings stringOrZeroForKey:@"oauth_client_id_preference" inMOC:context];
+>>>>>>> Stashed changes
 
     switch ([Settings intForKey:@"mode" inMOC:context]) {
         case CONNECTION_MODE_MQTT:
@@ -556,6 +574,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             value = setting.value;
         } else {
             id object = ([SettingsDefaults theDefaults].mqttDefaults)[key];
+            if (!object) {
+                object = ([SettingsDefaults theDefaults].httpDefaults)[key];
+            }
             if (object) {
                 if ([object isKindOfClass:[NSString class]]) {
                     value = (NSString *)object;

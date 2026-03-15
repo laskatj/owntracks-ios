@@ -56,11 +56,20 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8411B827189FDB140019D2D6"
+            BuildableName = "Sauron.app"
+            BlueprintName = "Sauron"
+            ReferencedContainer = "container:Sauron.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "8411B827189FDB140019D2D6"
             BuildableName = "OwnTracks.app"
             BlueprintName = "OwnTracks"
             ReferencedContainer = "container:OwnTracks.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -78,6 +87,15 @@
             ReferencedContainer = "container:OwnTracks.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "8411B827189FDB140019D2D6"
+            BuildableName = "OwnTracks.app"
+            BlueprintName = "OwnTracks"
+            ReferencedContainer = "container:OwnTracks.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

@@ -41,6 +41,12 @@
 @property (weak, nonatomic) IBOutlet UIButton *UIpublish;
 @property (weak, nonatomic) IBOutlet UITextField *UIsecret;
 @property (weak, nonatomic) IBOutlet UITextField *UIurl;
+<<<<<<< Updated upstream
+=======
+@property (weak, nonatomic) IBOutlet UITextField *UIwebappurl;
+@property (weak, nonatomic) IBOutlet UITextField *UIoidcDiscoveryURL;
+@property (weak, nonatomic) IBOutlet UITextField *UIoauthClientId;
+>>>>>>> Stashed changes
 @property (weak, nonatomic) IBOutlet UITextField *UIhttpHeaders;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMTemplate;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMCopyright;
@@ -101,6 +107,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.UIDeviceID.delegate = self;
     self.UIpassphrase.delegate = self;
     self.UIurl.delegate = self;
+<<<<<<< Updated upstream
+=======
+    self.UIwebappurl.delegate = self;
+    self.UIoidcDiscoveryURL.delegate = self;
+    self.UIoauthClientId.delegate = self;
+>>>>>>> Stashed changes
     self.UIhttpHeaders.delegate = self;
     self.UIOSMTemplate.delegate = self;
     self.UIOSMCopyright.delegate = self;
@@ -365,6 +377,22 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                      forKey:@"url_preference"
                       inMOC:CoreData.sharedInstance.mainMOC];
 
+<<<<<<< Updated upstream
+=======
+    if (self.UIwebappurl)
+        [Settings setString:self.UIwebappurl.text
+                     forKey:@"webappurl_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+    if (self.UIoidcDiscoveryURL)
+        [Settings setString:self.UIoidcDiscoveryURL.text
+                     forKey:@"oidc_discovery_url_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+    if (self.UIoauthClientId)
+        [Settings setString:self.UIoauthClientId.text
+                     forKey:@"oauth_client_id_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+>>>>>>> Stashed changes
     if (self.UIhttpHeaders)
         [Settings setString:self.UIhttpHeaders.text
                      forKey:@"httpheaders_preference"
@@ -740,6 +768,28 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         self.UIurl.enabled = !locked;
     }
 
+<<<<<<< Updated upstream
+=======
+    if (self.UIwebappurl) {
+        self.UIwebappurl.text =
+        [Settings stringForKey:@"webappurl_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIwebappurl.enabled = !locked;
+    }
+    if (self.UIoidcDiscoveryURL) {
+        self.UIoidcDiscoveryURL.text =
+        [Settings stringForKey:@"oidc_discovery_url_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoidcDiscoveryURL.enabled = !locked;
+    }
+    if (self.UIoauthClientId) {
+        self.UIoauthClientId.text =
+        [Settings stringForKey:@"oauth_client_id_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoauthClientId.enabled = !locked;
+    }
+
+>>>>>>> Stashed changes
     if (self.UIhttpHeaders) {
         self.UIhttpHeaders.text =
         [Settings stringForKey:@"httpheaders_preference"
@@ -1095,6 +1145,18 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 - (IBAction)urlChanged:(UITextField *)sender {
     [self changeWarning];
 }
+<<<<<<< Updated upstream
+=======
+- (IBAction)webappurlChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+- (IBAction)oidcDiscoveryURLChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+- (IBAction)oauthClientIdChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+>>>>>>> Stashed changes
 - (IBAction)subTopicChanged:(UITextField *)sender {
     [self changeWarning];
 }

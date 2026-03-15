@@ -677,6 +677,94 @@
                                     </tableViewCell>
                                 </cells>
                             </tableViewSection>
+<<<<<<< Updated upstream
+=======
+                            <tableViewSection headerTitle="Web App" id="WebApp-Section">
+                                <cells>
+                                    <tableViewCell contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="WebApp-URL-Cell">
+                                        <rect key="frame" x="0.0" y="0.0" width="320" height="44"/>
+                                        <autoresizingMask key="autoresizingMask"/>
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="WebApp-URL-Cell" id="WebApp-URL-Content">
+                                            <rect key="frame" x="0.0" y="0.0" width="320" height="44"/>
+                                            <autoresizingMask key="autoresizingMask"/>
+                                            <subviews>
+                                                <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Web App URL" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="WebApp-URL-Label">
+                                                    <rect key="frame" x="20" y="11.666666666666666" width="105" height="20.666666666666671"/>
+                                                    <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                                    <nil key="textColor"/>
+                                                    <nil key="highlightedColor"/>
+                                                </label>
+                                                <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" placeholder="https://yourapp.com" minimumFontSize="12" translatesAutoresizingMaskIntoConstraints="NO" id="WebApp-URL-Field">
+                                                    <rect key="frame" x="133" y="12.666666666666666" width="167" height="18.666666666666671"/>
+                                                    <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                                    <textInputTraits key="textInputTraits" autocorrectionType="no" keyboardType="URL"/>
+                                                    <connections>
+                                                        <action selector="webappurlChanged:" destination="nAk-La-kdM" eventType="editingChanged" id="WebApp-URL-Action"/>
+                                                    </connections>
+                                                </textField>
+                                            </subviews>
+                                            <constraints>
+                                                <constraint firstItem="WebApp-URL-Label" firstAttribute="leading" secondItem="WebApp-URL-Content" secondAttribute="leading" constant="20" symbolic="YES" id="WebApp-Label-Lead"/>
+                                                <constraint firstAttribute="centerY" secondItem="WebApp-URL-Label" secondAttribute="centerY" id="WebApp-Label-CenterY"/>
+                                                <constraint firstItem="WebApp-URL-Field" firstAttribute="leading" secondItem="WebApp-URL-Label" secondAttribute="trailing" constant="8" symbolic="YES" id="WebApp-Field-Lead"/>
+                                                <constraint firstAttribute="trailing" secondItem="WebApp-URL-Field" secondAttribute="trailing" constant="20" symbolic="YES" id="WebApp-Field-Trail"/>
+                                                <constraint firstAttribute="centerY" secondItem="WebApp-URL-Field" secondAttribute="centerY" id="WebApp-Field-CenterY"/>
+                                            </constraints>
+                                        </tableViewCellContentView>
+                                    </tableViewCell>
+                                    <tableViewCell contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="OIDC-Discovery-URL-Cell">
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="OIDC-Discovery-URL-Cell" id="OIDC-Discovery-URL-Content">
+                                            <subviews>
+                                                <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" text="OIDC Discovery URL" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="OIDC-Discovery-URL-Label">
+                                                    <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                                    <nil key="textColor"/>
+                                                    <nil key="highlightedColor"/>
+                                                </label>
+                                                <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" placeholder="https://identity.example.com/app/o/sauron/" minimumFontSize="12" translatesAutoresizingMaskIntoConstraints="NO" id="OIDC-Discovery-URL-Field">
+                                                    <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                                    <textInputTraits key="textInputTraits" autocorrectionType="no" keyboardType="URL"/>
+                                                    <connections>
+                                                        <action selector="oidcDiscoveryURLChanged:" destination="nAk-La-kdM" eventType="editingChanged" id="OIDC-Discovery-URL-Action"/>
+                                                    </connections>
+                                                </textField>
+                                            </subviews>
+                                            <constraints>
+                                                <constraint firstItem="OIDC-Discovery-URL-Label" firstAttribute="leading" secondItem="OIDC-Discovery-URL-Content" secondAttribute="leading" constant="20" id="OIDC-Discovery-Label-Lead"/>
+                                                <constraint firstAttribute="centerY" secondItem="OIDC-Discovery-URL-Label" secondAttribute="centerY" id="OIDC-Discovery-Label-CenterY"/>
+                                                <constraint firstItem="OIDC-Discovery-URL-Field" firstAttribute="leading" secondItem="OIDC-Discovery-URL-Label" secondAttribute="trailing" constant="8" id="OIDC-Discovery-Field-Lead"/>
+                                                <constraint firstAttribute="trailing" secondItem="OIDC-Discovery-URL-Field" secondAttribute="trailing" constant="20" id="OIDC-Discovery-Field-Trail"/>
+                                                <constraint firstAttribute="centerY" secondItem="OIDC-Discovery-URL-Field" secondAttribute="centerY" id="OIDC-Discovery-Field-CenterY"/>
+                                            </constraints>
+                                        </tableViewCellContentView>
+                                    </tableViewCell>
+                                    <tableViewCell contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="OAuth-Client-ID-Cell">
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="OAuth-Client-ID-Cell" id="OAuth-Client-ID-Content">
+                                            <subviews>
+                                                <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" text="OAuth Client ID" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="OAuth-Client-ID-Label">
+                                                    <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                                    <nil key="textColor"/>
+                                                    <nil key="highlightedColor"/>
+                                                </label>
+                                                <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" placeholder="Client ID from IdP" minimumFontSize="12" translatesAutoresizingMaskIntoConstraints="NO" id="OAuth-Client-ID-Field">
+                                                    <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                                    <textInputTraits key="textInputTraits" autocorrectionType="no"/>
+                                                    <connections>
+                                                        <action selector="oauthClientIdChanged:" destination="nAk-La-kdM" eventType="editingChanged" id="OAuth-Client-ID-Action"/>
+                                                    </connections>
+                                                </textField>
+                                            </subviews>
+                                            <constraints>
+                                                <constraint firstItem="OAuth-Client-ID-Label" firstAttribute="leading" secondItem="OAuth-Client-ID-Content" secondAttribute="leading" constant="20" id="OAuth-Client-Label-Lead"/>
+                                                <constraint firstAttribute="centerY" secondItem="OAuth-Client-ID-Label" secondAttribute="centerY" id="OAuth-Client-Label-CenterY"/>
+                                                <constraint firstItem="OAuth-Client-ID-Field" firstAttribute="leading" secondItem="OAuth-Client-ID-Label" secondAttribute="trailing" constant="8" id="OAuth-Client-Field-Lead"/>
+                                                <constraint firstAttribute="trailing" secondItem="OAuth-Client-ID-Field" secondAttribute="trailing" constant="20" id="OAuth-Client-Field-Trail"/>
+                                                <constraint firstAttribute="centerY" secondItem="OAuth-Client-ID-Field" secondAttribute="centerY" id="OAuth-Client-Field-CenterY"/>
+                                            </constraints>
+                                        </tableViewCellContentView>
+                                    </tableViewCell>
+                                </cells>
+                            </tableViewSection>
+>>>>>>> Stashed changes
                             <tableViewSection headerTitle="Expert Mode" id="NRQ-7X-SLM">
                                 <cells>
                                     <tableViewCell tag="2" contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="hx7-wj-39C">
@@ -1743,6 +1831,12 @@
                         <outlet property="UIsubTopic" destination="suj-kA-G3U" id="ojd-rd-q75"/>
                         <outlet property="UItrackerid" destination="dUg-TH-IQ0" id="17R-jS-PUg"/>
                         <outlet property="UIurl" destination="pD2-Zj-Toq" id="sdO-19-1bJ"/>
+<<<<<<< Updated upstream
+=======
+                        <outlet property="UIwebappurl" destination="WebApp-URL-Field" id="WebApp-URL-Outlet"/>
+                        <outlet property="UIoidcDiscoveryURL" destination="OIDC-Discovery-URL-Field" id="OIDC-Discovery-URL-Outlet"/>
+                        <outlet property="UIoauthClientId" destination="OAuth-Client-ID-Field" id="OAuth-Client-ID-Outlet"/>
+>>>>>>> Stashed changes
                         <outlet property="createCardButton" destination="7rX-Bq-DGb" id="V9S-zi-hVj"/>
                         <outlet property="toursButton" destination="tiK-11-lia" id="Rxn-5u-N9i"/>
                     </connections>
