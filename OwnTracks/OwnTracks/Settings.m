@@ -130,6 +130,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             object = dictionary[@"webappurl"];
             if (object) [self setString:(NSString *)object forKey:@"webappurl_preference" inMOC:context];
 
+            object = dictionary[@"oidc_discovery_url"];
+            if (object) [self setString:(NSString *)object forKey:@"oidc_discovery_url_preference" inMOC:context];
+
+            object = dictionary[@"oauth_client_id"];
+            if (object) [self setString:(NSString *)object forKey:@"oauth_client_id_preference" inMOC:context];
+
             object = dictionary[@"subQos"];
             if (object) [self setString:object forKey:@"subscriptionqos_preference" inMOC:context];
             
@@ -449,6 +455,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     dict[@"username"] =             [Settings stringOrZeroForKey:@"user_preference" inMOC:context];
     dict[@"password"] =             [Settings stringOrZeroForKey:@"pass_preference" inMOC:context];
     dict[@"webappurl"] =            [Settings stringOrZeroForKey:@"webappurl_preference" inMOC:context];
+    dict[@"oidc_discovery_url"] =   [Settings stringOrZeroForKey:@"oidc_discovery_url_preference" inMOC:context];
+    dict[@"oauth_client_id"] =      [Settings stringOrZeroForKey:@"oauth_client_id_preference" inMOC:context];
 
     switch ([Settings intForKey:@"mode" inMOC:context]) {
         case CONNECTION_MODE_MQTT:

@@ -408,6 +408,12 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
                                                            @"Display for config without parameters");
                 DDLogInfo(@"[OwnTracksAppDelegate] openURL problem %@", self.processingMessage);
                 return FALSE;
+            } else if ([url.path isEqualToString:@"/auth/callback"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"WebAppAuthCallbackURL"
+                                                                    object:nil
+                                                                  userInfo:@{ @"url": url }];
+                DDLogInfo(@"[OwnTracksAppDelegate] openURL auth/callback delivered to WebAppAuthHelper");
+                return TRUE;
             } else {
                 self.processingMessage = NSLocalizedString(@"unknown url path",
                                                            @"Display for unknown url path");

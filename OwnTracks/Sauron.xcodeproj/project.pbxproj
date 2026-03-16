@@ -74,6 +74,7 @@
 		8495CFE42B039941007F7C90 /* LogsTVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 8495CFE32B039941007F7C90 /* LogsTVC.m */; };
 		849CE153289CF2FF004B32BF /* ToursStatusCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 849CE152289CF2FF004B32BF /* ToursStatusCell.m */; };
 		84A1B2012025000100D2E3F4 /* WebAppViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 84A1B2032025000100D2E3F4 /* WebAppViewController.m */; };
+		84A2C1022E2F000100D2E3F4 /* WebAppAuthHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 84A2C1012E2F000100D2E3F4 /* WebAppAuthHelper.m */; };
 		84AFD40B2434486200F1E922 /* OwnTracking.m in Sources */ = {isa = PBXBuildFile; fileRef = 84AFD40A2434486200F1E922 /* OwnTracking.m */; };
 		84B0CDAD239E2EFA00CE9305 /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84B0CDAC239E2EFA00CE9305 /* BackgroundTasks.framework */; };
 		84B7397A1A65629200B103F4 /* LocationManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 84B739791A65629200B103F4 /* LocationManager.m */; };
@@ -297,6 +298,8 @@
 		84A173691B428E5C00CCB7D0 /* Model 8.2.1.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 8.2.1.xcdatamodel"; sourceTree = "<group>"; };
 		84A1B2022025000100D2E3F4 /* WebAppViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WebAppViewController.h; sourceTree = "<group>"; };
 		84A1B2032025000100D2E3F4 /* WebAppViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WebAppViewController.m; sourceTree = "<group>"; };
+		84A2C1002E2F000100D2E3F4 /* WebAppAuthHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebAppAuthHelper.h; sourceTree = "<group>"; };
+		84A2C1012E2F000100D2E3F4 /* WebAppAuthHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebAppAuthHelper.m; sourceTree = "<group>"; };
 		84AE8ADB25C165D600C0B0EE /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.1.sdk/System/iOSSupport/System/Library/Frameworks/MapKit.framework; sourceTree = DEVELOPER_DIR; };
 		84AF468F1AB9571800E954E3 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		84AFD40A2434486200F1E922 /* OwnTracking.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OwnTracking.m; sourceTree = "<group>"; };
@@ -651,6 +654,8 @@
 				8411B90B189FEC070019D2D6 /* ViewController.m */,
 				84A1B2022025000100D2E3F4 /* WebAppViewController.h */,
 				84A1B2032025000100D2E3F4 /* WebAppViewController.m */,
+				84A2C1002E2F000100D2E3F4 /* WebAppAuthHelper.h */,
+				84A2C1012E2F000100D2E3F4 /* WebAppAuthHelper.m */,
 				84C3F4542CEF7490004DB332 /* AttachPhotoTVC.h */,
 				84C3F4552CEF7490004DB332 /* AttachPhotoTVC.m */,
 				849197F02D0084F300072AF6 /* PhotoAnnotationV.h */,
@@ -982,6 +987,7 @@
 				846FFA581B419687001482A6 /* RegionTVC.m in Sources */,
 				8411B912189FEC070019D2D6 /* ViewController.m in Sources */,
 				84A1B2012025000100D2E3F4 /* WebAppViewController.m in Sources */,
+				84A2C1022E2F000100D2E3F4 /* WebAppAuthHelper.m in Sources */,
 				84930A2C1B3755AF00810C3A /* TabBarController.m in Sources */,
 				84E40204231413D400F1D6E6 /* History+CoreDataClass.m in Sources */,
 				8411B911189FEC070019D2D6 /* StatusTVC.m in Sources */,
