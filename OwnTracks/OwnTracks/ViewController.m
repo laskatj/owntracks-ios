@@ -167,7 +167,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                toItem:self.mapView
                                attribute:NSLayoutAttributeBottomMargin
                                multiplier:1
-                               constant:-30];
+                               constant:-10];
     NSLayoutConstraint *leadingMapMode = [NSLayoutConstraint
                                    constraintWithItem:self.mapMode
                                    attribute:NSLayoutAttributeLeading
@@ -191,7 +191,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                                                       toItem:self.mapView
                                                                    attribute:NSLayoutAttributeBottomMargin
                                                                   multiplier:1
-                                                                    constant:-10];
+                                                                    constant:-4];
     NSLayoutConstraint *leadingScale = [NSLayoutConstraint constraintWithItem:self.scaleView
                                                                     attribute:NSLayoutAttributeCenterXWithinMargins
                                                                     relatedBy:NSLayoutRelationEqual

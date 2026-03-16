@@ -20,6 +20,7 @@
                     <view key="view" contentMode="scaleToFill" id="ffw-DX-wWE">
                         <rect key="frame" x="0.0" y="0.0" width="390" height="844"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                        <viewLayoutGuide key="safeArea" id="VC-SafeArea-01"/>
                         <subviews>
                             <mapView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" mapType="standard" showsUserLocation="YES" translatesAutoresizingMaskIntoConstraints="NO" id="eED-yn-0ps">
                                 <rect key="frame" x="0.0" y="138" width="390" height="540"/>
@@ -31,9 +32,9 @@
                         </subviews>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
-                            <constraint firstItem="LmO-0X-4Sg" firstAttribute="top" secondItem="eED-yn-0ps" secondAttribute="bottom" id="FqH-SQ-JWo"/>
+                            <constraint firstItem="eED-yn-0ps" firstAttribute="bottom" secondItem="VC-SafeArea-01" secondAttribute="bottom" id="FqH-SQ-JWo"/>
                             <constraint firstItem="eED-yn-0ps" firstAttribute="leading" secondItem="ffw-DX-wWE" secondAttribute="leading" id="aG9-xU-0Hi"/>
-                            <constraint firstItem="eED-yn-0ps" firstAttribute="top" secondItem="ii2-Sf-Mvd" secondAttribute="bottom" id="hbZ-PB-fSv"/>
+                            <constraint firstItem="eED-yn-0ps" firstAttribute="top" secondItem="VC-SafeArea-01" secondAttribute="top" id="hbZ-PB-fSv"/>
                             <constraint firstAttribute="trailing" secondItem="eED-yn-0ps" secondAttribute="trailing" id="v78-dh-01k"/>
                         </constraints>
                     </view>
