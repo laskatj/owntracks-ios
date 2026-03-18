@@ -563,19 +563,22 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 + (NSString *)stringForKeyRaw:(NSString *)key
                         inMOC:(NSManagedObjectContext *)context {
     __block NSString *value = nil;
-        Setting *setting = [Setting existsSettingWithKey:key inMOC:context];
-        if (setting) {
-            value = setting.value;
-        } else {
-            id object = ([SettingsDefaults theDefaults].mqttDefaults)[key];
-            if (object) {
-                if ([object isKindOfClass:[NSString class]]) {
-                    value = (NSString *)object;
-                } else if ([object isKindOfClass:[NSNumber class]]) {
-                    value = ((NSNumber *)object).stringValue;
-                }
+    Setting *setting = [Setting existsSettingWithKey:key inMOC:context];
+    if (setting) {
+        value = setting.value;
+    } else {
+        id object = ([SettingsDefaults theDefaults].mqttDefaults)[key];
+        if (!object) {
+            object = ([SettingsDefaults theDefaults].httpDefaults)[key];
+        }
+        if (object) {
+            if ([object isKindOfClass:[NSString class]]) {
+                value = (NSString *)object;
+            } else if ([object isKindOfClass:[NSNumber class]]) {
+                value = ((NSNumber *)object).stringValue;
             }
         }
+    }
     return value;
 }
 

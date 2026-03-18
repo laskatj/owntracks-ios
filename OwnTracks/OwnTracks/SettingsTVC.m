@@ -42,6 +42,8 @@
 @property (weak, nonatomic) IBOutlet UITextField *UIsecret;
 @property (weak, nonatomic) IBOutlet UITextField *UIurl;
 @property (weak, nonatomic) IBOutlet UITextField *UIwebappurl;
+@property (weak, nonatomic) IBOutlet UITextField *UIoidcDiscoveryURL;
+@property (weak, nonatomic) IBOutlet UITextField *UIoauthClientID;
 @property (weak, nonatomic) IBOutlet UITextField *UIhttpHeaders;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMTemplate;
 @property (weak, nonatomic) IBOutlet UITextField *UIOSMCopyright;
@@ -370,6 +372,16 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (self.UIwebappurl)
         [Settings setString:self.UIwebappurl.text
                      forKey:@"webappurl_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIoidcDiscoveryURL)
+        [Settings setString:self.UIoidcDiscoveryURL.text
+                     forKey:@"oidc_discovery_url_preference"
+                      inMOC:CoreData.sharedInstance.mainMOC];
+
+    if (self.UIoauthClientID)
+        [Settings setString:self.UIoauthClientID.text
+                     forKey:@"oauth_client_id_preference"
                       inMOC:CoreData.sharedInstance.mainMOC];
 
     if (self.UIhttpHeaders)
@@ -737,6 +749,20 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [Settings stringForKey:@"webappurl_preference"
                          inMOC:CoreData.sharedInstance.mainMOC];
         self.UIwebappurl.enabled = !locked;
+    }
+
+    if (self.UIoidcDiscoveryURL) {
+        self.UIoidcDiscoveryURL.text =
+        [Settings stringForKey:@"oidc_discovery_url_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoidcDiscoveryURL.enabled = !locked;
+    }
+
+    if (self.UIoauthClientID) {
+        self.UIoauthClientID.text =
+        [Settings stringForKey:@"oauth_client_id_preference"
+                         inMOC:CoreData.sharedInstance.mainMOC];
+        self.UIoauthClientID.enabled = !locked;
     }
 
     if (self.UIhttpHeaders) {
@@ -1179,6 +1205,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self changeWarning];
 }
 - (IBAction)webappurlChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+- (IBAction)oidcDiscoveryURLChanged:(UITextField *)sender {
+    [self changeWarning];
+}
+- (IBAction)oauthClientIDChanged:(UITextField *)sender {
     [self changeWarning];
 }
 - (IBAction)subTopicChanged:(UITextField *)sender {
