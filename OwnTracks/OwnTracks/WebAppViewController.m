@@ -566,11 +566,21 @@ static const CGFloat kMapHeaderPadding = 6.0;
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *requestURL = navigationAction.request.URL;
 
-    NSLog(@"AUTHDEBUG: decidePolicyForNavigationAction scheme=%@ host=%@ path=%@",
-          requestURL.scheme ?: @"(nil)", requestURL.host ?: @"(nil)", requestURL.path ?: @"(nil)");
+    NSLog(@"AUTHDEBUG: decidePolicyForNavigationAction scheme=%@ host=%@ path=%@ mainFrame=%@",
+          requestURL.scheme ?: @"(nil)", requestURL.host ?: @"(nil)", requestURL.path ?: @"(nil)",
+          navigationAction.targetFrame.isMainFrame ? @"YES" : @"NO");
     NSLog(@"AUTHDEBUG:   oidcEndpoint=%@ discoveryLoginPath=%@",
           self.oidcAuthorizationEndpointURL.absoluteString ?: @"(nil)",
           self.discoveryLoginPath ?: @"(nil)");
+
+    // Only intercept main-frame navigations.  Sub-frame navigations (e.g. hidden iframes
+    // used by the React OIDC client for silent token renewal) must be allowed through —
+    // intercepting them would cause a jarring full ASWebAuthenticationSession popup instead
+    // of a transparent background refresh.
+    if (!navigationAction.targetFrame.isMainFrame) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
 
     // Intercept navigation to the IdP authorization endpoint. Proxy it through
     // ASWebAuthenticationSession (for SSO) then hand the code back to the React OIDC client.
@@ -666,10 +676,28 @@ static const CGFloat kMapHeaderPadding = 6.0;
     }];
 }
 
-// Fallback: our own PKCE flow (used from login button, or when login-path is intercepted).
+// Fallback: try a silent refresh first; only fall through to the full PKCE OAuth flow
+// (which shows UI) if there is no stored refresh token or the refresh has expired.
 - (void)startNativeAuthFallback {
     if (!self.webAppOrigin) return;
-    NSLog(@"AUTHDEBUG: startNativeAuthFallback — origin=%@", self.webAppOrigin.absoluteString);
+    NSLog(@"AUTHDEBUG: startNativeAuthFallback — origin=%@, checking for stored refresh token first", self.webAppOrigin.absoluteString);
+    NSURL *origin = self.webAppOrigin;
+    __weak typeof(self) wself = self;
+    [[WebAppAuthHelper sharedInstance] attemptSilentRefreshForOrigin:origin completion:^(NSString *accessToken, NSError *error) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) return;
+        if (accessToken.length > 0) {
+            NSLog(@"AUTHDEBUG: startNativeAuthFallback — silent refresh succeeded, skipping OAuth prompt");
+            [sself loadWebViewWithAccessToken:accessToken];
+            return;
+        }
+        NSLog(@"AUTHDEBUG: startNativeAuthFallback — no stored refresh token or refresh failed, starting full OAuth flow");
+        [sself startFullNativeAuth];
+    }];
+}
+
+- (void)startFullNativeAuth {
+    if (!self.webAppOrigin) return;
     NSURL *oidcURL = nil;
     NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
     NSString *oidcURLString = [Settings stringForKey:@"oidc_discovery_url_preference" inMOC:CoreData.sharedInstance.mainMOC];
@@ -694,6 +722,14 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     DDLogWarn(@"[WebAppViewController] didFailProvisionalNavigation: %@", error.localizedDescription);
+}
+
+// Called when iOS kills the WKWebView content process (e.g. due to memory pressure).
+// After termination webView.URL still holds the last URL but the page is blank.
+// We must reload; without this the user sees a blank screen that never recovers.
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    NSLog(@"AUTHDEBUG: webViewWebContentProcessDidTerminate — reloading web app");
+    [self forceLoadWebAppURL];
 }
 
 @end

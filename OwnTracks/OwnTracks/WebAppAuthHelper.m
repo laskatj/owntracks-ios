@@ -9,6 +9,7 @@
 #import <AuthenticationServices/AuthenticationServices.h>
 #import <CommonCrypto/CommonCrypto.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
+#import <Security/Security.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
@@ -18,12 +19,18 @@ static NSString * const kRedirectURI = @"owntracks:///auth/callback";
 static NSString * const kWellKnownPath = @"/.well-known/owntracks-app-auth";
 static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configuration";
 
+static NSString * const kKeychainService = @"OwnTracksWebAppAuth";
+static NSString * const kKeychainRefreshTokenKey = @"refresh_token";
+static NSString * const kKeychainTokenEndpointKey = @"token_endpoint";
+static NSString * const kKeychainClientIdKey = @"client_id";
+
 @interface WebAppAuthHelper () <ASWebAuthenticationPresentationContextProviding>
 @property (nonatomic, copy, nullable) WebAppAuthCompletion pendingCompletion;
 @property (nonatomic, copy, nullable) NSString *pendingState;
 @property (nonatomic, copy, nullable) NSString *pendingCodeVerifier;
 @property (nonatomic, copy, nullable) NSString *pendingTokenEndpoint;
 @property (nonatomic, copy, nullable) NSString *pendingClientId;
+@property (nonatomic, copy, nullable) NSURL *pendingWebAppOrigin;
 @property (nonatomic, strong, nullable) ASWebAuthenticationSession *currentSession;
 @end
 
@@ -229,6 +236,7 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
                          clientId:(NSString *)clientId
           presentingViewController:(UIViewController *)presentingViewController
                        completion:(WebAppAuthCompletion)completion {
+    self.pendingWebAppOrigin = webAppOrigin;
     void (^runWithConfig)(NSDictionary *, NSError *) = ^(NSDictionary *config, NSError *err) {
         if (err || !config) {
             DDLogWarn(@"[WebAppAuthHelper] Discovery failed: %@", err.localizedDescription);
@@ -381,10 +389,15 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
                 return;
             }
             NSString *accessToken = nil;
+            NSString *refreshToken = nil;
             NSError *jsonError = nil;
             id json = data && data.length > 0 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError] : nil;
             if ([json isKindOfClass:[NSDictionary class]]) {
                 accessToken = json[@"access_token"];
+                id rt = json[@"refresh_token"];
+                if ([rt isKindOfClass:[NSString class]] && [(NSString *)rt length] > 0) {
+                    refreshToken = rt;
+                }
             }
             if (![accessToken isKindOfClass:[NSString class]] || accessToken.length == 0) {
                 NSString *bodyStr = data.length > 0 ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
@@ -394,7 +407,8 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
                     for (NSURLQueryItem *item in comp.queryItems) {
                         if ([item.name isEqualToString:@"access_token"] && item.value.length > 0) {
                             accessToken = item.value;
-                            break;
+                        } else if ([item.name isEqualToString:@"refresh_token"] && item.value.length > 0) {
+                            refreshToken = item.value;
                         }
                     }
                 }
@@ -403,7 +417,10 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
                 [sself finishWithError:jsonError ?: [NSError errorWithDomain:@"WebAppAuthHelper" code:-12 userInfo:@{ NSLocalizedDescriptionKey: @"No access_token in response" }]];
                 return;
             }
-            DDLogInfo(@"[WebAppAuthHelper] Token received");
+            DDLogInfo(@"[WebAppAuthHelper] Token received (refresh_token=%@)", refreshToken ? @"yes" : @"no");
+            if (refreshToken && sself.pendingWebAppOrigin && sself.pendingTokenEndpoint && sself.pendingClientId) {
+                [sself storeRefreshToken:refreshToken tokenEndpoint:sself.pendingTokenEndpoint clientId:sself.pendingClientId forOrigin:sself.pendingWebAppOrigin];
+            }
             [sself finishWithAccessToken:accessToken];
         });
     }];
@@ -422,6 +439,7 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
     self.pendingCodeVerifier = nil;
     self.pendingTokenEndpoint = nil;
     self.pendingClientId = nil;
+    self.pendingWebAppOrigin = nil;
     if (comp) comp(accessToken, nil);
 }
 
@@ -432,6 +450,7 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
     self.pendingCodeVerifier = nil;
     self.pendingTokenEndpoint = nil;
     self.pendingClientId = nil;
+    self.pendingWebAppOrigin = nil;
     if (comp) comp(nil, error);
 }
 
@@ -465,6 +484,148 @@ static NSString * const kOpenIDConfigurationPath = @"/.well-known/openid-configu
         completion(nil, [NSError errorWithDomain:@"WebAppAuthHelper" code:-6
                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to start authentication session"}]);
     }
+}
+
+#pragma mark - ASWebAuthenticationPresentationContextProviding
+
+#pragma mark - Keychain token storage
+
+/// Returns a stable, short Keychain account key from a web app origin (scheme+host+port).
+- (NSString *)keychainAccountForOrigin:(NSURL *)origin {
+    NSURLComponents *c = [NSURLComponents new];
+    c.scheme = origin.scheme;
+    c.host = origin.host;
+    c.port = origin.port;
+    return c.URL.absoluteString ?: origin.absoluteString;
+}
+
+/// Stores the refresh token + metadata in Keychain keyed by web app origin.
+- (void)storeRefreshToken:(NSString *)refreshToken
+            tokenEndpoint:(NSString *)tokenEndpoint
+                 clientId:(NSString *)clientId
+                forOrigin:(NSURL *)origin {
+    NSString *account = [self keychainAccountForOrigin:origin];
+    NSDictionary *payload = @{
+        kKeychainRefreshTokenKey: refreshToken,
+        kKeychainTokenEndpointKey: tokenEndpoint,
+        kKeychainClientIdKey: clientId
+    };
+    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+    if (!data) return;
+
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: kKeychainService,
+        (__bridge id)kSecAttrAccount: account
+    };
+    SecItemDelete((__bridge CFDictionaryRef)query);
+
+    NSMutableDictionary *addQuery = [query mutableCopy];
+    addQuery[(__bridge id)kSecValueData] = data;
+    addQuery[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)addQuery, nil);
+    if (status == errSecSuccess) {
+        DDLogInfo(@"[WebAppAuthHelper] Refresh token stored in Keychain for origin=%@", account);
+    } else {
+        DDLogWarn(@"[WebAppAuthHelper] Failed to store refresh token: %d", (int)status);
+    }
+}
+
+/// Loads stored token data from Keychain for the given web app origin.
+- (nullable NSDictionary *)loadTokenDataForOrigin:(NSURL *)origin {
+    NSString *account = [self keychainAccountForOrigin:origin];
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: kKeychainService,
+        (__bridge id)kSecAttrAccount: account,
+        (__bridge id)kSecReturnData: @YES,
+        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
+    };
+    CFTypeRef result = nil;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    if (status != errSecSuccess || !result) return nil;
+    NSData *data = (__bridge_transfer NSData *)result;
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+}
+
+#pragma mark - Silent refresh
+
+- (void)attemptSilentRefreshForOrigin:(NSURL *)webAppOrigin completion:(WebAppAuthCompletion)completion {
+    NSDictionary *tokenData = [self loadTokenDataForOrigin:webAppOrigin];
+    if (!tokenData) {
+        DDLogInfo(@"[WebAppAuthHelper] No stored refresh token for %@", [self keychainAccountForOrigin:webAppOrigin]);
+        completion(nil, nil);
+        return;
+    }
+    [self performRefreshWithTokenData:tokenData forOrigin:webAppOrigin completion:completion];
+}
+
+- (void)performRefreshWithTokenData:(NSDictionary *)tokenData forOrigin:(NSURL *)origin completion:(WebAppAuthCompletion)completion {
+    NSString *refreshToken = tokenData[kKeychainRefreshTokenKey];
+    NSString *tokenEndpoint = tokenData[kKeychainTokenEndpointKey];
+    NSString *clientId = tokenData[kKeychainClientIdKey];
+    if (!refreshToken.length || !tokenEndpoint.length || !clientId.length) {
+        completion(nil, nil);
+        return;
+    }
+
+    DDLogInfo(@"[WebAppAuthHelper] Attempting silent refresh for origin=%@", [self keychainAccountForOrigin:origin]);
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:tokenEndpoint]];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
+    NSString *body = [NSString stringWithFormat:@"grant_type=refresh_token&refresh_token=%@&client_id=%@",
+                      [self formEncode:refreshToken], [self formEncode:clientId]];
+    request.HTTPBody = [body dataUsingEncoding:NSUTF8StringEncoding];
+
+    __weak typeof(self) wself = self;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(wself) sself = wself;
+            if (!sself) { completion(nil, nil); return; }
+            if (error) {
+                DDLogWarn(@"[WebAppAuthHelper] Silent refresh network error: %@", error.localizedDescription);
+                completion(nil, nil);
+                return;
+            }
+            NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+            if (statusCode == 401 || statusCode == 400) {
+                DDLogInfo(@"[WebAppAuthHelper] Silent refresh rejected (%ld) — clearing stored token", (long)statusCode);
+                [sself clearStoredTokensForOrigin:origin];
+                completion(nil, nil);
+                return;
+            }
+            if (statusCode != 200) {
+                DDLogWarn(@"[WebAppAuthHelper] Silent refresh unexpected status %ld — will not clear token (may be transient)", (long)statusCode);
+                completion(nil, nil);
+                return;
+            }
+            id json = data.length > 0 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+            NSString *newAccessToken = [json isKindOfClass:[NSDictionary class]] ? json[@"access_token"] : nil;
+            NSString *newRefreshToken = [json isKindOfClass:[NSDictionary class]] ? json[@"refresh_token"] : nil;
+            if (!newAccessToken.length) {
+                DDLogWarn(@"[WebAppAuthHelper] Silent refresh response missing access_token");
+                completion(nil, nil);
+                return;
+            }
+            DDLogInfo(@"[WebAppAuthHelper] Silent refresh successful");
+            // Update stored refresh token (servers often rotate them).
+            NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
+            [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forOrigin:origin];
+            completion(newAccessToken, nil);
+        });
+    }] resume];
+}
+
+- (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin {
+    NSString *account = [self keychainAccountForOrigin:webAppOrigin];
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: kKeychainService,
+        (__bridge id)kSecAttrAccount: account
+    };
+    SecItemDelete((__bridge CFDictionaryRef)query);
+    DDLogInfo(@"[WebAppAuthHelper] Cleared stored tokens for %@", account);
 }
 
 #pragma mark - ASWebAuthenticationPresentationContextProviding
