@@ -45,6 +45,15 @@ typedef NS_ENUM(NSInteger, LocationMonitoring) {
 @property (readonly, nonatomic) CLLocation *lastUsedLocation;
 @property (readonly, nonatomic) CLLocation *lastLocationWithMovement;
 
+/**
+ Set to YES when the app was launched in background by a significant location change or
+ geofence event (UIApplicationLaunchOptionsLocationKey). In this state, Move mode uses
+ passive tracking only (SLC + geofences) to avoid keeping the background process alive
+ indefinitely. Cleared by the app delegate when the user brings the app to foreground,
+ at which point full continuous tracking is re-enabled.
+ */
+@property (nonatomic) BOOL backgroundWakeup;
+
 @property (readonly, nonatomic) CLAuthorizationStatus locationManagerAuthorizationStatus;
 
 @property (readonly, nonatomic) CMAuthorizationStatus altimeterAuthorizationStatus;

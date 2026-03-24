@@ -222,7 +222,18 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     
     LocationManager *locationManager = [LocationManager sharedInstance];
     locationManager.delegate = self;
-    
+
+    /*
+     * Detect whether the app was launched in the background by a significant location
+     * change or geofence event (after having been terminated by the OS).
+     * This flag must be set BEFORE assigning locationManager.monitoring so that
+     * setMonitoring: can choose passive vs. full tracking accordingly.
+     */
+    if (launchOptions[UIApplicationLaunchOptionsLocationKey]) {
+        DDLogInfo(@"[OwnTracksAppDelegate] background location launch detected - enabling passive tracking");
+        locationManager.backgroundWakeup = YES;
+    }
+
     NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
     locationManager.monitoring = [Settings intForKey:@"monitoring_preference"
                                                inMOC:moc];
@@ -644,6 +655,23 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
 - (void)applicationDidBecomeActive:(UIApplication *)application {
     DDLogInfo(@"[OwnTracksAppDelegate] applicationDidBecomeActive");
+
+    /*
+     * If the app was previously woken in background by an SLC/geofence event it
+     * entered passive tracking mode to avoid keeping the background process alive.
+     * Now that the user has brought the app to foreground we clear the flag and
+     * re-apply the monitoring setting, which re-enables full continuous tracking.
+     *
+     * This runs before the location manager's own UIApplicationDidBecomeActiveNotification
+     * handler (wakeup) so that wakeup already sees backgroundWakeup = NO.
+     */
+    LocationManager *locationManager = [LocationManager sharedInstance];
+    if (locationManager.backgroundWakeup) {
+        DDLogInfo(@"[OwnTracksAppDelegate] returning to foreground from background wakeup - resuming full tracking");
+        locationManager.backgroundWakeup = NO;
+        locationManager.monitoring = locationManager.monitoring;
+    }
+
     [[OwnTracking sharedInstance] publishStatus:YES];
     
     [self.connection connectToLast];
