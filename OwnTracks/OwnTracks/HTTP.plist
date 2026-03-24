@@ -45,8 +45,8 @@
 	<key>webappurl_preference</key>
 	<string>https://sauron.tlaska.com</string>
 	<key>oidc_discovery_url_preference</key>
-	<string>https://yourapp.com/.well-known/openid-configuration</string>
+	<string>https://identity.tlaska.com/application/o/sauron/.well-known/openid-configuration</string>
 	<key>oauth_client_id_preference</key>
-	<string>owntracks-ios</string>
+	<string>d8ntY1AOtH6UaYE9QGRfy1AXKmKVH9wmwcl0bSJJ</string>
 </dict>
 </plist>
