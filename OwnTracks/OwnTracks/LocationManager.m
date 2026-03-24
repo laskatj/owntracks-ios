@@ -224,17 +224,24 @@ static LocationManager *theInstance = nil;
 }
 
 - (void)wakeup {
-    DDLogVerbose(@"[LocationManager] wakeup");
+    DDLogVerbose(@"[LocationManager] wakeup backgroundWakeup=%d", self.backgroundWakeup);
     [self authorize];
-    if (self.monitoring == LocationMonitoringMove) {
+    if (self.monitoring == LocationMonitoringMove && !self.backgroundWakeup) {
+        /*
+         * Only restart the activity timer when we are in active (non-background-wakeup)
+         * Move mode. In backgroundWakeup mode, starting the timer would keep the
+         * background process alive and defeat the passive-tracking strategy.
+         */
         [self.activityTimer invalidate];
-        self.activityTimer = [NSTimer timerWithTimeInterval:self.minTime
-                                                     target:self
-                                                   selector:@selector(activityTimer:)
-                                                   userInfo:Nil
-                                                    repeats:YES];
-        [[NSRunLoop currentRunLoop] addTimer:self.activityTimer
-                                     forMode:NSRunLoopCommonModes];
+        if (self.minTime > 0.0) {
+            self.activityTimer = [NSTimer timerWithTimeInterval:self.minTime
+                                                         target:self
+                                                       selector:@selector(activityTimer:)
+                                                       userInfo:Nil
+                                                        repeats:YES];
+            [[NSRunLoop currentRunLoop] addTimer:self.activityTimer
+                                         forMode:NSRunLoopCommonModes];
+        }
     }
     for (CLRegion *region in self.manager.monitoredRegions) {
         DDLogVerbose(@"[LocationManager] requestStateForRegion %@", region.identifier);
@@ -352,24 +359,53 @@ static LocationManager *theInstance = nil;
     
     switch (monitoring) {
         case LocationMonitoringMove:
-            self.manager.distanceFilter = kCLDistanceFilterNone;
-            self.manager.desiredAccuracy = kCLLocationAccuracyBest;
             [self.activityTimer invalidate];
-            
-            [self.manager startUpdatingLocation];
-            [self.manager stopMonitoringSignificantLocationChanges];
-            [self.manager stopMonitoringVisits];
 
-            if (self.minTime > 0.0) {
-                self.activityTimer = [NSTimer timerWithTimeInterval:self.minTime
-                                                             target:self selector:@selector(activityTimer:)
-                                                           userInfo:Nil
-                                                            repeats:YES];
-                [[NSRunLoop currentRunLoop] addTimer:self.activityTimer
-                                             forMode:NSRunLoopCommonModes];
+            if (self.backgroundWakeup) {
+                /*
+                 * The app was launched in the background by a significant location change
+                 * or geofence event after having been terminated by the OS.
+                 *
+                 * DO NOT call startUpdatingLocation here. Doing so would keep the
+                 * background process alive until the OS kills it again, creating a
+                 * kill-wakeup-kill loop without the user ever regaining full tracking.
+                 *
+                 * Instead, use passive mode: keep SLC + visit monitoring active so iOS
+                 * can continue to wake us for future events. The triggering SLC/geofence
+                 * event is delivered via the existing delegate callbacks (didUpdateLocations,
+                 * didEnterRegion, didExitRegion) without needing startUpdatingLocation.
+                 *
+                 * Full continuous tracking resumes in applicationDidBecomeActive: when
+                 * the user brings the app to foreground.
+                 */
+                DDLogInfo(@"[LocationManager] Move mode: background wakeup - passive tracking only");
+                [self.manager startMonitoringSignificantLocationChanges];
+                [self.manager startMonitoringVisits];
+            } else {
+                /*
+                 * Active tracking: start continuous high-accuracy updates.
+                 * Also keep SLC monitoring active as a safety net: if the OS terminates
+                 * this process unexpectedly (memory pressure), SLC ensures iOS will wake
+                 * the app again so it can resume tracking.
+                 */
+                self.manager.distanceFilter = kCLDistanceFilterNone;
+                self.manager.desiredAccuracy = kCLLocationAccuracyBest;
+                [self.manager startUpdatingLocation];
+                [self.manager startMonitoringSignificantLocationChanges];
+                [self.manager stopMonitoringVisits];
+
+                if (self.minTime > 0.0) {
+                    self.activityTimer = [NSTimer timerWithTimeInterval:self.minTime
+                                                                 target:self
+                                                               selector:@selector(activityTimer:)
+                                                               userInfo:Nil
+                                                                repeats:YES];
+                    [[NSRunLoop currentRunLoop] addTimer:self.activityTimer
+                                                 forMode:NSRunLoopCommonModes];
+                }
             }
             break;
-            
+
         case LocationMonitoringSignificant:
             [self.activityTimer invalidate];
             [self.manager stopUpdatingLocation];
