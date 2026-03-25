@@ -379,6 +379,22 @@ static LocationManager *theInstance = nil;
                  * the user brings the app to foreground.
                  */
                 DDLogInfo(@"[LocationManager] Move mode: background wakeup - passive tracking only");
+                /*
+                 * Reset lastUsedLocation timestamp to distantPast so the SLC event that
+                 * triggered this wakeup is not filtered out in didUpdateLocations.
+                 *
+                 * The triggering SLC location has a timestamp from BEFORE the app was
+                 * relaunched. didUpdateLocations skips any location whose timestamp is
+                 * not newer than lastUsedLocation, which was just initialised with
+                 * [NSDate date] (app launch time). Without this reset, the first — and
+                 * often only — SLC delivery is silently dropped and nothing is published.
+                 */
+                _lastUsedLocation = [[CLLocation alloc]
+                                     initWithCoordinate:CLLocationCoordinate2DMake(0, 0)
+                                     altitude:0
+                                     horizontalAccuracy:-1
+                                     verticalAccuracy:-1
+                                     timestamp:[NSDate distantPast]];
                 [self.manager startMonitoringSignificantLocationChanges];
                 [self.manager startMonitoringVisits];
             } else {
