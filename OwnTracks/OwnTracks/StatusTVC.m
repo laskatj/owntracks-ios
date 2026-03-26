@@ -114,17 +114,36 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         }
     }
     
-    self.UIstatusField.text = [NSString stringWithFormat:@"%@ %@ %@ %@ %@",
-                               stateName,
-                               ad.connection.lastErrorCode ?
-                               ad.connection.lastErrorCode.domain : @"",
-                               ad.connection.lastErrorCode ?
-                               [NSString stringWithFormat:@"%ld", ad.connection.lastErrorCode.code] : @"",
-                               ad.connection.lastErrorCode ?
-                               ad.connection.lastErrorCode.localizedDescription : @"",
-                               ad.connection.lastErrorCode ?
-                               ad.connection.lastErrorCode.userInfo : @""
-                               ];
+    NSMutableString *statusText = [NSMutableString stringWithFormat:@"%@ %@ %@ %@ %@",
+                                   stateName,
+                                   ad.connection.lastErrorCode ?
+                                   ad.connection.lastErrorCode.domain : @"",
+                                   ad.connection.lastErrorCode ?
+                                   [NSString stringWithFormat:@"%ld", ad.connection.lastErrorCode.code] : @"",
+                                   ad.connection.lastErrorCode ?
+                                   ad.connection.lastErrorCode.localizedDescription : @"",
+                                   ad.connection.lastErrorCode ?
+                                   ad.connection.lastErrorCode.userInfo : @""
+                                   ];
+
+    NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:@"group.org.owntracks.Owntracks"];
+    NSArray *wakeupEvents = [shared arrayForKey:@"backgroundWakeupEvents"];
+    if (wakeupEvents.count) {
+        [statusText appendString:@"\n\nBackground Wakeups:"];
+        NSUInteger shown = MIN(wakeupEvents.count, 10);
+        for (NSUInteger i = 0; i < shown; i++) {
+            NSDictionary *event = wakeupEvents[i];
+            double accuracy = [event[@"accuracy"] doubleValue];
+            NSString *locStr = accuracy >= 0
+                ? [NSString stringWithFormat:@"%.4f,%.4f acc=%.0fm",
+                   [event[@"lat"] doubleValue], [event[@"lon"] doubleValue], accuracy]
+                : @"(no location yet)";
+            [statusText appendFormat:@"\n%@  %@", event[@"timestamp"], locStr];
+        }
+    } else {
+        [statusText appendString:@"\n\nBackground Wakeups: none"];
+    }
+    self.UIstatusField.text = statusText;
     
     CLLocation *location = [LocationManager sharedInstance].location;
 

@@ -379,6 +379,7 @@ static LocationManager *theInstance = nil;
                  * the user brings the app to foreground.
                  */
                 DDLogInfo(@"[LocationManager] Move mode: background wakeup - passive tracking only");
+                [self recordBackgroundWakeup];
                 /*
                  * Reset lastUsedLocation timestamp to distantPast so the SLC event that
                  * triggered this wakeup is not filtered out in didUpdateLocations.
@@ -427,6 +428,9 @@ static LocationManager *theInstance = nil;
             [self.manager stopUpdatingLocation];
             [self.manager startMonitoringSignificantLocationChanges];
             [self.manager startMonitoringVisits];
+            if (self.backgroundWakeup) {
+                [self recordBackgroundWakeup];
+            }
             break;
             
         case LocationMonitoringManual:
@@ -551,6 +555,51 @@ static LocationManager *theInstance = nil;
 }
 
 
+/*
+ * Background wakeup event recording.
+ *
+ * Stores the last 50 wakeup events in the shared app-group NSUserDefaults so
+ * they survive force-quit and are visible in the Status screen after the user
+ * reopens the app.
+ */
+
+static NSString * const kWakeupEventsKey = @"backgroundWakeupEvents";
+static const NSUInteger kMaxWakeupEvents = 50;
+
+- (void)recordBackgroundWakeup {
+    NSISO8601DateFormatter *fmt = [[NSISO8601DateFormatter alloc] init];
+    fmt.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDictionary *event = @{
+        @"timestamp": [fmt stringFromDate:[NSDate date]],
+        @"lat":       @(0.0),
+        @"lon":       @(0.0),
+        @"accuracy":  @(-1.0)
+    };
+    NSMutableArray *events = [[self.sharedUserDefaults arrayForKey:kWakeupEventsKey] mutableCopy]
+                              ?: [NSMutableArray array];
+    [events insertObject:event atIndex:0];
+    if (events.count > kMaxWakeupEvents) {
+        [events removeObjectsInRange:NSMakeRange(kMaxWakeupEvents, events.count - kMaxWakeupEvents)];
+    }
+    [self.sharedUserDefaults setObject:[events copy] forKey:kWakeupEventsKey];
+    DDLogInfo(@"[LocationManager] recorded background wakeup event (%lu total)", (unsigned long)events.count);
+}
+
+- (void)updateLastWakeupEventWithLocation:(CLLocation *)location {
+    NSMutableArray *events = [[self.sharedUserDefaults arrayForKey:kWakeupEventsKey] mutableCopy];
+    if (!events.count) return;
+    NSDictionary *latest = events[0];
+    if ([latest[@"accuracy"] doubleValue] >= 0) return; // already updated
+    NSMutableDictionary *updated = [latest mutableCopy];
+    updated[@"lat"]      = @(location.coordinate.latitude);
+    updated[@"lon"]      = @(location.coordinate.longitude);
+    updated[@"accuracy"] = @(location.horizontalAccuracy);
+    events[0] = [updated copy];
+    [self.sharedUserDefaults setObject:[events copy] forKey:kWakeupEventsKey];
+    DDLogInfo(@"[LocationManager] updated background wakeup event with location %.4f,%.4f acc=%.0f",
+              location.coordinate.latitude, location.coordinate.longitude, location.horizontalAccuracy);
+}
+
 - (void)locationManager:(CLLocationManager *)manager
      didUpdateLocations:(NSArray *)locations {
     DDLogVerbose(@"[LocationManager] didUpdateLocations");
@@ -586,6 +635,9 @@ static LocationManager *theInstance = nil;
         }
 
         self.lastUsedLocation = location;
+        if (self.backgroundWakeup) {
+            [self updateLastWakeupEventWithLocation:location];
+        }
         [self.delegate newLocation:location];
     }
 }
