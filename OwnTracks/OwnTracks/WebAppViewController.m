@@ -58,6 +58,11 @@ static const CGFloat kMapHeaderPadding = 6.0;
     self.webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
     self.webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.webView.navigationDelegate = self;
+    // Prevent the scroll view from adding automatic content insets for the tab bar and
+    // home indicator — the web content handles its own safe-area padding. Without this,
+    // iOS adds ~83 pt of bottom inset (tab bar + home indicator) which shows as white
+    // space below the map content.
+    self.webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     [self.view addSubview:self.webView];
 
     self.placeholderLabel = [[UILabel alloc] initWithFrame:self.view.bounds];
@@ -350,7 +355,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
             NSURL *finalURL = components.URL;
             if (finalURL) {
                 [self setWebAppOriginFromURL:url];
-                if (self.loginButton) self.loginButton.hidden = YES;
+                if (self.loginButton) self.loginButton.hidden = NO;
                 else [self updateLogInBarButton];
                 [self fetchDiscoveryAndUpdateLoginButton];
                 self.placeholderLabel.hidden = YES;
@@ -594,6 +599,24 @@ static const CGFloat kMapHeaderPadding = 6.0;
         return;
     }
 
+    // Fallback: intercept any main-frame navigation to an external (non-web-app) host
+    // that looks like an OIDC authorization request (has response_type=code).
+    // Catches the race condition where async discovery hasn't returned yet on first load,
+    // so oidcAuthorizationEndpointURL is still nil when the web app redirects to the IdP.
+    if (self.webAppOrigin && requestURL.host &&
+        ![requestURL.host isEqualToString:self.webAppOrigin.host]) {
+        NSURLComponents *comps = [NSURLComponents componentsWithURL:requestURL resolvingAgainstBaseURL:NO];
+        for (NSURLQueryItem *item in comps.queryItems) {
+            if ([item.name isEqualToString:@"response_type"] &&
+                [item.value isEqualToString:@"code"]) {
+                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, discovery may still be pending)");
+                decisionHandler(WKNavigationActionPolicyCancel);
+                [self startPassthroughAuthWithIdPURL:requestURL];
+                return;
+            }
+        }
+    }
+
     // Intercept navigation to the web app's login path (from owntracks-app-auth discovery).
     // No IdP URL available here, so fall back to our own PKCE flow.
     if (self.webAppOrigin && self.discoveryLoginPath.length > 0 &&
@@ -710,7 +733,13 @@ static const CGFloat kMapHeaderPadding = 6.0;
                                                        completion:^(NSString * _Nullable accessToken, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(wself) sself = wself;
-            if (!sself || !accessToken.length) return;
+            if (!sself) return;
+            if (!accessToken.length) {
+                // Auth failed or cancelled — force-reload to recover from any blank/stuck state.
+                NSLog(@"AUTHDEBUG: startFullNativeAuth — auth failed/cancelled, reloading web app");
+                [sself forceLoadWebAppURL];
+                return;
+            }
             [sself loadWebViewWithAccessToken:accessToken];
         });
     }];
