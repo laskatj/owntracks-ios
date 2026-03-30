@@ -19,6 +19,7 @@
 #import "ConnType.h"
 #import "NSNumber+decimals.h"
 #import "Validation.h"
+#import "LocationAPISyncService.h"
 
 #import "OwnTracksSendNowIntent.h"
 #import "OwnTracksChangeMonitoringIntent.h"
@@ -250,6 +251,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [self status];
         [[OwnTracking sharedInstance] publishStatus:YES];
     });
+
+    [[LocationAPISyncService sharedInstance] start];
     
     return YES;
 }

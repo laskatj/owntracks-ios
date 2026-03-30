@@ -132,6 +132,20 @@ static OwnTracking *theInstance = nil;
 }
 
 - (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary {
+    [self processLocation:friend dictionary:dictionary fromAPI:NO];
+}
+
+- (void)applyAPILocationPayloadForMqttTopic:(NSString *)topic
+                                 dictionary:(NSDictionary *)dictionary
+                                    context:(NSManagedObjectContext *)context {
+    if (!topic.length) {
+        return;
+    }
+    Friend *friend = [Friend friendWithTopic:topic inManagedObjectContext:context];
+    [self processLocation:friend dictionary:dictionary fromAPI:YES];
+}
+
+- (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary fromAPI:(BOOL)fromAPI {
     if (dictionary && [dictionary isKindOfClass:[NSDictionary class]]) {
         NSNumber *tst = dictionary[@"tst"];
         if (!tst || ![tst isKindOfClass:[NSNumber class]]) {
@@ -139,10 +153,12 @@ static OwnTracking *theInstance = nil;
             return;
         }
         NSDate *timestamp = [NSDate dateWithTimeIntervalSince1970:tst.doubleValue];
-        if (friend.lastLocation && [friend.lastLocation compare:timestamp] != NSOrderedAscending) {
-            DDLogInfo(@"[OwnTracking] skipped location for friend %@ @%@",
-                      friend.topic, timestamp);
-            return;
+        if (!fromAPI) {
+            if (friend.lastLocation && [friend.lastLocation compare:timestamp] != NSOrderedAscending) {
+                DDLogInfo(@"[OwnTracking] skipped location for friend %@ @%@",
+                          friend.topic, timestamp);
+                return;
+            }
         }
 
         NSNumber *lat = dictionary[@"lat"];

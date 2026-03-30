@@ -144,7 +144,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             @"authorization_endpoint": authEndpoint,
             @"token_endpoint": tokenEndpoint,
             @"client_id": clientId,
-            @"scope": @"openid profile email"
+            @"scope": @"openid profile email offline_access"
         };
         dispatch_async(dispatch_get_main_queue(), ^{ completion(config, nil); });
     }];

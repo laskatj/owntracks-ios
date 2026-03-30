@@ -622,6 +622,9 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
     // Intercept navigation to the IdP authorization endpoint. Proxy it through
     // ASWebAuthenticationSession (for SSO) then hand the code back to the React OIDC client.
+    // The oidcAuthorizationEndpointURL path is specific to the sauron OIDC application, so
+    // the Authentik forward-auth outpost (which uses a different Authentik application and
+    // a different path) will not match here.
     if (self.oidcAuthorizationEndpointURL && requestURL.host && requestURL.path.length > 0 &&
         [requestURL.host isEqualToString:self.oidcAuthorizationEndpointURL.host] &&
         (requestURL.scheme.length == 0 || [requestURL.scheme isEqualToString:self.oidcAuthorizationEndpointURL.scheme]) &&
@@ -636,13 +639,31 @@ static const CGFloat kMapHeaderPadding = 6.0;
     // that looks like an OIDC authorization request (has response_type=code).
     // Catches the race condition where async discovery hasn't returned yet on first load,
     // so oidcAuthorizationEndpointURL is still nil when the web app redirects to the IdP.
-    if (self.webAppOrigin && requestURL.host &&
+    //
+    // Only intercept if client_id matches our configured sauron PKCE client. The Authentik
+    // forward-auth outpost uses a different Authentik application (different client_id), so
+    // its authorize redirect must NOT be intercepted here — doing so replaces its redirect_uri
+    // with owntracks://, which Authentik rejects (not registered for the outpost client),
+    // leaving ASWebAuthenticationSession stuck on an error page (spinning wheel).
+    NSString *knownClientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    BOOL isOurOIDCClient = NO;
+    if (knownClientId.length > 0) {
+        for (NSURLQueryItem *item in requestComponents.queryItems ?: @[]) {
+            if ([item.name isEqualToString:@"client_id"] &&
+                [item.value isEqualToString:knownClientId]) {
+                isOurOIDCClient = YES;
+                break;
+            }
+        }
+    }
+    if (isOurOIDCClient &&
+        self.webAppOrigin && requestURL.host &&
         ![requestURL.host isEqualToString:self.webAppOrigin.host]) {
         NSURLComponents *comps = [NSURLComponents componentsWithURL:requestURL resolvingAgainstBaseURL:NO];
         for (NSURLQueryItem *item in comps.queryItems) {
             if ([item.name isEqualToString:@"response_type"] &&
                 [item.value isEqualToString:@"code"]) {
-                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, discovery may still be pending)");
+                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron)");
                 decisionHandler(WKNavigationActionPolicyCancel);
                 [self startPassthroughAuthWithIdPURL:requestURL];
                 return;
