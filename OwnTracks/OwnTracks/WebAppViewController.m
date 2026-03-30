@@ -500,6 +500,25 @@ static const CGFloat kMapHeaderPadding = 6.0;
     }
 
     NSString *type = body[@"type"];
+    if ([type isEqualToString:@"auth_tokens"]) {
+        NSString *refreshToken = body[@"refresh_token"];
+        NSString *tokenEndpoint = body[@"token_endpoint"];
+        NSString *clientId = body[@"client_id"];
+        NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
+        if ([refreshToken isKindOfClass:[NSString class]] && refreshToken.length > 0 &&
+            [tokenEndpoint isKindOfClass:[NSString class]] && tokenEndpoint.length > 0 &&
+            [clientId isKindOfClass:[NSString class]] && clientId.length > 0 &&
+            webAppURL) {
+            [[WebAppAuthHelper sharedInstance] storeRefreshToken:refreshToken
+                                                    tokenEndpoint:tokenEndpoint
+                                                         clientId:clientId
+                                                    forWebAppURL:webAppURL];
+            NSLog(@"AUTHDEBUG: stored web-provided refresh token context for %@%@", webAppURL.host ?: @"(nil)", webAppURL.path ?: @"");
+        } else {
+            DDLogWarn(@"[WebAppViewController] auth_tokens message missing required fields");
+        }
+        return;
+    }
     if (![type isEqualToString:@"config"]) {
         DDLogVerbose(@"[WebAppViewController] postMessage type ignored: %@", type);
         return;
@@ -587,6 +606,20 @@ static const CGFloat kMapHeaderPadding = 6.0;
         return;
     }
 
+    // OIDC callback routes with code/state must never be intercepted by login-path heuristics.
+    NSURLComponents *requestComponents = [NSURLComponents componentsWithURL:requestURL resolvingAgainstBaseURL:NO];
+    BOOL hasCode = NO;
+    BOOL hasState = NO;
+    for (NSURLQueryItem *item in requestComponents.queryItems ?: @[]) {
+        if ([item.name isEqualToString:@"code"] && item.value.length > 0) hasCode = YES;
+        if ([item.name isEqualToString:@"state"] && item.value.length > 0) hasState = YES;
+    }
+    if (hasCode && hasState) {
+        NSLog(@"AUTHDEBUG: → ALLOW callback-style navigation with code/state");
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+
     // Intercept navigation to the IdP authorization endpoint. Proxy it through
     // ASWebAuthenticationSession (for SSO) then hand the code back to the React OIDC client.
     if (self.oidcAuthorizationEndpointURL && requestURL.host && requestURL.path.length > 0 &&
@@ -624,7 +657,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
         ([requestURL.scheme isEqualToString:self.webAppOrigin.scheme] || !requestURL.scheme) &&
         requestURL.path.length > 0) {
         NSString *loginPath = [self.discoveryLoginPath hasPrefix:@"/"] ? self.discoveryLoginPath : [@"/" stringByAppendingString:self.discoveryLoginPath];
-        if ([requestURL.path isEqualToString:loginPath] || [requestURL.path hasPrefix:[loginPath stringByAppendingString:@"/"]]) {
+        if ([requestURL.path isEqualToString:loginPath]) {
             NSLog(@"AUTHDEBUG: → INTERCEPT login path '%@' — fallback native auth", loginPath);
             decisionHandler(WKNavigationActionPolicyCancel);
             [self startNativeAuthFallback];
@@ -703,10 +736,13 @@ static const CGFloat kMapHeaderPadding = 6.0;
 // (which shows UI) if there is no stored refresh token or the refresh has expired.
 - (void)startNativeAuthFallback {
     if (!self.webAppOrigin) return;
-    NSLog(@"AUTHDEBUG: startNativeAuthFallback — origin=%@, checking for stored refresh token first", self.webAppOrigin.absoluteString);
-    NSURL *origin = self.webAppOrigin;
+    NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
+    NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    NSLog(@"AUTHDEBUG: startNativeAuthFallback — webAppURL=%@, checking for stored refresh token first", webAppURL.absoluteString);
     __weak typeof(self) wself = self;
-    [[WebAppAuthHelper sharedInstance] attemptSilentRefreshForOrigin:origin completion:^(NSString *accessToken, NSError *error) {
+    [[WebAppAuthHelper sharedInstance] attemptSilentRefreshForWebAppURL:webAppURL
+                                                               clientId:clientId.length > 0 ? clientId : nil
+                                                             completion:^(NSString *accessToken, NSError *error) {
         __strong typeof(wself) sself = wself;
         if (!sself) return;
         if (accessToken.length > 0) {
@@ -726,7 +762,8 @@ static const CGFloat kMapHeaderPadding = 6.0;
     NSString *oidcURLString = [Settings stringForKey:@"oidc_discovery_url_preference" inMOC:CoreData.sharedInstance.mainMOC];
     if (oidcURLString.length > 0) oidcURL = [NSURL URLWithString:oidcURLString];
     __weak typeof(self) wself = self;
-    [[WebAppAuthHelper sharedInstance] startAuthWithWebAppOrigin:self.webAppOrigin
+    NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
+    [[WebAppAuthHelper sharedInstance] startAuthWithWebAppOrigin:webAppURL
                                                  oidcDiscoveryURL:oidcURL
                                                          clientId:clientId.length > 0 ? clientId : nil
                                           presentingViewController:self

@@ -30,7 +30,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
 @property (nonatomic, copy, nullable) NSString *pendingCodeVerifier;
 @property (nonatomic, copy, nullable) NSString *pendingTokenEndpoint;
 @property (nonatomic, copy, nullable) NSString *pendingClientId;
-@property (nonatomic, copy, nullable) NSURL *pendingWebAppOrigin;
+@property (nonatomic, copy, nullable) NSURL *pendingWebAppURL;
 @property (nonatomic, strong, nullable) ASWebAuthenticationSession *currentSession;
 @end
 
@@ -236,7 +236,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                          clientId:(NSString *)clientId
           presentingViewController:(UIViewController *)presentingViewController
                        completion:(WebAppAuthCompletion)completion {
-    self.pendingWebAppOrigin = webAppOrigin;
+    self.pendingWebAppURL = webAppOrigin;
     void (^runWithConfig)(NSDictionary *, NSError *) = ^(NSDictionary *config, NSError *err) {
         if (err || !config) {
             DDLogWarn(@"[WebAppAuthHelper] Discovery failed: %@", err.localizedDescription);
@@ -418,8 +418,8 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                 return;
             }
             DDLogInfo(@"[WebAppAuthHelper] Token received (refresh_token=%@)", refreshToken ? @"yes" : @"no");
-            if (refreshToken && sself.pendingWebAppOrigin && sself.pendingTokenEndpoint && sself.pendingClientId) {
-                [sself storeRefreshToken:refreshToken tokenEndpoint:sself.pendingTokenEndpoint clientId:sself.pendingClientId forOrigin:sself.pendingWebAppOrigin];
+            if (refreshToken && sself.pendingWebAppURL && sself.pendingTokenEndpoint && sself.pendingClientId) {
+                [sself storeRefreshToken:refreshToken tokenEndpoint:sself.pendingTokenEndpoint clientId:sself.pendingClientId forWebAppURL:sself.pendingWebAppURL];
             }
             [sself finishWithAccessToken:accessToken];
         });
@@ -439,7 +439,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     self.pendingCodeVerifier = nil;
     self.pendingTokenEndpoint = nil;
     self.pendingClientId = nil;
-    self.pendingWebAppOrigin = nil;
+    self.pendingWebAppURL = nil;
     if (comp) comp(accessToken, nil);
 }
 
@@ -450,7 +450,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     self.pendingCodeVerifier = nil;
     self.pendingTokenEndpoint = nil;
     self.pendingClientId = nil;
-    self.pendingWebAppOrigin = nil;
+    self.pendingWebAppURL = nil;
     if (comp) comp(nil, error);
 }
 
@@ -490,21 +490,76 @@ static NSString * const kKeychainClientIdKey = @"client_id";
 
 #pragma mark - Keychain token storage
 
-/// Returns a stable, short Keychain account key from a web app origin (scheme+host+port).
-- (NSString *)keychainAccountForOrigin:(NSURL *)origin {
+/// Returns a stable origin key (scheme+host+port) for account names.
+- (NSString *)originKeyForURL:(NSURL *)url {
     NSURLComponents *c = [NSURLComponents new];
-    c.scheme = origin.scheme;
-    c.host = origin.host;
-    c.port = origin.port;
-    return c.URL.absoluteString ?: origin.absoluteString;
+    c.scheme = url.scheme;
+    c.host = url.host;
+    c.port = url.port;
+    return c.URL.absoluteString ?: url.absoluteString;
 }
 
-/// Stores the refresh token + metadata in Keychain keyed by web app origin.
+/// Normalized path key so path-scoped apps on the same host don't overwrite each other.
+- (NSString *)pathKeyForURL:(NSURL *)url {
+    NSString *path = url.path ?: @"/";
+    if (path.length == 0) path = @"/";
+    if (path.length > 1 && [path hasSuffix:@"/"]) {
+        path = [path substringToIndex:path.length - 1];
+    }
+    return path;
+}
+
+/// Context-aware Keychain account key: origin + path + client id.
+- (NSString *)keychainAccountForWebAppURL:(NSURL *)webAppURL clientId:(NSString *)clientId {
+    NSString *originKey = [self originKeyForURL:webAppURL];
+    NSString *pathKey = [self pathKeyForURL:webAppURL];
+    NSString *cid = clientId.length > 0 ? clientId : @"_";
+    return [NSString stringWithFormat:@"%@|%@|%@", originKey, pathKey, cid];
+}
+
+- (NSDictionary *)tokenQueryForAccount:(NSString *)account {
+    return @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: kKeychainService,
+        (__bridge id)kSecAttrAccount: account
+    };
+}
+
+- (void)deleteTokenForAccount:(NSString *)account {
+    NSDictionary *query = [self tokenQueryForAccount:account];
+    SecItemDelete((__bridge CFDictionaryRef)query);
+}
+
+- (nullable NSDictionary *)loadTokenDataForAccount:(NSString *)account {
+    NSMutableDictionary *query = [[self tokenQueryForAccount:account] mutableCopy];
+    query[(__bridge id)kSecReturnData] = @YES;
+    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+    CFTypeRef result = nil;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    if (status != errSecSuccess || !result) return nil;
+    NSData *data = (__bridge_transfer NSData *)result;
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+}
+
+- (NSArray<NSString *> *)tokenLookupAccountsForWebAppURL:(NSURL *)webAppURL clientId:(NSString *)clientId {
+    NSMutableArray<NSString *> *accounts = [NSMutableArray array];
+    NSString *exact = [self keychainAccountForWebAppURL:webAppURL clientId:clientId];
+    [accounts addObject:exact];
+    if (clientId.length > 0) {
+        [accounts addObject:[self keychainAccountForWebAppURL:webAppURL clientId:nil]];
+    }
+    // Legacy fallback from pre-context-aware storage.
+    [accounts addObject:[self originKeyForURL:webAppURL]];
+    return accounts;
+}
+
+/// Stores the refresh token + metadata in Keychain keyed by web app URL + client context.
 - (void)storeRefreshToken:(NSString *)refreshToken
             tokenEndpoint:(NSString *)tokenEndpoint
                  clientId:(NSString *)clientId
-                forOrigin:(NSURL *)origin {
-    NSString *account = [self keychainAccountForOrigin:origin];
+            forWebAppURL:(NSURL *)webAppURL {
+    NSString *account = [self keychainAccountForWebAppURL:webAppURL clientId:clientId];
     NSDictionary *payload = @{
         kKeychainRefreshTokenKey: refreshToken,
         kKeychainTokenEndpointKey: tokenEndpoint,
@@ -513,14 +568,11 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
     if (!data) return;
 
-    NSDictionary *query = @{
-        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: kKeychainService,
-        (__bridge id)kSecAttrAccount: account
-    };
-    SecItemDelete((__bridge CFDictionaryRef)query);
+    [self deleteTokenForAccount:account];
+    // Best-effort cleanup of legacy account so old stale token won't be used.
+    [self deleteTokenForAccount:[self originKeyForURL:webAppURL]];
 
-    NSMutableDictionary *addQuery = [query mutableCopy];
+    NSMutableDictionary *addQuery = [[self tokenQueryForAccount:account] mutableCopy];
     addQuery[(__bridge id)kSecValueData] = data;
     addQuery[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
     OSStatus status = SecItemAdd((__bridge CFDictionaryRef)addQuery, nil);
@@ -531,37 +583,35 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     }
 }
 
-/// Loads stored token data from Keychain for the given web app origin.
-- (nullable NSDictionary *)loadTokenDataForOrigin:(NSURL *)origin {
-    NSString *account = [self keychainAccountForOrigin:origin];
-    NSDictionary *query = @{
-        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: kKeychainService,
-        (__bridge id)kSecAttrAccount: account,
-        (__bridge id)kSecReturnData: @YES,
-        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
-    };
-    CFTypeRef result = nil;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    if (status != errSecSuccess || !result) return nil;
-    NSData *data = (__bridge_transfer NSData *)result;
-    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+- (nullable NSDictionary *)loadTokenDataForWebAppURL:(NSURL *)webAppURL clientId:(NSString *)clientId matchedAccount:(NSString * __autoreleasing *)matchedAccount {
+    for (NSString *account in [self tokenLookupAccountsForWebAppURL:webAppURL clientId:clientId]) {
+        NSDictionary *tokenData = [self loadTokenDataForAccount:account];
+        if (tokenData) {
+            if (matchedAccount) *matchedAccount = account;
+            return tokenData;
+        }
+    }
+    return nil;
 }
 
 #pragma mark - Silent refresh
 
 - (void)attemptSilentRefreshForOrigin:(NSURL *)webAppOrigin completion:(WebAppAuthCompletion)completion {
-    NSDictionary *tokenData = [self loadTokenDataForOrigin:webAppOrigin];
+    [self attemptSilentRefreshForWebAppURL:webAppOrigin clientId:nil completion:completion];
+}
+
+- (void)attemptSilentRefreshForWebAppURL:(NSURL *)webAppURL clientId:(NSString *)clientId completion:(WebAppAuthCompletion)completion {
+    NSString *matchedAccount = nil;
+    NSDictionary *tokenData = [self loadTokenDataForWebAppURL:webAppURL clientId:clientId matchedAccount:&matchedAccount];
     if (!tokenData) {
-        DDLogInfo(@"[WebAppAuthHelper] No stored refresh token for %@", [self keychainAccountForOrigin:webAppOrigin]);
+        DDLogInfo(@"[WebAppAuthHelper] No stored refresh token for %@", [self keychainAccountForWebAppURL:webAppURL clientId:clientId]);
         completion(nil, nil);
         return;
     }
-    [self performRefreshWithTokenData:tokenData forOrigin:webAppOrigin completion:completion];
+    [self performRefreshWithTokenData:tokenData forWebAppURL:webAppURL matchedAccount:matchedAccount completion:completion];
 }
 
-- (void)performRefreshWithTokenData:(NSDictionary *)tokenData forOrigin:(NSURL *)origin completion:(WebAppAuthCompletion)completion {
+- (void)performRefreshWithTokenData:(NSDictionary *)tokenData forWebAppURL:(NSURL *)webAppURL matchedAccount:(NSString *)matchedAccount completion:(WebAppAuthCompletion)completion {
     NSString *refreshToken = tokenData[kKeychainRefreshTokenKey];
     NSString *tokenEndpoint = tokenData[kKeychainTokenEndpointKey];
     NSString *clientId = tokenData[kKeychainClientIdKey];
@@ -570,7 +620,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         return;
     }
 
-    DDLogInfo(@"[WebAppAuthHelper] Attempting silent refresh for origin=%@", [self keychainAccountForOrigin:origin]);
+    DDLogInfo(@"[WebAppAuthHelper] Attempting silent refresh for account=%@", matchedAccount);
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:tokenEndpoint]];
     request.HTTPMethod = @"POST";
     [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
@@ -591,7 +641,11 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
             if (statusCode == 401 || statusCode == 400) {
                 DDLogInfo(@"[WebAppAuthHelper] Silent refresh rejected (%ld) — clearing stored token", (long)statusCode);
-                [sself clearStoredTokensForOrigin:origin];
+                if (matchedAccount.length > 0) {
+                    [sself deleteTokenForAccount:matchedAccount];
+                } else {
+                    [sself clearStoredTokensForOrigin:webAppURL];
+                }
                 completion(nil, nil);
                 return;
             }
@@ -611,21 +665,16 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             DDLogInfo(@"[WebAppAuthHelper] Silent refresh successful");
             // Update stored refresh token (servers often rotate them).
             NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
-            [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forOrigin:origin];
+            [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forWebAppURL:webAppURL];
             completion(newAccessToken, nil);
         });
     }] resume];
 }
 
 - (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin {
-    NSString *account = [self keychainAccountForOrigin:webAppOrigin];
-    NSDictionary *query = @{
-        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: kKeychainService,
-        (__bridge id)kSecAttrAccount: account
-    };
-    SecItemDelete((__bridge CFDictionaryRef)query);
-    DDLogInfo(@"[WebAppAuthHelper] Cleared stored tokens for %@", account);
+    [self deleteTokenForAccount:[self originKeyForURL:webAppOrigin]];
+    [self deleteTokenForAccount:[self keychainAccountForWebAppURL:webAppOrigin clientId:nil]];
+    DDLogInfo(@"[WebAppAuthHelper] Cleared stored tokens for %@", [self originKeyForURL:webAppOrigin]);
 }
 
 #pragma mark - ASWebAuthenticationPresentationContextProviding

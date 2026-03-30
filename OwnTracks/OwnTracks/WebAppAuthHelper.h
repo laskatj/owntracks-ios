@@ -29,8 +29,20 @@ typedef void (^WebAppAuthCompletion)(NSString * _Nullable accessToken, NSError *
 - (void)attemptSilentRefreshForOrigin:(NSURL *)webAppOrigin
                            completion:(WebAppAuthCompletion)completion;
 
+/// Attempts a silent token refresh using context-aware token storage.
+/// webAppURL should be the configured app URL (including optional path prefix), and clientId may be nil.
+- (void)attemptSilentRefreshForWebAppURL:(NSURL *)webAppURL
+                                clientId:(nullable NSString *)clientId
+                              completion:(WebAppAuthCompletion)completion;
+
 /// Clears any Keychain-stored refresh token data for the given origin.
 - (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin;
+
+/// Stores refresh token metadata in Keychain for a specific web app URL + client context.
+- (void)storeRefreshToken:(NSString *)refreshToken
+            tokenEndpoint:(NSString *)tokenEndpoint
+                 clientId:(NSString *)clientId
+                forWebAppURL:(NSURL *)webAppURL;
 
 /// Fetches discovery JSON from [webAppOrigin]/.well-known/owntracks-app-auth. Keys include authorization_endpoint, token_endpoint, client_id, scope, login_path.
 - (void)fetchDiscoveryFromOrigin:(NSURL *)webAppOrigin
