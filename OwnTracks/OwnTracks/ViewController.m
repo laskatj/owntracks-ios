@@ -19,6 +19,8 @@
 #import "Waypoint+CoreDataClass.h"
 #import "LocationManager.h"
 #import "OwnTracking.h"
+#import "LocationAPISyncService.h"
+#import "WebAppURLResolver.h"
 
 #import "OwnTracksChangeMonitoringIntent.h"
 
@@ -49,6 +51,10 @@
 @property (strong, nonatomic) UITextField *osmCopyright;
 @property (strong, nonatomic) MKTileOverlay *osmOverlay;
 #endif
+/// Standalone route polylines fetched from the backend, keyed by friend.topic.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *friendRoutePolylines;
+/// Topics with an in-flight route fetch; used to cancel/ignore stale responses on deselect.
+@property (nonatomic, strong) NSMutableSet<NSString *> *pendingRouteTopics;
 @end
 
 
@@ -59,6 +65,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [super viewDidLoad];
 
     self.warning = FALSE;
+    self.friendRoutePolylines = [NSMutableDictionary dictionary];
+    self.pendingRouteTopics = [NSMutableSet set];
     self.mapView.delegate = self;
     self.mapView.mapType = MKMapTypeStandard;
     
@@ -763,7 +771,12 @@ didChangeDragState:(MKAnnotationViewDragState)newState
 }
 
 - (MKOverlayRenderer *)mapView:(MKMapView *)mapView rendererForOverlay:(id<MKOverlay>)overlay {
-    if ([overlay isKindOfClass:[Friend class]]) {
+    if ([overlay isKindOfClass:[MKPolyline class]]) {
+        MKPolylineRenderer *renderer = [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
+        renderer.lineWidth = 3;
+        renderer.strokeColor = [UIColor colorNamed:@"trackColor"];
+        return renderer;
+    } else if ([overlay isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)overlay;
         MKPolylineRenderer *renderer = [[MKPolylineRenderer alloc] initWithPolyline:friend.polyLine];
         renderer.lineWidth = 3;
@@ -811,17 +824,171 @@ calloutAccessoryControlTapped:(UIControl *)control {
 }
 
 - (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view {
-    if  ([view.annotation isKindOfClass:[Friend class]]) {
+    if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
-        [mapView addOverlay:friend];
+        [self fetchRouteForFriend:friend mapView:mapView];
     }
 }
 
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
-    if  ([view.annotation isKindOfClass:[Friend class]]) {
+    if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
         [mapView removeOverlay:friend];
+        MKPolyline *route = self.friendRoutePolylines[friend.topic];
+        if (route) {
+            [mapView removeOverlay:route];
+            [self.friendRoutePolylines removeObjectForKey:friend.topic];
+        }
+        [self.pendingRouteTopics removeObject:friend.topic];
     }
+}
+
+- (void)fetchRouteForFriend:(Friend *)friend mapView:(MKMapView *)mapView {
+    NSString *routeUser = friend.routeAPIUser;
+    NSString *routeDevice = friend.tid;
+    NSString *topic = friend.topic;
+
+    DDLogInfo(@"[ViewController] route fetch: tapped topic=%@ routeAPIUser=%@ tid=%@",
+              topic, routeUser ?: @"(nil)", routeDevice ?: @"(nil)");
+
+    // If the REST API poll hasn't run yet, derive user/device directly from the
+    // MQTT topic (format: owntracks/{user}/{device}).
+    if (!routeUser.length || !routeDevice.length) {
+        NSArray<NSString *> *parts = [topic componentsSeparatedByString:@"/"];
+        if (parts.count >= 3) {
+            routeUser = parts[1];
+            // Join remaining components in case device contains a slash
+            routeDevice = [[parts subarrayWithRange:NSMakeRange(2, parts.count - 2)]
+                           componentsJoinedByString:@"/"];
+            DDLogInfo(@"[ViewController] route fetch: derived from topic — user=%@ device=%@", routeUser, routeDevice);
+        }
+    }
+
+    if (!routeUser.length || !routeDevice.length) {
+        // Cannot determine user/device — fall back to local waypoints polyline.
+        DDLogInfo(@"[ViewController] route fetch: cannot determine user/device for %@, using local polyline", topic);
+        [mapView addOverlay:friend];
+        return;
+    }
+
+    if ([self.pendingRouteTopics containsObject:topic]) {
+        return;
+    }
+    [self.pendingRouteTopics addObject:topic];
+
+    NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
+    NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC];
+    if (!origin) {
+        DDLogInfo(@"[ViewController] route fetch: no origin URL, using local polyline for %@", topic);
+        [self.pendingRouteTopics removeObject:topic];
+        [mapView addOverlay:friend];
+        return;
+    }
+
+    NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
+    NSInteger startTs = endTs - 1 * 24 * 60 * 60;
+
+    NSString *encodedUser = [routeUser stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
+    NSString *encodedDevice = [routeDevice stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
+    NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
+
+    NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    components.path = path;
+    components.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"start" value:@(startTs).stringValue],
+        [NSURLQueryItem queryItemWithName:@"end" value:@(endTs).stringValue],
+    ];
+    NSURL *routeURL = components.URL;
+    if (!routeURL) {
+        DDLogWarn(@"[ViewController] route fetch: could not build URL for %@", topic);
+        [self.pendingRouteTopics removeObject:topic];
+        [mapView addOverlay:friend];
+        return;
+    }
+
+    DDLogInfo(@"[ViewController] route fetch: GET %@ (start=%ld end=%ld)", routeURL, (long)startTs, (long)endTs);
+    __weak typeof(self) wself = self;
+    [[LocationAPISyncService sharedInstance] performAuthenticatedGET:routeURL
+                                                          completion:^(NSData * _Nullable data, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(wself) sself = wself;
+            if (!sself) return;
+
+            if (![sself.pendingRouteTopics containsObject:topic]) {
+                // Friend was deselected while the request was in flight — discard.
+                return;
+            }
+            [sself.pendingRouteTopics removeObject:topic];
+
+            DDLogInfo(@"[ViewController] route fetch: response for %@ — data=%lu bytes error=%@",
+                      topic, (unsigned long)data.length, error.localizedDescription ?: @"none");
+
+            if (error || !data.length) {
+                DDLogInfo(@"[ViewController] route fetch failed for %@: %@, using local polyline", topic, error.localizedDescription);
+                [mapView addOverlay:friend];
+                return;
+            }
+
+            NSError *jsonError = nil;
+            id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            if (jsonError) {
+                DDLogWarn(@"[ViewController] route fetch JSON parse error for %@: %@", topic, jsonError.localizedDescription);
+                NSString *bodySnippet = [[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(0, MIN(data.length, 200))]
+                                                              encoding:NSUTF8StringEncoding];
+                DDLogWarn(@"[ViewController] route fetch raw body (first 200 bytes): %@", bodySnippet);
+            }
+            NSArray *points = nil;
+            if ([obj isKindOfClass:[NSDictionary class]]) {
+                id p = ((NSDictionary *)obj)[@"points"];
+                if ([p isKindOfClass:[NSArray class]]) {
+                    points = (NSArray *)p;
+                } else {
+                    DDLogWarn(@"[ViewController] route fetch: 'points' key missing or wrong type for %@ — keys: %@",
+                              topic, [(NSDictionary *)obj allKeys]);
+                }
+            } else {
+                DDLogWarn(@"[ViewController] route fetch: response is not a dict for %@ (class: %@)", topic, NSStringFromClass([obj class]));
+            }
+
+            DDLogInfo(@"[ViewController] route fetch: %lu raw points for %@", (unsigned long)points.count, topic);
+
+            if (!points.count) {
+                DDLogInfo(@"[ViewController] route fetch: no points for %@, using local polyline", topic);
+                [mapView addOverlay:friend];
+                return;
+            }
+
+            CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
+            if (!coords) {
+                [mapView addOverlay:friend];
+                return;
+            }
+            NSUInteger count = 0;
+            for (id pt in points) {
+                if (![pt isKindOfClass:[NSDictionary class]]) continue;
+                id latObj = ((NSDictionary *)pt)[@"latitude"];
+                id lonObj = ((NSDictionary *)pt)[@"longitude"];
+                if (![latObj isKindOfClass:[NSNumber class]] || ![lonObj isKindOfClass:[NSNumber class]]) continue;
+                double lat = [(NSNumber *)latObj doubleValue];
+                double lon = [(NSNumber *)lonObj doubleValue];
+                if (lat == 0.0 && lon == 0.0) continue;
+                coords[count++] = CLLocationCoordinate2DMake(lat, lon);
+            }
+
+            if (count == 0) {
+                free(coords);
+                DDLogInfo(@"[ViewController] route fetch: no valid coords for %@, using local polyline", topic);
+                [mapView addOverlay:friend];
+                return;
+            }
+
+            MKPolyline *polyline = [MKPolyline polylineWithCoordinates:coords count:count];
+            free(coords);
+            sself.friendRoutePolylines[topic] = polyline;
+            [mapView addOverlay:polyline];
+            DDLogInfo(@"[ViewController] route fetch: drew %lu points for %@", (unsigned long)count, topic);
+        });
+    }];
 }
 
 #pragma mark - NSFetchedResultsControllerDelegate

@@ -13,11 +13,22 @@
 #import "CoreData.h"
 #import <Contacts/Contacts.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
+#import <objc/runtime.h>
 
 #define MAXIMUM_TRACK_POINTS 1000
 
+static const char kRouteAPIUserKey;
+
 @implementation Friend
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
+
+- (NSString *)routeAPIUser {
+    return objc_getAssociatedObject(self, &kRouteAPIUserKey);
+}
+
+- (void)setRouteAPIUser:(NSString *)routeAPIUser {
+    objc_setAssociatedObject(self, &kRouteAPIUserKey, routeAPIUser, OBJC_ASSOCIATION_COPY_NONATOMIC);
+}
 
 + (Friend * _Nullable)existsFriendWithTopic:(NSString *)topic
            inManagedObjectContext:(NSManagedObjectContext *)context {

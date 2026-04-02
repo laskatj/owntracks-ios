@@ -629,9 +629,9 @@ static const CGFloat kMapHeaderPadding = 6.0;
         [requestURL.host isEqualToString:self.oidcAuthorizationEndpointURL.host] &&
         (requestURL.scheme.length == 0 || [requestURL.scheme isEqualToString:self.oidcAuthorizationEndpointURL.scheme]) &&
         ([requestURL.path isEqualToString:self.oidcAuthorizationEndpointURL.path] || [requestURL.path hasPrefix:[self.oidcAuthorizationEndpointURL.path stringByAppendingString:@"/"]])) {
-        NSLog(@"AUTHDEBUG: → INTERCEPT IdP endpoint — passthrough via ASWebAuthenticationSession");
+        NSLog(@"AUTHDEBUG: → INTERCEPT IdP endpoint — native auth fallback (silent refresh or full PKCE)");
         decisionHandler(WKNavigationActionPolicyCancel);
-        [self startPassthroughAuthWithIdPURL:requestURL];
+        [self startNativeAuthFallback];
         return;
     }
 
@@ -663,9 +663,9 @@ static const CGFloat kMapHeaderPadding = 6.0;
         for (NSURLQueryItem *item in comps.queryItems) {
             if ([item.name isEqualToString:@"response_type"] &&
                 [item.value isEqualToString:@"code"]) {
-                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron)");
+                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron) — native auth");
                 decisionHandler(WKNavigationActionPolicyCancel);
-                [self startPassthroughAuthWithIdPURL:requestURL];
+                [self startNativeAuthFallback];
                 return;
             }
         }

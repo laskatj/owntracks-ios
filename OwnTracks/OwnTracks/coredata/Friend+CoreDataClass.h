@@ -64,6 +64,10 @@ motionActivities:(nullable NSArray <NSString *> *)motionActivities;
 @property (NS_NONATOMIC_IOSONLY, readonly, strong) Waypoint * _Nullable newestWaypoint;
 @property (NS_NONATOMIC_IOSONLY, readonly, strong) MKPolyline * _Nonnull polyLine;
 
+/// Display user name used in the REST route API path (e.g. "Laska Tom").
+/// Set from /api/location response; nil if friend was only seen via MQTT.
+@property (nonatomic, copy, nullable) NSString *routeAPIUser;
+
 @end
 
 NS_ASSUME_NONNULL_END

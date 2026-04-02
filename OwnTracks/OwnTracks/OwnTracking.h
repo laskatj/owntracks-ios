@@ -20,8 +20,7 @@
               retained:(BOOL)retained
                context:(NSManagedObjectContext *)context;
 
-/// When fromAPI is YES, skips the “only if newer tst than lastLocation” check so REST data is authoritative over MQTT.
-- (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary fromAPI:(BOOL)fromAPI;
+- (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary;
 
 /// topic must match MQTT device topic (e.g. owntracks/User/Device). Call from queuedMOC’s queue.
 - (void)applyAPILocationPayloadForMqttTopic:(NSString *)topic

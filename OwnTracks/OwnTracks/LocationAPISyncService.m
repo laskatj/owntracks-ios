@@ -445,15 +445,37 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
                 if (!payload) {
                     continue;
                 }
+                // Prefer the MQTT topic for the Friend identifier; fall back to a stable
+                // synthetic key for REST-only (HTTP POST) devices that have no MQTT topic.
+                NSString *topic = nil;
                 id topicObj = device[@"mqttTopic"];
-                if (![topicObj isKindOfClass:[NSString class]] || [(NSString *)topicObj length] == 0) {
-                    DDLogVerbose(@"[LocationAPISyncService] device missing mqttTopic, skipping");
-                    continue;
+                if ([topicObj isKindOfClass:[NSString class]] && [(NSString *)topicObj length] > 0) {
+                    topic = (NSString *)topicObj;
+                } else {
+                    id trackerIdObj = device[@"trackerId"];
+                    if (![trackerIdObj isKindOfClass:[NSString class]] || [(NSString *)trackerIdObj length] == 0) {
+                        DDLogVerbose(@"[LocationAPISyncService] device missing mqttTopic and trackerId, skipping");
+                        continue;
+                    }
+                    topic = [NSString stringWithFormat:@"api/%@/%@", userKey, (NSString *)trackerIdObj];
+                    DDLogInfo(@"[LocationAPISyncService] REST-only device, using synthetic topic %@", topic);
                 }
-                NSString *topic = (NSString *)topicObj;
+
                 [[OwnTracking sharedInstance] applyAPILocationPayloadForMqttTopic:topic
                                                                        dictionary:payload
                                                                           context:queuedMOC];
+
+                // Store user name for route API URL construction, and deviceName as the
+                // display name if the Friend has no card name yet.
+                Friend *syncFriend = [Friend friendWithTopic:topic inManagedObjectContext:queuedMOC];
+                if (syncFriend) {
+                    syncFriend.routeAPIUser = userKey;
+                    id deviceNameObj = device[@"deviceName"];
+                    if ([deviceNameObj isKindOfClass:[NSString class]] && [(NSString *)deviceNameObj length] > 0
+                            && syncFriend.cardName == nil) {
+                        syncFriend.cardName = (NSString *)deviceNameObj;
+                    }
+                }
 
                 // Fetch device image if not yet stored.
                 id imagePathObj = device[@"deviceImage"];
@@ -535,6 +557,80 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
     }
 
     return [d copy];
+}
+
+- (void)performAuthenticatedGET:(NSURL *)url completion:(void (^)(NSData * _Nullable, NSError * _Nullable))completion {
+    DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: obtaining token for %@", url);
+    __weak typeof(self) wself = self;
+    [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable accessToken) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:0 userInfo:nil]);
+            return;
+        }
+        if (!accessToken.length) {
+            DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: no access token for %@", url);
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
+            return;
+        }
+        DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: token OK, sending GET %@", url);
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        request.HTTPMethod = @"GET";
+        [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", accessToken] forHTTPHeaderField:@"Authorization"];
+
+        [[[NSURLSession sharedSession] dataTaskWithRequest:request
+                                        completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+            if (error) {
+                DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET network error: %@", error.localizedDescription);
+                completion(nil, error);
+                return;
+            }
+            NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+            DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: HTTP %ld (%lu bytes) for %@",
+                      (long)status, (unsigned long)data.length, url);
+            if (status == 401) {
+                DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: 401 — refreshing token and retrying %@", url);
+                __strong typeof(wself) sself2 = wself;
+                if (!sself2) {
+                    completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
+                    return;
+                }
+                [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
+                    if (!newToken.length) {
+                        DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: 401 retry — could not refresh token for %@", url);
+                        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
+                        return;
+                    }
+                    DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: retrying GET %@", url);
+                    NSMutableURLRequest *retry = [NSMutableURLRequest requestWithURL:url];
+                    retry.HTTPMethod = @"GET";
+                    [retry setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+                    [retry setValue:[NSString stringWithFormat:@"Bearer %@", newToken] forHTTPHeaderField:@"Authorization"];
+                    [[[NSURLSession sharedSession] dataTaskWithRequest:retry
+                                                    completionHandler:^(NSData * _Nullable d2, NSURLResponse * _Nullable r2, NSError * _Nullable e2) {
+                        NSInteger s2 = [r2 isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)r2 statusCode] : 0;
+                        DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: retry HTTP %ld (%lu bytes) for %@",
+                                  (long)s2, (unsigned long)d2.length, url);
+                        if (e2 || s2 != 200) {
+                            DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: retry failed HTTP %ld error %@ for %@",
+                                      (long)s2, e2.localizedDescription, url);
+                            completion(nil, e2 ?: [NSError errorWithDomain:@"LocationAPISyncService" code:s2 userInfo:nil]);
+                        } else {
+                            completion(d2, nil);
+                        }
+                    }] resume];
+                }];
+                return;
+            }
+            if (status != 200) {
+                DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET HTTP %ld for %@", (long)status, url);
+                completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:status userInfo:nil]);
+                return;
+            }
+            completion(data, nil);
+        }] resume];
+    }];
 }
 
 - (void)fetchDeviceImageAtPath:(NSString *)relativePath
