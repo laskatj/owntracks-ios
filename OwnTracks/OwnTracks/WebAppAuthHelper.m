@@ -688,7 +688,8 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             }
         }
     }
-    return [UIApplication sharedApplication].windows.firstObject;
+    UIWindowScene *scene = (UIWindowScene *)[UIApplication sharedApplication].connectedScenes.anyObject;
+    return scene.windows.firstObject;
 }
 
 @end

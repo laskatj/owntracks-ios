@@ -15,4 +15,5 @@
 #import "OwnTracksAppDelegate.h"
 
 @interface ViewController : UIViewController <MKMapViewDelegate, NSFetchedResultsControllerDelegate>
+- (IBAction)actionPressed:(UIBarButtonItem *)sender;
 @end

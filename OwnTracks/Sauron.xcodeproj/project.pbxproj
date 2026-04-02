@@ -18,7 +18,6 @@
 		8411B83A189FDB140019D2D6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B839189FDB140019D2D6 /* main.m */; };
 		8411B83E189FDB140019D2D6 /* OwnTracksAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B83D189FDB140019D2D6 /* OwnTracksAppDelegate.m */; };
 		8411B843189FDB140019D2D6 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8411B842189FDB140019D2D6 /* Images.xcassets */; };
-		8411B844189FDB140019D2D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8411B845189FDB140019D2D7 /* Assets.xcassets */; };
 		8411B87F189FE35C0019D2D6 /* Model.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 8411B87D189FE35C0019D2D6 /* Model.xcdatamodeld */; };
 		8411B88B189FE79B0019D2D6 /* CoreData.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B889189FE79B0019D2D6 /* CoreData.m */; };
 		8411B88E189FE9940019D2D6 /* Connection.m in Sources */ = {isa = PBXBuildFile; fileRef = 8411B88D189FE9940019D2D6 /* Connection.m */; };
@@ -170,7 +169,6 @@
 		8411B83C189FDB140019D2D6 /* OwnTracksAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksAppDelegate.h; sourceTree = "<group>"; };
 		8411B83D189FDB140019D2D6 /* OwnTracksAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksAppDelegate.m; sourceTree = "<group>"; };
 		8411B842189FDB140019D2D6 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
-		8411B845189FDB140019D2D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8411B849189FDB140019D2D6 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		8411B860189FDD200019D2D6 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		8411B862189FDD300019D2D6 /* OwnTracks.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = OwnTracks.entitlements; sourceTree = "<group>"; };
@@ -679,7 +677,6 @@
 				84A1737C1B428F3E00CCB7D0 /* Settings */,
 				843B91741C8A14BF00DBD306 /* Storyboard.storyboard */,
 				8411B842189FDB140019D2D6 /* Images.xcassets */,
-				8411B845189FDB140019D2D7 /* Assets.xcassets */,
 				84FAEA7125F01DA100DCD479 /* Launch Screen.storyboard */,
 			);
 			name = UI;
@@ -753,6 +750,7 @@
 				8466B31E2397F58500537795 /* ShellScript */,
 				84100AD923AE8D8800FC2361 /* Embed Watch Content */,
 				E1F1C1838DEABD333F5AC82C /* [CP] Embed Pods Frameworks */,
+				226D46442F7C398200DC4F2C /* Run Script */,
 			);
 			buildRules = (
 			);
@@ -808,7 +806,7 @@
 				BuildIndependentTargetsInParallel = YES;
 				CLASSPREFIX = OwnTracks;
 				LastSwiftUpdateCheck = 1150;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 2640;
 				ORGANIZATIONNAME = OwnTracks;
 				TargetAttributes = {
 					8411B827189FDB140019D2D6 = {
@@ -890,7 +888,6 @@
 				84FAEA7225F01DA100DCD479 /* Launch Screen.storyboard in Resources */,
 				849260442B0373E300F6DC13 /* encryption.json in Resources */,
 				8411B843189FDB140019D2D6 /* Images.xcassets in Resources */,
-				8411B844189FDB140019D2D7 /* Assets.xcassets in Resources */,
 				84E2C4511EC34B3B00BC02CE /* Localizable.strings in Resources */,
 				845AA1BC1B4846AF00945856 /* OwnTracks-64.png in Resources */,
 				8408CA4425F00FB400354FF3 /* InfoPlist.strings in Resources */,
@@ -918,6 +915,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		226D46442F7C398200DC4F2C /* Run Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 8;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run Script";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "BUILD_NUMBER=$(git rev-list --count HEAD)\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \\\n    \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n";
+		};
 		601E55213B519673A2446482 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -942,6 +958,7 @@
 		};
 		8466B31E2397F58500537795 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -956,7 +973,8 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\n";
+			shellScript = "
+";
 		};
 		E1F1C1838DEABD333F5AC82C /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -966,9 +984,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1237,6 +1259,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 			};
 			name = Debug;
 		};
@@ -1285,6 +1308,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -1303,7 +1327,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19.2.6;
+				CURRENT_PROJECT_VERSION = 855;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1357,7 +1381,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19.2.6;
+				CURRENT_PROJECT_VERSION = 855;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				ENABLE_BITCODE = NO;
@@ -1412,7 +1436,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18.5.2;
+				CURRENT_PROJECT_VERSION = 855;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1424,7 +1448,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.2.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
@@ -1451,7 +1475,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 18.5.2;
+				CURRENT_PROJECT_VERSION = 855;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = CFR426ZH5P;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1463,7 +1487,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 18.5.2;
+				MARKETING_VERSION = 19.2.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
@@ -1486,7 +1510,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19.0.0;
+				CURRENT_PROJECT_VERSION = 855;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = CFR426ZH5P;

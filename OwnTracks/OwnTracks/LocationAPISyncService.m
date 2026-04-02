@@ -36,7 +36,8 @@ static UIViewController *LocationAPISyncTopMostViewController(void) {
         }
     }
     if (!keyWindow) {
-        keyWindow = [UIApplication sharedApplication].windows.firstObject;
+        UIWindowScene *scene = (UIWindowScene *)[UIApplication sharedApplication].connectedScenes.anyObject;
+        keyWindow = scene.windows.firstObject;
     }
     UIViewController *root = keyWindow.rootViewController;
     while (root.presentedViewController) {
@@ -164,6 +165,9 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
         if (gLocationAPIOAuthPromptScheduledThisSession) {
             return;
         }
+        // Set flag immediately to prevent concurrent re-entrant calls during the async pre-check.
+        // Will be reset to NO only if the prompt itself fails with a transient error.
+        gLocationAPIOAuthPromptScheduledThisSession = YES;
         NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
         NSString *webPref = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
         if (webPref.length == 0) {
@@ -178,46 +182,64 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
             DDLogWarn(@"[LocationAPISyncService] Cannot present OAuth — no key window");
             return;
         }
-        DDLogInfo(@"[LocationAPISyncService] No refresh token for location API — presenting sign-in (once per app launch)");
         NSString *oidcURLString = [Settings stringForKey:@"oidc_discovery_url_preference" inMOC:moc];
         NSURL *oidcURL = oidcURLString.length > 0 ? [NSURL URLWithString:oidcURLString] : nil;
         NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:moc];
         if (!clientId.length) {
             clientId = nil;
         }
-        // Set flag before starting the session to block concurrent OAuth prompts.
-        // It will be reset to NO if the session fails with a transient error.
-        gLocationAPIOAuthPromptScheduledThisSession = YES;
+
+        // Re-check for a token before showing the prompt. The web app tab may have completed
+        // its own OIDC passthrough and stored a refresh token in Keychain between the first
+        // failed poll and now — in that case we can use it directly and skip the prompt.
         __weak typeof(self) wself = self;
-        [[WebAppAuthHelper sharedInstance] startAuthWithWebAppOrigin:webAppURL
-                                                  oidcDiscoveryURL:oidcURL
-                                                          clientId:clientId
-                                            presentingViewController:presenter
-                                                         completion:^(NSString * _Nullable accessToken, NSError * _Nullable error) {
+        [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable preCheckToken) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong typeof(wself) sself = wself;
-                if (!sself) {
-                    return;
-                }
-                if (accessToken.length > 0) {
-                    DDLogInfo(@"[LocationAPISyncService] Interactive OAuth succeeded; performing location API fetch");
+                if (!sself) return;
+
+                if (preCheckToken.length > 0) {
+                    DDLogInfo(@"[LocationAPISyncService] Token found on pre-prompt re-check — skipping OAuth prompt");
                     NSManagedObjectContext *fetchMOC = CoreData.sharedInstance.mainMOC;
                     NSURL *apiURL = [WebAppURLResolver locationAPIRequestURLFromPreferenceInMOC:fetchMOC];
-                    if (apiURL) {
+                    if (apiURL && !sself.fetchInFlight) {
                         sself.fetchInFlight = YES;
-                        [sself performGET:apiURL accessToken:accessToken allowRetryOn401:YES];
+                        [sself performGET:apiURL accessToken:preCheckToken allowRetryOn401:YES];
                     }
-                } else {
-                    BOOL userCancelled = (error.domain == ASWebAuthenticationSessionErrorDomain &&
-                                         error.code == ASWebAuthenticationSessionErrorCodeCanceledLogin);
-                    if (userCancelled) {
-                        DDLogInfo(@"[LocationAPISyncService] Interactive OAuth cancelled by user");
-                        // flag stays YES — user chose to skip, respect it for this session
-                    } else {
-                        gLocationAPIOAuthPromptScheduledThisSession = NO; // transient failure — allow retry next poll
-                        DDLogVerbose(@"[LocationAPISyncService] Interactive OAuth failed: %@", error.localizedDescription);
-                    }
+                    return;
                 }
+
+                // Still no token — present the interactive sign-in prompt.
+                DDLogInfo(@"[LocationAPISyncService] No refresh token — presenting sign-in (once per app launch)");
+                [[WebAppAuthHelper sharedInstance] startAuthWithWebAppOrigin:webAppURL
+                                                          oidcDiscoveryURL:oidcURL
+                                                                  clientId:clientId
+                                                    presentingViewController:presenter
+                                                                 completion:^(NSString * _Nullable accessToken, NSError * _Nullable error) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        __strong typeof(wself) sself2 = wself;
+                        if (!sself2) return;
+                        if (accessToken.length > 0) {
+                            DDLogInfo(@"[LocationAPISyncService] Interactive OAuth succeeded; performing location API fetch");
+                            NSManagedObjectContext *fetchMOC = CoreData.sharedInstance.mainMOC;
+                            NSURL *apiURL = [WebAppURLResolver locationAPIRequestURLFromPreferenceInMOC:fetchMOC];
+                            if (apiURL) {
+                                sself2.fetchInFlight = YES;
+                                [sself2 performGET:apiURL accessToken:accessToken allowRetryOn401:YES];
+                            }
+                        } else {
+                            BOOL userCancelled = (error.domain == ASWebAuthenticationSessionErrorDomain &&
+                                                 error.code == ASWebAuthenticationSessionErrorCodeCanceledLogin);
+                            if (userCancelled) {
+                                DDLogInfo(@"[LocationAPISyncService] Interactive OAuth cancelled by user");
+                                // flag stays YES — user chose to skip, respect it for this session
+                            } else {
+                                gLocationAPIOAuthPromptScheduledThisSession = NO; // transient failure — allow retry next poll
+                                DDLogVerbose(@"[LocationAPISyncService] Interactive OAuth failed: %@", error.localizedDescription);
+                            }
+                        }
+                    });
+                }];
             });
         }];
     });

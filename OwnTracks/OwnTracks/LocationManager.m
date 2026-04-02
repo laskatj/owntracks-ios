@@ -398,6 +398,10 @@ static LocationManager *theInstance = nil;
                                      timestamp:[NSDate distantPast]];
                 [self.manager startMonitoringSignificantLocationChanges];
                 [self.manager startMonitoringVisits];
+                DDLogInfo(@"[LocationManager] Move/passive: SLC started ✓, Visits started ✓, "
+                          @"startUpdatingLocation SUPPRESSED (background wakeup — avoiding kill loop). "
+                          @"applicationState=%ld",
+                          (long)[UIApplication sharedApplication].applicationState);
             } else {
                 /*
                  * Active tracking: start continuous high-accuracy updates.
@@ -410,6 +414,9 @@ static LocationManager *theInstance = nil;
                 [self.manager startUpdatingLocation];
                 [self.manager startMonitoringSignificantLocationChanges];
                 [self.manager stopMonitoringVisits];
+                DDLogInfo(@"[LocationManager] Move/active: startUpdatingLocation ✓, SLC safety-net ✓. "
+                          @"applicationState=%ld",
+                          (long)[UIApplication sharedApplication].applicationState);
 
                 if (self.minTime > 0.0) {
                     self.activityTimer = [NSTimer timerWithTimeInterval:self.minTime
@@ -636,6 +643,10 @@ static const NSUInteger kMaxWakeupEvents = 50;
 
         self.lastUsedLocation = location;
         if (self.backgroundWakeup) {
+            DDLogInfo(@"[LocationManager] Location#%d delivered in BACKGROUND WAKEUP (passive SLC mode) "
+                      @"appState=%ld",
+                      count,
+                      (long)[UIApplication sharedApplication].applicationState);
             [self updateLastWakeupEventWithLocation:location];
         }
         [self.delegate newLocation:location];
@@ -713,8 +724,14 @@ static const NSUInteger kMaxWakeupEvents = 50;
 
 - (void)locationManager:(CLLocationManager *)manager
          didEnterRegion:(CLRegion *)region {
-    DDLogInfo(@"[LocationManager] didEnterRegion %@", region);
-    
+    UIApplicationState state = [UIApplication sharedApplication].applicationState;
+    DDLogInfo(@"[LocationManager] didEnterRegion %@ | appState=%@ | backgroundWakeup=%d | "
+              @"wakeup trigger: GEOFENCE ENTER",
+              region,
+              state == UIApplicationStateBackground ? @"BACKGROUND" :
+              state == UIApplicationStateActive     ? @"FOREGROUND" : @"INACTIVE",
+              self.backgroundWakeup);
+
     if (![self removeHoldDown:region]) {
         [self locationManager:manager didDetermineState:CLRegionStateInside forRegion:region];
         [self.delegate regionEvent:region enter:YES];
@@ -723,7 +740,13 @@ static const NSUInteger kMaxWakeupEvents = 50;
 
 - (void)locationManager:(CLLocationManager *)manager
           didExitRegion:(CLRegion *)region {
-    DDLogInfo(@"[LocationManager] didExitRegion %@", region);
+    UIApplicationState state = [UIApplication sharedApplication].applicationState;
+    DDLogInfo(@"[LocationManager] didExitRegion %@ | appState=%@ | backgroundWakeup=%d | "
+              @"wakeup trigger: GEOFENCE EXIT",
+              region,
+              state == UIApplicationStateBackground ? @"BACKGROUND" :
+              state == UIApplicationStateActive     ? @"FOREGROUND" : @"INACTIVE",
+              self.backgroundWakeup);
     
     if ([region.identifier hasPrefix:@"-"]) {
         [self removeHoldDown:region];
@@ -878,8 +901,13 @@ didFailRangingBeaconsForConstraint:(CLBeaconIdentityConstraint *)beaconConstrain
 
 
 - (void)startBackgroundTimer {
-    DDLogInfo(@"[LocationManager] startBackgroundTimer");
-    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
+    UIApplicationState state = [UIApplication sharedApplication].applicationState;
+    DDLogInfo(@"[LocationManager] startBackgroundTimer called: applicationState=%ld (%@)",
+              (long)state,
+              state == UIApplicationStateBackground ? @"BACKGROUND - timer will start" :
+              state == UIApplicationStateActive     ? @"FOREGROUND - timer suppressed" :
+                                                     @"INACTIVE - timer suppressed");
+    if (state == UIApplicationStateBackground) {
         if (!self.backgroundTimer || !self.backgroundTimer.isValid) {
             self.backgroundTimer = [NSTimer scheduledTimerWithTimeInterval:BACKGROUND_STOP_AFTER
                                                                     target:self

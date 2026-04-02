@@ -231,8 +231,14 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
      * setMonitoring: can choose passive vs. full tracking accordingly.
      */
     if (launchOptions[UIApplicationLaunchOptionsLocationKey]) {
-        DDLogInfo(@"[OwnTracksAppDelegate] background location launch detected - enabling passive tracking");
+        DDLogInfo(@"[OwnTracksAppDelegate] *** RELAUNCH after TERMINATION *** "
+                  @"iOS relaunched this process via SLC or geofence event "
+                  @"(UIApplicationLaunchOptionsLocationKey present). "
+                  @"backgroundWakeup → YES; Move mode will use passive SLC-only tracking.");
         locationManager.backgroundWakeup = YES;
+    } else {
+        DDLogInfo(@"[OwnTracksAppDelegate] normal launch (no location key) - "
+                  @"backgroundWakeup remains NO; full tracking will apply.");
     }
 
     NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
@@ -286,7 +292,13 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
-    DDLogInfo(@"[OwnTracksAppDelegate] applicationDidEnterBackground");
+    DDLogInfo(@"[OwnTracksAppDelegate] applicationDidEnterBackground: "
+              @"backgroundWakeup=%d monitoring=%ld — %@",
+              [LocationManager sharedInstance].backgroundWakeup,
+              (long)[LocationManager sharedInstance].monitoring,
+              [LocationManager sharedInstance].backgroundWakeup
+                  ? @"already in background-wakeup passive mode"
+                  : @"transitioning from active/foreground to background");
     [self background];
     if ([LocationManager sharedInstance].monitoring != LocationMonitoringMove) {
         [self.connection disconnect];
@@ -670,9 +682,16 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
      */
     LocationManager *locationManager = [LocationManager sharedInstance];
     if (locationManager.backgroundWakeup) {
-        DDLogInfo(@"[OwnTracksAppDelegate] returning to foreground from background wakeup - resuming full tracking");
+        DDLogInfo(@"[OwnTracksAppDelegate] *** FOREGROUND RETURN after SLC/geofence wakeup *** "
+                  @"backgroundWakeup → NO; re-applying monitoring=%ld to activate "
+                  @"startUpdatingLocation for full continuous tracking.",
+                  (long)locationManager.monitoring);
         locationManager.backgroundWakeup = NO;
         locationManager.monitoring = locationManager.monitoring;
+    } else {
+        DDLogInfo(@"[OwnTracksAppDelegate] applicationDidBecomeActive: normal foreground return "
+                  @"(no background wakeup pending), monitoring=%ld",
+                  (long)locationManager.monitoring);
     }
 
     [[OwnTracking sharedInstance] publishStatus:YES];
