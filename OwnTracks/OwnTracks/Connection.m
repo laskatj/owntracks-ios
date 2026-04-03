@@ -808,7 +808,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 
 #define LEN2PRINT 2048
     NSString *dataString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    DDLogInfo(@"[Connection] received topic=%@ dataString(%lu)=%@",
+    DDLogVerbose(@"[Connection] received topic=%@ dataString(%lu)=%@",
               topic,
               (unsigned long)dataString.length,
               dataString.length <= LEN2PRINT ?
