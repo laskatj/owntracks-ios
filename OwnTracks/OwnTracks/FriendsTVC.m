@@ -186,25 +186,35 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     Friend *friend = [self.fetchedResultsController objectAtIndexPath:indexPath];
-    
+
     UITabBarController *tbc;
     UINavigationController *nc;
-    
+    NSUInteger targetIndex = NSNotFound;
+
     if (self.splitViewController) {
         UISplitViewController *svc = self.splitViewController;
         nc = svc.viewControllers[1];
     } else {
         tbc = self.tabBarController;
         NSArray *vcs = tbc.viewControllers;
-        nc = vcs[0];
+        for (NSUInteger i = 0; i < vcs.count; i++) {
+            UIViewController *candidate = vcs[i];
+            if ([candidate isKindOfClass:[UINavigationController class]]) {
+                UIViewController *top = [(UINavigationController *)candidate topViewController];
+                if ([top respondsToSelector:@selector(setCenter:)]) {
+                    nc = (UINavigationController *)candidate;
+                    targetIndex = i;
+                    break;
+                }
+            }
+        }
     }
-    
+
     UIViewController *vc = nc.topViewController;
-    
     if ([vc respondsToSelector:@selector(setCenter:)]) {
         [vc performSelector:@selector(setCenter:) withObject:friend];
-        if (tbc) {
-            tbc.selectedIndex = 0;
+        if (tbc && targetIndex != NSNotFound) {
+            tbc.selectedIndex = targetIndex;
         }
     }
 }

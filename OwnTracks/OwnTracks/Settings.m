@@ -715,7 +715,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             anyDevice = [anyDevice stringByAppendingString:@"+"];
         }
 
-        subscriptions = [NSString stringWithFormat:@"%@ %@/event %@/info %@/cmd",
+        subscriptions = [NSString stringWithFormat:@"%@,%@/event,%@/info,%@/cmd",
                          anyDevice,
                          anyDevice,
                          anyDevice,

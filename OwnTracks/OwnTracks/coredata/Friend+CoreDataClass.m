@@ -19,7 +19,10 @@
 
 static const char kRouteAPIUserKey;
 
-@implementation Friend
+@implementation Friend {
+    CLLocationCoordinate2D _liveCoord;
+    BOOL _hasLiveCoord;
+}
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 - (NSString *)routeAPIUser {
@@ -210,7 +213,15 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     //
 }
 
+- (void)setLiveCoordinate:(CLLocationCoordinate2D)coord {
+    [self willChangeValueForKey:@"coordinate"];
+    _liveCoord = coord;
+    _hasLiveCoord = YES;
+    [self didChangeValueForKey:@"coordinate"];
+}
+
 - (CLLocationCoordinate2D)coordinate {
+    if (_hasLiveCoord) return _liveCoord;
     CLLocationCoordinate2D coord = kCLLocationCoordinate2DInvalid;
     Waypoint *waypoint = self.newestWaypoint;
     if (waypoint) {

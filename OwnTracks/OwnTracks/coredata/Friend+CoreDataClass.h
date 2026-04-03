@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface Friend : NSManagedObject <MKAnnotation, MKOverlay>
 
 @property (nonatomic) CLLocationCoordinate2D coordinate;
+- (void)setLiveCoordinate:(CLLocationCoordinate2D)coord;
 
 + (Friend * _Nullable)existsFriendWithTopic:(NSString *)topic
            inManagedObjectContext:(NSManagedObjectContext *)context;

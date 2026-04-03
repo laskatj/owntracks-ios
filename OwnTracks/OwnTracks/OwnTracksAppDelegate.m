@@ -1168,119 +1168,145 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         if (!strongSelf) {
             return;
         }
-        
-        (void)[[OwnTracking sharedInstance] processMessage:topic
-                                                      data:data
-                                                  retained:retained
-                                                   context:CoreData.sharedInstance.queuedMOC];
+
+        // Compute device / ownDevice before deciding the message path.
         NSArray *baseComponents = [[Settings theGeneralTopicInMOC:CoreData.sharedInstance.queuedMOC] componentsSeparatedByString:@"/"];
         NSArray *topicComponents = [topic componentsSeparatedByString:@"/"];
-        
+
         NSString *device = @"";
         BOOL ownDevice = true;
-        
+
         for (int i = 0; i < baseComponents.count; i++) {
             if (i > 0) {
                 device = [device stringByAppendingString:@"/"];
             }
             if (i < topicComponents.count) {
                 device = [device stringByAppendingString:topicComponents[i]];
-                if (![baseComponents[i] isEqualToString:topicComponents [i]]) {
+                if (![baseComponents[i] isEqualToString:topicComponents[i]]) {
                     ownDevice = false;
                 }
             } else {
                 ownDevice = false;
             }
         }
-        
-        DDLogVerbose(@"[OwnTracksAppDelegate] device %@ owndevice %d", device, ownDevice);
-        
-        if (ownDevice) {
-            
-            NSDictionary *dictionary = nil;
-            id json = [[Validation sharedInstance] validateMessageData:data];
-            if (json && [json isKindOfClass:[NSDictionary class]]) {
-                dictionary = json;
-            }
-            
-            if (dictionary) {
-                NSString *type = dictionary[@"_type"];
-                if (type && [type isKindOfClass:[NSString class]]) {
-                    if ([type isEqualToString:@"cmd"]) {
-                        if ([Settings boolForKey:@"cmd_preference"
-                                           inMOC:CoreData.sharedInstance.queuedMOC]) {
-                            NSString *action = dictionary[@"action"];
-                            if (action && [action isKindOfClass:[NSString class]]) {
-                                if ([action isEqualToString:@"dump"]) {
-                                    [strongSelf dump];
-                                    
-                                } else if ([action isEqualToString:@"status"]) {
-                                    [strongSelf status];
 
-                                } else if ([action isEqualToString:@"reportLocation"]) {
-                                    if (([LocationManager sharedInstance].monitoring == LocationMonitoringSignificant ||
-                                        [LocationManager sharedInstance].monitoring == LocationMonitoringMove) &&
-                                        [Settings boolForKey:@"allowremotelocation_preference"
-                                                       inMOC:CoreData.sharedInstance.queuedMOC]) {
-                                        [strongSelf performSelectorOnMainThread:@selector(reportLocation)
+        DDLogVerbose(@"[OwnTracksAppDelegate] device %@ owndevice %d", device, ownDevice);
+
+        // Parse JSON once; used for both the short-circuit check and cmd handling.
+        NSDictionary *dictionary = nil;
+        id json = [[Validation sharedInstance] validateMessageData:data];
+        if (json && [json isKindOfClass:[NSDictionary class]]) {
+            dictionary = json;
+        }
+
+        NSString *type = dictionary[@"_type"];
+
+        // Short-circuit: friend location messages are live UI signals only — no Core Data write.
+        BOOL isFriendLocation = (!ownDevice &&
+                                  [type isKindOfClass:[NSString class]] &&
+                                  [type isEqualToString:@"location"] &&
+                                  [dictionary[@"lat"] isKindOfClass:[NSNumber class]] &&
+                                  [dictionary[@"lon"] isKindOfClass:[NSNumber class]]);
+
+        if (isFriendLocation) {
+            NSDictionary *userInfo = @{
+                @"topic": device,
+                @"lat":   dictionary[@"lat"],
+                @"lon":   dictionary[@"lon"],
+                @"tst":   dictionary[@"tst"] ?: @(0),
+            };
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter]
+                    postNotificationName:@"OTLiveFriendLocation"
+                                  object:nil
+                                userInfo:userInfo];
+            });
+        } else {
+            // All other messages (cards, own-device messages, etc.) go through the normal path.
+            (void)[[OwnTracking sharedInstance] processMessage:topic
+                                                          data:data
+                                                      retained:retained
+                                                       context:CoreData.sharedInstance.queuedMOC];
+            if (ownDevice) {
+                if (dictionary) {
+                    if (type && [type isKindOfClass:[NSString class]]) {
+                        if ([type isEqualToString:@"cmd"]) {
+                            if ([Settings boolForKey:@"cmd_preference"
+                                               inMOC:CoreData.sharedInstance.queuedMOC]) {
+                                NSString *action = dictionary[@"action"];
+                                if (action && [action isKindOfClass:[NSString class]]) {
+                                    if ([action isEqualToString:@"dump"]) {
+                                        [strongSelf dump];
+
+                                    } else if ([action isEqualToString:@"status"]) {
+                                        [strongSelf status];
+
+                                    } else if ([action isEqualToString:@"reportLocation"]) {
+                                        if (([LocationManager sharedInstance].monitoring == LocationMonitoringSignificant ||
+                                            [LocationManager sharedInstance].monitoring == LocationMonitoringMove) &&
+                                            [Settings boolForKey:@"allowremotelocation_preference"
+                                                           inMOC:CoreData.sharedInstance.queuedMOC]) {
+                                            [strongSelf performSelectorOnMainThread:@selector(reportLocation)
+                                                                   withObject:nil
+                                                                waitUntilDone:NO];
+                                        }
+
+                                    } else if ([action isEqualToString:@"reportSteps"]) {
+                                        NSNumber *from = dictionary[@"from"];
+                                        NSNumber *to = dictionary[@"to"];
+                                        if ((!from || [from isKindOfClass:[NSNumber class]]) &&
+                                            (!to || [to isKindOfClass:[NSNumber class]])) {
+                                            [strongSelf stepsFrom:from to:to];
+                                        } else {
+                                            DDLogWarn(@"[OwnTracksAppDelegate] from and to must be numbers");
+                                        }
+
+                                    } else if ([action isEqualToString:@"waypoints"]) {
+                                        [strongSelf performSelectorOnMainThread:@selector(waypoints)
                                                                withObject:nil
                                                             waitUntilDone:NO];
-                                    }
-                                    
-                                } else if ([action isEqualToString:@"reportSteps"]) {
-                                    NSNumber *from = dictionary[@"from"];
-                                    NSNumber *to = dictionary[@"to"];
-                                    if ((!from || [from isKindOfClass:[NSNumber class]]) &&
-                                        (!to || [to isKindOfClass:[NSNumber class]])) {
-                                        [strongSelf stepsFrom:from to:to];
+
+                                    } else if ([action isEqualToString:@"setWaypoints"]) {
+                                        [strongSelf performSelectorOnMainThread:@selector(performSetWaypoints:)
+                                                               withObject:dictionary
+                                                            waitUntilDone:NO];
+
+                                    } else if ([action isEqualToString:@"clearWaypoints"]) {
+                                        [strongSelf performSelectorOnMainThread:@selector(performClearWaypoints:)
+                                                               withObject:dictionary
+                                                            waitUntilDone:NO];
+
+                                    } else if ([action isEqualToString:@"setConfiguration"]) {
+                                        [strongSelf performSelectorOnMainThread:@selector(performSetConfiguration:)
+                                                               withObject:dictionary
+                                                            waitUntilDone:NO];
+
+                                    } else if ([action isEqualToString:@"response"]) {
+                                        [strongSelf performSelectorOnMainThread:@selector(performResponse:)
+                                                               withObject:dictionary
+                                                            waitUntilDone:NO];
+
                                     } else {
-                                        DDLogWarn(@"[OwnTracksAppDelegate] from and to must be numbers");
+                                        DDLogWarn(@"[OwnTracksAppDelegate] unknown action %@", action);
                                     }
-                                    
-                                } else if ([action isEqualToString:@"waypoints"]) {
-                                    [strongSelf performSelectorOnMainThread:@selector(waypoints)
-                                                           withObject:nil
-                                                        waitUntilDone:NO];
-                                                                        
-                                } else if ([action isEqualToString:@"setWaypoints"]) {
-                                    [strongSelf performSelectorOnMainThread:@selector(performSetWaypoints:)
-                                                           withObject:dictionary
-                                                        waitUntilDone:NO];
-                                    
-                                } else if ([action isEqualToString:@"clearWaypoints"]) {
-                                    [strongSelf performSelectorOnMainThread:@selector(performClearWaypoints:)
-                                                           withObject:dictionary
-                                                        waitUntilDone:NO];
-                                    
-                                } else if ([action isEqualToString:@"setConfiguration"]) {
-                                    [strongSelf performSelectorOnMainThread:@selector(performSetConfiguration:)
-                                                           withObject:dictionary
-                                                        waitUntilDone:NO];
-                                    
-                                } else if ([action isEqualToString:@"response"]) {
-                                    [strongSelf performSelectorOnMainThread:@selector(performResponse:)
-                                                           withObject:dictionary
-                                                        waitUntilDone:NO];
-                                    
                                 } else {
-                                    DDLogWarn(@"[OwnTracksAppDelegate] unknown action %@", action);
+                                    DDLogWarn(@"[OwnTracksAppDelegate] no action in JSON");
                                 }
                             } else {
-                                DDLogWarn(@"[OwnTracksAppDelegate] no action in JSON");
+                                DDLogWarn(@"[OwnTracksAppDelegate] remote cmd not allowed");
                             }
                         } else {
-                            DDLogWarn(@"[OwnTracksAppDelegate] remote cmd not allowed");
+                            DDLogVerbose(@"[OwnTracksAppDelegate] unhandled _type (%@) in JSON", type);
                         }
                     } else {
-                        DDLogVerbose(@"[OwnTracksAppDelegate] unhandled _type (%@) in JSON", type);
+                        DDLogWarn(@"[OwnTracksAppDelegate] no _type in JSON");
                     }
                 } else {
-                    DDLogWarn(@"[OwnTracksAppDelegate] no _type in JSON");
+                    DDLogWarn(@"[OwnTracksAppDelegate] JSON is not an object");
                 }
-            } else {
-                DDLogWarn(@"[OwnTracksAppDelegate] JSON is not an object");
             }
         }
+
         @synchronized (strongSelf.inQueue) {
             strongSelf.inQueue = @((strongSelf.inQueue).unsignedLongValue - 1);
             if (strongSelf.inQueue.intValue == 0) {
@@ -2001,8 +2027,7 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                                     inMOC:moc];
         NSArray *subscriptions = [[NSArray alloc] init];
         if ([Settings boolForKey:@"sub_preference" inMOC:moc]) {
-            subscriptions = [[Settings theSubscriptionsInMOC:moc] componentsSeparatedByCharactersInSet:
-                             [NSCharacterSet whitespaceCharacterSet]];
+            subscriptions = [[Settings theSubscriptionsInMOC:moc] componentsSeparatedByString:@","];
         }
         
         self.connection.subscriptions = subscriptions;

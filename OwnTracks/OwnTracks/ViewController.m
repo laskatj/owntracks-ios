@@ -55,6 +55,10 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *friendRoutePolylines;
 /// Topics with an in-flight route fetch; used to cancel/ignore stale responses on deselect.
 @property (nonatomic, strong) NSMutableSet<NSString *> *pendingRouteTopics;
+/// Live MQTT track points (session-only), keyed by friend.topic.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
+/// Live MQTT track polyline overlays currently on the map, keyed by friend.topic.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
 @end
 
 
@@ -67,6 +71,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.warning = FALSE;
     self.friendRoutePolylines = [NSMutableDictionary dictionary];
     self.pendingRouteTopics = [NSMutableSet set];
+    self.liveTrackPoints = [NSMutableDictionary dictionary];
+    self.liveTrackPolylines = [NSMutableDictionary dictionary];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(liveFriendLocationUpdate:)
+                                                 name:@"OTLiveFriendLocation"
+                                               object:nil];
     self.mapView.delegate = self;
     self.mapView.mapType = MKMapTypeStandard;
     
@@ -827,6 +837,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
         [self fetchRouteForFriend:friend mapView:mapView];
+        [self setCenter:view.annotation];
     }
 }
 
@@ -1001,6 +1012,47 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
 }
 
+- (void)liveFriendLocationUpdate:(NSNotification *)note {
+    NSString *topic = note.userInfo[@"topic"];
+    double lat = [note.userInfo[@"lat"] doubleValue];
+    double lon = [note.userInfo[@"lon"] doubleValue];
+    CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
+    if (!CLLocationCoordinate2DIsValid(coord) || (lat == 0.0 && lon == 0.0)) return;
+
+    // Move the marker in place via KVO — no remove/readd, live track polyline is unaffected.
+    for (id<MKAnnotation> ann in self.mapView.annotations) {
+        if ([ann isKindOfClass:[Friend class]]) {
+            Friend *friend = (Friend *)ann;
+            if ([friend.topic isEqualToString:topic]) {
+                [friend setLiveCoordinate:coord];
+                break;
+            }
+        }
+    }
+
+    // Append new coordinate and replace the live track polyline.
+    if (!self.liveTrackPoints[topic]) {
+        self.liveTrackPoints[topic] = [NSMutableArray array];
+    }
+    [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
+
+    NSArray<NSValue *> *points = self.liveTrackPoints[topic];
+    CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
+    if (!coords) return;
+    for (NSUInteger i = 0; i < points.count; i++) {
+        coords[i] = [points[i] MKCoordinateValue];
+    }
+
+    MKPolyline *old = self.liveTrackPolylines[topic];
+    if (old) [self.mapView removeOverlay:old];
+    MKPolyline *updated = [MKPolyline polylineWithCoordinates:coords count:points.count];
+    free(coords);
+    self.liveTrackPolylines[topic] = updated;
+    [self.mapView addOverlay:updated];
+
+    DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)points.count);
+}
+
 - (NSFetchedResultsController *)frcFriends {
     if (!_frcFriends) {
         NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Friend"];
@@ -1112,13 +1164,28 @@ calloutAccessoryControlTapped:(UIControl *)control {
             case NSFetchedResultsChangeInsert:
                 if (waypoint && (waypoint.lat).doubleValue != 0.0 && (waypoint.lon).doubleValue != 0.0) {
                     [self.mapView addAnnotation:friend];
+                    // Seed the live track with the initial API position so the polyline has a start point.
+                    if (!self.liveTrackPoints[friend.topic]) {
+                        CLLocationCoordinate2D seed = friend.coordinate;
+                        if (CLLocationCoordinate2DIsValid(seed)) {
+                            self.liveTrackPoints[friend.topic] =
+                                [NSMutableArray arrayWithObject:[NSValue valueWithMKCoordinate:seed]];
+                        }
+                    }
                 }
                 break;
 
-            case NSFetchedResultsChangeDelete:
+            case NSFetchedResultsChangeDelete: {
                 [self.mapView removeOverlay:friend];
                 [self.mapView removeAnnotation:friend];
+                MKPolyline *liveTrack = self.liveTrackPolylines[friend.topic];
+                if (liveTrack) {
+                    [self.mapView removeOverlay:liveTrack];
+                    [self.liveTrackPolylines removeObjectForKey:friend.topic];
+                }
+                [self.liveTrackPoints removeObjectForKey:friend.topic];
                 break;
+            }
 
             case NSFetchedResultsChangeUpdate:
             case NSFetchedResultsChangeMove:
