@@ -758,7 +758,8 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
 - (void)startBackgroundTimer {
     if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground &&
-        [LocationManager sharedInstance].monitoring != LocationMonitoringMove) {
+        ([LocationManager sharedInstance].monitoring != LocationMonitoringMove ||
+         [LocationManager sharedInstance].backgroundWakeup)) {
         if (self.disconnectTimer && self.disconnectTimer.isValid) {
             DDLogVerbose(@"[OwnTracksAppDelegate] disconnectTimer.isValid %@",
                          self.disconnectTimer.fireDate);
