@@ -45,6 +45,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
 @property (copy, nonatomic) NSURL *oidcAuthorizationEndpointURL;
 @property (strong, nonatomic) UIButton *loginButton;
 @property (copy, nonatomic) NSString *pendingOIDCRedirectURI;  // React app's redirect_uri captured during passthrough
+@property (strong, nonatomic, nullable) NSDate *passthroughLastCompletedAt;  // set when passthrough delivers callback to WebView
 @end
 
 @implementation WebAppViewController
@@ -620,6 +621,20 @@ static const CGFloat kMapHeaderPadding = 6.0;
         return;
     }
 
+    // Extract the prompt parameter for logging and suppress-window checks.
+    NSString *promptValue = nil;
+    for (NSURLQueryItem *item in requestComponents.queryItems ?: @[]) {
+        if ([item.name isEqualToString:@"prompt"]) { promptValue = item.value; break; }
+    }
+
+    // Post-passthrough suppress window: if a passthrough just completed, cancel the next
+    // IdP navigation silently instead of starting another passthrough (which would show a
+    // second auth prompt). React either retries a silent renewal (prompt=none) — which it
+    // can handle via its own fallback — or it retried after a failed code exchange, in which
+    // case we avoid the looping double-prompt while we gather log data to diagnose the root cause.
+    BOOL inSuppressWindow = self.passthroughLastCompletedAt != nil &&
+        [[NSDate date] timeIntervalSinceDate:self.passthroughLastCompletedAt] < 30.0;
+
     // Intercept navigation to the IdP authorization endpoint. Proxy it through
     // ASWebAuthenticationSession (for SSO) then hand the code back to the React OIDC client.
     // The oidcAuthorizationEndpointURL path is specific to the sauron OIDC application, so
@@ -629,9 +644,14 @@ static const CGFloat kMapHeaderPadding = 6.0;
         [requestURL.host isEqualToString:self.oidcAuthorizationEndpointURL.host] &&
         (requestURL.scheme.length == 0 || [requestURL.scheme isEqualToString:self.oidcAuthorizationEndpointURL.scheme]) &&
         ([requestURL.path isEqualToString:self.oidcAuthorizationEndpointURL.path] || [requestURL.path hasPrefix:[self.oidcAuthorizationEndpointURL.path stringByAppendingString:@"/"]])) {
-        NSLog(@"AUTHDEBUG: → INTERCEPT IdP endpoint — native auth fallback (silent refresh or full PKCE)");
+        if (inSuppressWindow) {
+            NSLog(@"AUTHDEBUG: → SUPPRESS IdP endpoint (within 30s post-passthrough window, prompt=%@)", promptValue ?: @"(none)");
+            decisionHandler(WKNavigationActionPolicyCancel);
+            return;
+        }
+        NSLog(@"AUTHDEBUG: → INTERCEPT IdP endpoint — passthrough via ASWebAuthenticationSession (prompt=%@)", promptValue ?: @"(none)");
         decisionHandler(WKNavigationActionPolicyCancel);
-        [self startNativeAuthFallback];
+        [self startPassthroughAuthWithIdPURL:requestURL];
         return;
     }
 
@@ -663,9 +683,14 @@ static const CGFloat kMapHeaderPadding = 6.0;
         for (NSURLQueryItem *item in comps.queryItems) {
             if ([item.name isEqualToString:@"response_type"] &&
                 [item.value isEqualToString:@"code"]) {
-                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron) — native auth");
+                if (inSuppressWindow) {
+                    NSLog(@"AUTHDEBUG: → SUPPRESS external OIDC request (within 30s post-passthrough window, prompt=%@)", promptValue ?: @"(none)");
+                    decisionHandler(WKNavigationActionPolicyCancel);
+                    return;
+                }
+                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron, prompt=%@)", promptValue ?: @"(none)");
                 decisionHandler(WKNavigationActionPolicyCancel);
-                [self startNativeAuthFallback];
+                [self startPassthroughAuthWithIdPURL:requestURL];
                 return;
             }
         }
@@ -748,6 +773,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
             sself2.pendingOIDCRedirectURI = nil;
             sself2.placeholderLabel.hidden = YES;
             sself2.webView.hidden = NO;
+            sself2.passthroughLastCompletedAt = [NSDate date];
             [sself2.webView loadRequest:[NSURLRequest requestWithURL:reactCallbackURL]];
         });
     }];

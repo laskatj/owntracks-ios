@@ -32,6 +32,9 @@ static NSString * const kKeychainClientIdKey = @"client_id";
 @property (nonatomic, copy, nullable) NSString *pendingClientId;
 @property (nonatomic, copy, nullable) NSURL *pendingWebAppURL;
 @property (nonatomic, strong, nullable) ASWebAuthenticationSession *currentSession;
+// Per-account in-flight refresh coalescing: maps Keychain account key → array of pending completions.
+// Only one token exchange is started per account at a time; all concurrent callers share the result.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray *> *pendingRefreshCallbacks;
 @end
 
 @implementation WebAppAuthHelper
@@ -48,6 +51,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
 - (instancetype)init {
     self = [super init];
     if (self) {
+        _pendingRefreshCallbacks = [NSMutableDictionary dictionary];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleAuthCallbackURL:)
                                                      name:WebAppAuthCallbackURLNotification
@@ -620,6 +624,21 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         return;
     }
 
+    // Coalesce concurrent refresh requests for the same Keychain account.
+    // Authentik uses refresh-token rotation: each use invalidates the token. If two callers
+    // simultaneously POST the same token, one will get a 400 and delete the Keychain entry,
+    // causing spurious "No stored refresh token" failures on the next launch.
+    // Solution: only one in-flight exchange per account; latecomers queue their completion
+    // and receive the same result when the single request finishes.
+    NSString *accountKey = matchedAccount.length > 0 ? matchedAccount : [self originKeyForURL:webAppURL];
+    NSMutableArray *pending = self.pendingRefreshCallbacks[accountKey];
+    if (pending) {
+        DDLogInfo(@"[WebAppAuthHelper] Refresh already in flight for %@ — coalescing caller", accountKey);
+        [pending addObject:[completion copy]];
+        return;
+    }
+    self.pendingRefreshCallbacks[accountKey] = [NSMutableArray arrayWithObject:[completion copy]];
+
     DDLogInfo(@"[WebAppAuthHelper] Attempting silent refresh for account=%@", matchedAccount);
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:tokenEndpoint]];
     request.HTTPMethod = @"POST";
@@ -633,9 +652,17 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(wself) sself = wself;
             if (!sself) { completion(nil, nil); return; }
+
+            // Collect all coalesced completions before any early-return path.
+            NSArray *allCompletions = [sself.pendingRefreshCallbacks[accountKey] copy];
+            [sself.pendingRefreshCallbacks removeObjectForKey:accountKey];
+            void (^fireAll)(NSString *, NSError *) = ^(NSString *tok, NSError *err) {
+                for (WebAppAuthCompletion cb in allCompletions) { cb(tok, err); }
+            };
+
             if (error) {
                 DDLogWarn(@"[WebAppAuthHelper] Silent refresh network error: %@", error.localizedDescription);
-                completion(nil, nil);
+                fireAll(nil, nil);
                 return;
             }
             NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
@@ -646,12 +673,12 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                 } else {
                     [sself clearStoredTokensForOrigin:webAppURL];
                 }
-                completion(nil, nil);
+                fireAll(nil, nil);
                 return;
             }
             if (statusCode != 200) {
                 DDLogWarn(@"[WebAppAuthHelper] Silent refresh unexpected status %ld — will not clear token (may be transient)", (long)statusCode);
-                completion(nil, nil);
+                fireAll(nil, nil);
                 return;
             }
             id json = data.length > 0 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
@@ -659,14 +686,14 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             NSString *newRefreshToken = [json isKindOfClass:[NSDictionary class]] ? json[@"refresh_token"] : nil;
             if (!newAccessToken.length) {
                 DDLogWarn(@"[WebAppAuthHelper] Silent refresh response missing access_token");
-                completion(nil, nil);
+                fireAll(nil, nil);
                 return;
             }
             DDLogInfo(@"[WebAppAuthHelper] Silent refresh successful");
             // Update stored refresh token (servers often rotate them).
             NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
             [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forWebAppURL:webAppURL];
-            completion(newAccessToken, nil);
+            fireAll(newAccessToken, nil);
         });
     }] resume];
 }

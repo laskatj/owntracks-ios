@@ -630,8 +630,9 @@ static const NSUInteger kMaxWakeupEvents = 50;
             self.lastLocationWithMovement = location;
         }
         
+        NSTimeInterval timeThreshold = self.backgroundWakeup ? -60.0 : 0.0;
         if (self.lastUsedLocation &&
-            [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp] <= 0) {
+            [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp] <= timeThreshold) {
             continue;
         }
         

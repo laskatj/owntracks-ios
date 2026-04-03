@@ -112,6 +112,57 @@ All under `OwnTracks/OwnTracks/`:
 - Auth disabled by default for HTTP mode
 - Web App URL: `https://sauron.tlaska.com`
 
+## Move + SLC Fallback — Design & Known Challenges
+
+### Intent
+
+**Move mode** uses continuous high-accuracy GPS (`startUpdatingLocation`) while the app is in the foreground. When the app is backgrounded or killed, iOS suspends or terminates it — continuous GPS is no longer viable.
+
+**SLC fallback** (Significant Location Change) keeps tracking alive passively after the app is backgrounded: iOS wakes the app (or relaunches it) whenever it detects a significant location change (~500m displacement or cell tower change). The app publishes the wakeup location to MQTT, then immediately disconnects and lets itself be suspended again. This avoids the kill-wakeup-kill loop that would result from calling `startUpdatingLocation` in the background.
+
+### Code Pattern
+
+**`backgroundWakeup` flag** (`LocationManager.m`) is set to `YES` when the app is launched in the background via `UIApplicationLaunchOptionsLocationKey`. It gates all background-specific behavior:
+
+- `wakeup` method (`LocationManager.m`): if `backgroundWakeup`, suppress `startUpdatingLocation` and run SLC + Visit monitoring only (passive mode)
+- `publishLocation:` (`OwnTracksAppDelegate.m`): updates `+follow` geofence to current position on every publish
+- `startBackgroundTimer` (`LocationManager.m`): skipped when `applicationState == FOREGROUND` to avoid premature disconnect when app is actually open
+- `didUpdateLocations:` (`LocationManager.m`): applies a looser time filter (`-60.0s`) in backgroundWakeup mode to absorb iOS SLC timestamp jitter (see Known Issues)
+
+**Timer cascade on each background wakeup:**
+1. `holdTimer` fires after ~10s → triggers MQTT disconnect
+2. `bgTimer` polls every 1s checking if publish is complete
+3. `disconnectTimer` (25s safety net) force-disconnects if MQTT stalls
+
+### `+follow` Geofence
+
+A special geofence named with a `+` prefix (e.g., `+30`) is a "follow" region — it re-centers on the user's current location at every `publishLocation:` call (in `OwnTracksAppDelegate.m` lines ~1697–1715). The radius is `max(speed × time_seconds, 50m)`. This means the follow geofence always surrounds the user and triggers an SLC exit when they leave it — providing the next background wakeup even if iOS SLC doesn't fire independently.
+
+### Known Issues & Fixes Applied
+
+| Issue | Root Cause | Fix |
+|---|---|---|
+| First SLC location silently dropped | `lastUsedLocation` initialized to `[NSDate date]` at app launch; SLC timestamp predates launch | `lastUsedLocation` reset to `distantPast` in backgroundWakeup passive mode |
+| Second SLC silently dropped | iOS delivers SLC location with timestamp 43ms earlier than the previous `lastUsedLocation` due to jitter | Time filter in `didUpdateLocations:` uses threshold `-60.0s` when `backgroundWakeup==YES` instead of `0.0` |
+| MQTT never disconnects after first SLC | `startBackgroundTimer` was not called in background publish path | Added `startBackgroundTimer` call in background-aware publish path |
+| `LocationAPISyncService` runs during wakeup | Service starts on every app launch, including background relaunches, generating OAuth network activity during the short wakeup window | Known issue; not yet suppressed during backgroundWakeup |
+
+### Log Signature for Background Wakeup
+
+Healthy two-wakeup sequence looks like:
+```
+[OwnTracksAppDelegate] applicationDidFinishLaunching backgroundWakeup=1
+[LocationManager] Move mode: background wakeup - passive tracking only
+[LocationManager] Location#1: Δs:... delivered in BACKGROUND WAKEUP (passive SLC mode)
+[Connection] disconnectInBackground
+[OwnTracksAppDelegate] applicationDidFinishLaunching backgroundWakeup=1   ← second wakeup
+[LocationManager] Location#1: Δs:... delivered in BACKGROUND WAKEUP (passive SLC mode)
+```
+
+If `"BACKGROUND WAKEUP"` never appears after `Location#1`, the location was dropped by the time filter (`Δs:-0` in the log confirms jitter drop).
+
+---
+
 ## Recent Development Focus
 
 From git log (most recent first):
