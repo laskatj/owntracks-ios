@@ -86,6 +86,13 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         NSError *jsonError;
         id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError] : nil;
         if (![json isKindOfClass:[NSDictionary class]]) {
+            NSString *bodyPreview = (data.length > 0)
+                ? [[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(0, MIN(data.length, 200))]
+                                        encoding:NSUTF8StringEncoding]
+                : @"(empty body)";
+            DDLogWarn(@"[WebAppAuthHelper] owntracks-app-auth: JSON parse failed (status=%ld, body=%@)",
+                      (long)[(NSHTTPURLResponse *)response statusCode],
+                      bodyPreview ?: @"(non-UTF8 body)");
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, jsonError ?: [NSError errorWithDomain:@"WebAppAuthHelper" code:-3 userInfo:@{ NSLocalizedDescriptionKey: @"Invalid discovery JSON" }]);
             });
@@ -608,11 +615,24 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     NSString *matchedAccount = nil;
     NSDictionary *tokenData = [self loadTokenDataForWebAppURL:webAppURL clientId:clientId matchedAccount:&matchedAccount];
     if (!tokenData) {
-        DDLogInfo(@"[WebAppAuthHelper] No stored refresh token for %@", [self keychainAccountForWebAppURL:webAppURL clientId:clientId]);
+        DDLogInfo(@"[WebAppAuthHelper] REAUTH REASON: no stored refresh token found (checked account=%@) → will require full re-auth", [self keychainAccountForWebAppURL:webAppURL clientId:clientId]);
         completion(nil, nil);
         return;
     }
     [self performRefreshWithTokenData:tokenData forWebAppURL:webAppURL matchedAccount:matchedAccount completion:completion];
+}
+
+- (void)attemptSilentRefreshForWebAppURL:(NSURL *)webAppURL clientId:(NSString *)clientId tokenPairCompletion:(WebAppAuthTokenPairCompletion)completion {
+    __weak typeof(self) wself = self;
+    [self attemptSilentRefreshForWebAppURL:webAppURL clientId:clientId completion:^(NSString *accessToken, NSError *error) {
+        __strong typeof(wself) sself = wself;
+        if (!accessToken) { completion(nil, nil, error); return; }
+        // After a successful refresh, the rotated refresh token is already stored in Keychain.
+        // Read it back so we can pass it to the web app for independent renewal.
+        NSDictionary *tokenData = [sself loadTokenDataForWebAppURL:webAppURL clientId:clientId matchedAccount:nil];
+        NSString *refreshToken = tokenData[kKeychainRefreshTokenKey];
+        completion(accessToken, refreshToken, nil);
+    }];
 }
 
 - (void)performRefreshWithTokenData:(NSDictionary *)tokenData forWebAppURL:(NSURL *)webAppURL matchedAccount:(NSString *)matchedAccount completion:(WebAppAuthCompletion)completion {
@@ -620,6 +640,10 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     NSString *tokenEndpoint = tokenData[kKeychainTokenEndpointKey];
     NSString *clientId = tokenData[kKeychainClientIdKey];
     if (!refreshToken.length || !tokenEndpoint.length || !clientId.length) {
+        DDLogWarn(@"[WebAppAuthHelper] REAUTH REASON: stored token data incomplete — refresh_token=%@ token_endpoint=%@ client_id=%@ → forcing full re-auth",
+                  refreshToken.length ? @"present" : @"MISSING",
+                  tokenEndpoint.length ? @"present" : @"MISSING",
+                  clientId.length ? @"present" : @"MISSING");
         completion(nil, nil);
         return;
     }
@@ -661,13 +685,13 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             };
 
             if (error) {
-                DDLogWarn(@"[WebAppAuthHelper] Silent refresh network error: %@", error.localizedDescription);
+                DDLogWarn(@"[WebAppAuthHelper] REAUTH REASON: silent refresh network error → %@", error.localizedDescription);
                 fireAll(nil, nil);
                 return;
             }
             NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
             if (statusCode == 401 || statusCode == 400) {
-                DDLogInfo(@"[WebAppAuthHelper] Silent refresh rejected (%ld) — clearing stored token", (long)statusCode);
+                DDLogInfo(@"[WebAppAuthHelper] REAUTH REASON: silent refresh rejected (%ld) — refresh token expired or revoked, clearing stored token", (long)statusCode);
                 if (matchedAccount.length > 0) {
                     [sself deleteTokenForAccount:matchedAccount];
                 } else {
@@ -677,7 +701,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                 return;
             }
             if (statusCode != 200) {
-                DDLogWarn(@"[WebAppAuthHelper] Silent refresh unexpected status %ld — will not clear token (may be transient)", (long)statusCode);
+                DDLogWarn(@"[WebAppAuthHelper] REAUTH REASON: silent refresh unexpected status %ld — will not clear token (may be transient), but re-auth will be needed", (long)statusCode);
                 fireAll(nil, nil);
                 return;
             }
@@ -685,7 +709,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             NSString *newAccessToken = [json isKindOfClass:[NSDictionary class]] ? json[@"access_token"] : nil;
             NSString *newRefreshToken = [json isKindOfClass:[NSDictionary class]] ? json[@"refresh_token"] : nil;
             if (!newAccessToken.length) {
-                DDLogWarn(@"[WebAppAuthHelper] Silent refresh response missing access_token");
+                DDLogWarn(@"[WebAppAuthHelper] REAUTH REASON: silent refresh response missing access_token (status=%ld)", (long)statusCode);
                 fireAll(nil, nil);
                 return;
             }

@@ -1710,10 +1710,15 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                     anyRegion.radius = @(MAX(location.horizontalAccuracy, 50.0));
                 }
                 [[LocationManager sharedInstance] startRegion:anyRegion.CLregion];
+                [self sendRegion:anyRegion];
+                DDLogInfo(@"[OwnTracksAppDelegate] +follow waypoint published lat=%.4f lon=%.4f rad=%.0f",
+                          anyRegion.lat.doubleValue,
+                          anyRegion.lon.doubleValue,
+                          anyRegion.radius.doubleValue);
             }
         }
     }
-              
+
     friend.tid = [Settings stringForKey:@"trackerid_preference"
                                   inMOC:moc];
     
@@ -1967,9 +1972,14 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         MQTTQosLevel qos = [Settings intForKey:@"qos_preference"
                                          inMOC:moc];
         NSMutableDictionary *json = [[[OwnTracking sharedInstance] regionAsJSON:region] mutableCopy];
+        NSString *deviceId = [Settings theDeviceIdInMOC:moc];
+        if (deviceId.length > 0) {
+            json[@"rid"] = [NSString stringWithFormat:@"%@-%@", json[@"rid"], deviceId];
+            json[@"desc"] = [NSString stringWithFormat:@"%@-%@", json[@"desc"], deviceId];
+        }
         NSData *data = [self jsonToData:json];
         [self.connection sendData:data
-                            topic:[[Settings theGeneralTopicInMOC:moc] stringByAppendingString:@"/waypoint"]
+                            topic:@"owntracks/waypoints/"
                        topicAlias:@(7)
                               qos:qos
                            retain:NO];

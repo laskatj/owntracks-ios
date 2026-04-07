@@ -19,6 +19,10 @@ extern NSNotificationName const WebAppAuthCallbackURLNotification;
 /// Completion: accessToken if success, otherwise error. accessToken may be passed to backend native-callback.
 typedef void (^WebAppAuthCompletion)(NSString * _Nullable accessToken, NSError * _Nullable error);
 
+/// Completion: both accessToken and refreshToken if success, otherwise error.
+/// refreshToken is the rotated token from the same exchange — nil if not returned by server.
+typedef void (^WebAppAuthTokenPairCompletion)(NSString * _Nullable accessToken, NSString * _Nullable refreshToken, NSError * _Nullable error);
+
 @interface WebAppAuthHelper : NSObject
 
 + (instancetype)sharedInstance;
@@ -34,6 +38,11 @@ typedef void (^WebAppAuthCompletion)(NSString * _Nullable accessToken, NSError *
 - (void)attemptSilentRefreshForWebAppURL:(NSURL *)webAppURL
                                 clientId:(nullable NSString *)clientId
                               completion:(WebAppAuthCompletion)completion;
+
+/// Same as above but also returns the new refresh token so the web app can store it for independent renewal.
+- (void)attemptSilentRefreshForWebAppURL:(NSURL *)webAppURL
+                                clientId:(nullable NSString *)clientId
+                     tokenPairCompletion:(WebAppAuthTokenPairCompletion)completion;
 
 /// Clears any Keychain-stored refresh token data for the given origin.
 - (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin;

@@ -327,10 +327,9 @@ static LocationManager *theInstance = nil;
 
 - (CLLocation *)location {
     if (self.manager.location) {
-        _lastUsedLocation = self.manager.location;
-    } else {
-        DDLogVerbose(@"[LocationManager] location == nil");
+        return self.manager.location;
     }
+    DDLogVerbose(@"[LocationManager] location == nil");
     return self.lastUsedLocation;
 }
 
@@ -380,22 +379,6 @@ static LocationManager *theInstance = nil;
                  */
                 DDLogInfo(@"[LocationManager] Move mode: background wakeup - passive tracking only");
                 [self recordBackgroundWakeup];
-                /*
-                 * Reset lastUsedLocation timestamp to distantPast so the SLC event that
-                 * triggered this wakeup is not filtered out in didUpdateLocations.
-                 *
-                 * The triggering SLC location has a timestamp from BEFORE the app was
-                 * relaunched. didUpdateLocations skips any location whose timestamp is
-                 * not newer than lastUsedLocation, which was just initialised with
-                 * [NSDate date] (app launch time). Without this reset, the first — and
-                 * often only — SLC delivery is silently dropped and nothing is published.
-                 */
-                _lastUsedLocation = [[CLLocation alloc]
-                                     initWithCoordinate:CLLocationCoordinate2DMake(0, 0)
-                                     altitude:0
-                                     horizontalAccuracy:-1
-                                     verticalAccuracy:-1
-                                     timestamp:[NSDate distantPast]];
                 [self.manager startMonitoringSignificantLocationChanges];
                 [self.manager startMonitoringVisits];
                 DDLogInfo(@"[LocationManager] Move/passive: SLC started ✓, Visits started ✓, "
@@ -630,16 +613,35 @@ static const NSUInteger kMaxWakeupEvents = 50;
             self.lastLocationWithMovement = location;
         }
         
-        NSTimeInterval timeThreshold = self.backgroundWakeup ? -60.0 : 0.0;
-        if (self.lastUsedLocation &&
-            [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp] <= timeThreshold) {
-            continue;
-        }
-        
-        if (self.monitoring == LocationMonitoringMove &&
-            self.lastUsedLocation &&
-            [location distanceFromLocation:self.lastUsedLocation] < self.minDist) {
-            continue;
+        if (self.backgroundWakeup) {
+            // Freshly relaunched from termination — no meaningful lastUsedLocation baseline.
+            // iOS delivers the SLC trigger location directly here; we don't fetch it.
+            // Accept only locations captured within the last 5 minutes. Anything older
+            // is a stale iOS-cached position from a prior session.
+            NSTimeInterval age = -[location.timestamp timeIntervalSinceNow];
+            DDLogInfo(@"[LocationManager] Location#%d backgroundWakeup absoluteAge=%.0fs "
+                      @"relativeToLastUsed=%.0fs location=%@",
+                      count, age,
+                      self.lastUsedLocation
+                          ? [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp]
+                          : 0.0,
+                      [LocationManager CLLocationText:location]);
+            if (age > 300.0) {
+                DDLogInfo(@"[LocationManager] Location#%d DROPPED: stale SLC cache "
+                          @"(absoluteAge=%.0fs > 300s limit)", count, age);
+                continue;
+            }
+            // Skip distance filter: single-shot wakeup, no prior publish to compare against.
+        } else {
+            if (self.lastUsedLocation &&
+                [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp] <= 0.0) {
+                continue;
+            }
+            if (self.monitoring == LocationMonitoringMove &&
+                self.lastUsedLocation &&
+                [location distanceFromLocation:self.lastUsedLocation] < self.minDist) {
+                continue;
+            }
         }
 
         self.lastUsedLocation = location;

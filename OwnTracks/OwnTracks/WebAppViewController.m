@@ -56,6 +56,85 @@ static const CGFloat kMapHeaderPadding = 6.0;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     [config.userContentController addScriptMessageHandler:self name:kWebAppMessageHandlerName];
 
+    // Diagnostic script injected at document-start on every page (main frame and iframes).
+    // Captures: console output, CSP violations, Worker creation, React Router client-side
+    // navigation (pushState/replaceState), unhandled errors/rejections, and a sessionStorage
+    // snapshot taken BEFORE any page JS runs — proving whether OIDC user survives navigation.
+    NSString *diagJS =
+        @"(function(){"
+        "function _pm(level,msg){"
+        "  try{window.webkit.messageHandlers.owntracks.postMessage({type:'js_console',level:level,message:String(msg).substring(0,600)});}catch(e){}"
+        "}"
+        // --- storage snapshot at document-start (before React) — checks both SS and LS ---
+        "(function(){"
+        "  try{"
+        "    var ssKeys=[];try{ssKeys=Object.keys(sessionStorage);}catch(e){}"
+        "    var lsKeys=[];try{lsKeys=Object.keys(localStorage);}catch(e){}"
+        "    var oidcSS=ssKeys.find(function(k){return k.indexOf('oidc.')===0;});"
+        "    var oidcLS=lsKeys.find(function(k){return k.indexOf('oidc.')===0;});"
+        "    var raw=(oidcSS?sessionStorage.getItem(oidcSS):(oidcLS?localStorage.getItem(oidcLS):null));"
+        "    var exp=null;try{exp=raw?JSON.parse(raw).expires_at:null;}catch(e){}"
+        "    _pm('docstart','PATH='+location.pathname"
+        "      +' SS='+ssKeys.length+' LS='+lsKeys.length"
+        "      +' OIDC='+(oidcSS||oidcLS||'NONE')+(exp?' exp='+exp:'')"
+        "      +' NOW='+Math.floor(Date.now()/1000));"
+        "  }catch(e){_pm('docstart','STORAGE_ERROR: '+e);}"
+        "})();"
+        // --- console forwarding ---
+        "var _orig={};"
+        "['log','warn','error','info'].forEach(function(l){"
+        "  _orig[l]=console[l].bind(console);"
+        "  console[l]=function(){"
+        "    var msg=Array.prototype.slice.call(arguments).map(function(a){"
+        "      try{return typeof a==='object'?JSON.stringify(a):String(a);}catch(e){return '[obj]';}"
+        "    }).join(' ');"
+        "    _pm(l,msg);"
+        "    _orig[l].apply(console,arguments);"
+        "  };"
+        "});"
+        // --- unhandled JS errors ---
+        "window.addEventListener('error',function(e){"
+        "  _pm('jserror',e.message+' ('+e.filename+':'+e.lineno+')');"
+        "});"
+        "window.addEventListener('unhandledrejection',function(e){"
+        "  var r=e.reason;"
+        "  _pm('rejection',r&&r.message?r.message:String(r));"
+        "});"
+        // --- CSP violation events ---
+        "window.addEventListener('securitypolicyviolation',function(e){"
+        "  _pm('csp','violated='+e.violatedDirective+' blocked='+e.blockedURI);"
+        "});"
+        // --- React Router / history navigation intercept ---
+        "(function(){"
+        "  function _wrapHistory(method){"
+        "    var orig=history[method];"
+        "    history[method]=function(state,title,url){"
+        "      _pm('nav',method+': '+String(url));"
+        "      return orig.apply(this,arguments);"
+        "    };"
+        "  }"
+        "  _wrapHistory('pushState');"
+        "  _wrapHistory('replaceState');"
+        "  window.addEventListener('popstate',function(e){"
+        "    _pm('nav','popstate: '+location.pathname+location.search);"
+        "  });"
+        "})();"
+        // --- Worker construction interception ---
+        "var _OW=window.Worker;"
+        "if(_OW){"
+        "  window.Worker=function(url,opts){"
+        "    _pm('worker','new Worker: '+String(url).substring(0,120));"
+        "    return new _OW(url,opts);"
+        "  };"
+        "  window.Worker.prototype=_OW.prototype;"
+        "}"
+        "})();";
+    WKUserScript *diagScript = [[WKUserScript alloc]
+        initWithSource:diagJS
+         injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:NO];
+    [config.userContentController addUserScript:diagScript];
+
     self.webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
     self.webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.webView.navigationDelegate = self;
@@ -78,8 +157,8 @@ static const CGFloat kMapHeaderPadding = 6.0;
     if (self.tabBarItem.tag == 98) {
         [self setupMapHeader];
     }
-
-    [self loadWebAppURL];
+    // viewWillAppear always fires immediately after viewDidLoad on first appearance,
+    // so we do not call loadWebAppURL here to avoid a concurrent double-load.
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -369,10 +448,37 @@ static const CGFloat kMapHeaderPadding = 6.0;
                 BOOL onAppHost = currentHost && [currentHost isEqualToString:url.host];
                 BOOL onCallbackURL = [currentPath containsString:@"native-callback"];
                 if (onAppHost && !onCallbackURL) {
-                    NSLog(@"AUTHDEBUG: loadWebAppURL — skipping reload (already on app: %@)", self.webView.URL.absoluteString);
+                    NSLog(@"AUTHDEBUG%@: loadWebAppURL — skipping reload (already on app: %@)", [self _vcLabel], self.webView.URL.absoluteString);
                 } else {
-                    NSLog(@"AUTHDEBUG: loadWebAppURL — loading %@", finalURL.absoluteString);
-                    [self.webView loadRequest:[NSURLRequest requestWithURL:finalURL]];
+                    // Attempt a silent native token refresh before loading so the web app
+                    // receives a session cookie via /auth/native-callback immediately, rather
+                    // than relying on the React OIDC client's hidden-iframe silent renewal
+                    // (which we cannot intercept and which fails silently when there is no
+                    // existing Authentik session, leaving the page blank).
+                    NSLog(@"AUTHDEBUG%@: loadWebAppURL — attempting proactive native auth before load", [self _vcLabel]);
+                    NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
+                    NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference"
+                                                          inMOC:CoreData.sharedInstance.mainMOC];
+                    NSURL *capturedFinalURL = finalURL;
+                    __weak typeof(self) wself = self;
+                    [[WebAppAuthHelper sharedInstance]
+                        attemptSilentRefreshForWebAppURL:webAppURL
+                                               clientId:clientId.length > 0 ? clientId : nil
+                                    tokenPairCompletion:^(NSString *accessToken, NSString *refreshToken, NSError *error) {
+                        __strong typeof(wself) sself = wself;
+                        if (!sself) return;
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (accessToken.length > 0) {
+                                NSLog(@"AUTHDEBUG%@: loadWebAppURL — proactive silent refresh OK, loading via native-callback (refresh_token=%@)", [sself _vcLabel], refreshToken.length > 0 ? @"present" : @"none");
+                                [sself loadWebViewWithAccessToken:accessToken refreshToken:refreshToken];
+                            } else {
+                                NSLog(@"AUTHDEBUG%@: loadWebAppURL — no stored token, loading directly (React OIDC or login button will handle auth)", [sself _vcLabel]);
+                                NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:capturedFinalURL];
+                                [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
+                                [sself.webView loadRequest:req];
+                            }
+                        });
+                    }];
                 }
                 return;
             }
@@ -396,6 +502,11 @@ static const CGFloat kMapHeaderPadding = 6.0;
 }
 
 #pragma mark - OIDC helpers
+
+/// Short label for log lines so the two VC instances (web app tab vs map tab) are distinguishable.
+- (NSString *)_vcLabel {
+    return self.tabBarItem.tag == 98 ? @"[map]" : @"[web]";
+}
 
 - (void)setWebAppOriginFromURL:(NSURL *)url {
     NSURLComponents *c = [NSURLComponents new];
@@ -435,15 +546,15 @@ static const CGFloat kMapHeaderPadding = 6.0;
             if (config) {
                 id loginPath = config[@"login_path"];
                 sself.discoveryLoginPath = [loginPath isKindOfClass:[NSString class]] && [(NSString *)loginPath length] > 0 ? (NSString *)loginPath : @"/login";
-                NSLog(@"AUTHDEBUG: owntracks-app-auth discovery OK — login_path=%@", sself.discoveryLoginPath);
+                NSLog(@"AUTHDEBUG%@: owntracks-app-auth discovery OK — login_path=%@", [sself _vcLabel], sself.discoveryLoginPath);
             } else {
                 sself.discoveryLoginPath = nil;
-                NSLog(@"AUTHDEBUG: owntracks-app-auth discovery FAILED — %@", error.localizedDescription);
+                NSLog(@"AUTHDEBUG%@: owntracks-app-auth discovery FAILED — %@", [sself _vcLabel], error.localizedDescription);
             }
         });
     }];
     NSString *oidcURLString = [Settings stringForKey:@"oidc_discovery_url_preference" inMOC:CoreData.sharedInstance.mainMOC];
-    NSLog(@"AUTHDEBUG: oidc_discovery_url_preference=%@", oidcURLString.length > 0 ? oidcURLString : @"(not set)");
+    NSLog(@"AUTHDEBUG%@: oidc_discovery_url_preference=%@", [self _vcLabel], oidcURLString.length > 0 ? oidcURLString : @"(not set)");
     if (oidcURLString.length > 0) {
         NSURL *oidcURL = [NSURL URLWithString:oidcURLString];
         if (oidcURL) {
@@ -452,16 +563,16 @@ static const CGFloat kMapHeaderPadding = 6.0;
                     __strong typeof(wself) sself = wself;
                     if (!sself) return;
                     sself.oidcAuthorizationEndpointURL = authEndpointURL;
-                    NSLog(@"AUTHDEBUG: oidcAuthorizationEndpointURL set to %@", authEndpointURL.absoluteString ?: @"(nil — error)");
+                    NSLog(@"AUTHDEBUG%@: oidcAuthorizationEndpointURL set to %@", [sself _vcLabel], authEndpointURL.absoluteString ?: @"(nil — error)");
                 });
             }];
         } else {
             self.oidcAuthorizationEndpointURL = nil;
-            NSLog(@"AUTHDEBUG: oidc_discovery_url is invalid — oidcAuthorizationEndpointURL=nil");
+            NSLog(@"AUTHDEBUG%@: oidc_discovery_url is invalid — oidcAuthorizationEndpointURL=nil", [self _vcLabel]);
         }
     } else {
         self.oidcAuthorizationEndpointURL = nil;
-        NSLog(@"AUTHDEBUG: no oidc_discovery_url — IdP-host interception disabled, login-path only");
+        NSLog(@"AUTHDEBUG%@: no oidc_discovery_url — IdP-host interception disabled, login-path only", [self _vcLabel]);
     }
 }
 
@@ -470,7 +581,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
     [self startNativeAuthFallback];
 }
 
-- (void)loadWebViewWithAccessToken:(NSString *)accessToken {
+- (void)loadWebViewWithAccessToken:(NSString *)accessToken refreshToken:(nullable NSString *)refreshToken {
     if (!accessToken.length || !self.webAppOrigin) return;
     NSURL *base = self.webAppBaseURL ?: self.webAppOrigin;
     NSString *basePath = (base.path.length > 0 && ![base.path isEqualToString:@"/"]) ? base.path : @"";
@@ -479,10 +590,14 @@ static const CGFloat kMapHeaderPadding = 6.0;
         : @"/auth/native-callback";
     NSURLComponents *c = [NSURLComponents componentsWithURL:base resolvingAgainstBaseURL:NO];
     c.path = path;
-    c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:accessToken] ];
+    NSMutableArray *queryItems = [NSMutableArray arrayWithObject:[NSURLQueryItem queryItemWithName:@"access_token" value:accessToken]];
+    if (refreshToken.length > 0) {
+        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"refresh_token" value:refreshToken]];
+    }
+    c.queryItems = queryItems;
     NSURL *callbackURL = c.URL;
     if (!callbackURL) return;
-    NSLog(@"AUTHDEBUG: loadWebViewWithAccessToken → %@?access_token=<redacted>", [callbackURL.absoluteString componentsSeparatedByString:@"?"].firstObject);
+    NSLog(@"AUTHDEBUG%@: loadWebViewWithAccessToken → %@?access_token=<redacted>&refresh_token=%@", [self _vcLabel], [callbackURL.absoluteString componentsSeparatedByString:@"?"].firstObject, refreshToken.length > 0 ? @"<present>" : @"<none>");
     self.placeholderLabel.hidden = YES;
     self.webView.hidden = NO;
     [self.webView loadRequest:[NSURLRequest requestWithURL:callbackURL]];
@@ -501,6 +616,19 @@ static const CGFloat kMapHeaderPadding = 6.0;
     }
 
     NSString *type = body[@"type"];
+    if ([type isEqualToString:@"js_console"]) {
+        NSString *level = body[@"level"] ?: @"log";
+        NSString *jsMsg = body[@"message"] ?: @"";
+        NSLog(@"WEBDIAG%@[%@]: %@", [self _vcLabel], level, jsMsg);
+        return;
+    }
+    if ([type isEqualToString:@"native_callback_complete"]) {
+        // React's native-callback component has finished calling userManager.storeUser().
+        // Safe to navigate to the app URL now — OIDC client state is initialized.
+        NSLog(@"AUTHDEBUG%@: native_callback_complete received — navigating to app", [self _vcLabel]);
+        [self forceLoadWebAppURL];
+        return;
+    }
     if ([type isEqualToString:@"auth_tokens"]) {
         NSString *refreshToken = body[@"refresh_token"];
         NSString *tokenEndpoint = body[@"token_endpoint"];
@@ -549,16 +677,114 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
 #pragma mark - WKNavigationDelegate
 
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    NSLog(@"WEBDIAG%@: didStartProvisional url=%@", [self _vcLabel], webView.URL.absoluteString);
+}
+
+- (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
+    NSLog(@"WEBDIAG%@: didCommit url=%@", [self _vcLabel], webView.URL.absoluteString);
+}
+
+- (void)webView:(WKWebView *)webView didReceiveServerRedirectForProvisionalNavigation:(WKNavigation *)navigation {
+    NSLog(@"WEBDIAG%@: serverRedirect url=%@", [self _vcLabel], webView.URL.absoluteString);
+}
+
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     NSString *path = webView.URL.path ?: @"";
     NSString *query = webView.URL.query ?: @"";
-    NSLog(@"AUTHDEBUG: didFinishNavigation url=%@", webView.URL.absoluteString);
+    NSLog(@"AUTHDEBUG%@: didFinishNavigation url=%@", [self _vcLabel], webView.URL.absoluteString);
     if ([path containsString:@"native-callback"]) {
-        NSLog(@"AUTHDEBUG: native-callback finished — cookie set by response — forcing nav to app");
-        [self forceLoadWebAppURL];
+        // Cookie has been set by the server response. Do NOT navigate immediately — React's
+        // native-callback component must first call userManager.storeUser() to initialize the
+        // OIDC client's in-memory state before we load /map. React will send a
+        // native_callback_complete postMessage when storeUser() has resolved, and we navigate then.
+        NSLog(@"AUTHDEBUG%@: native-callback loaded — waiting for React storeUser (native_callback_complete postMessage)", [self _vcLabel]);
+    } else if ([path isEqualToString:@"/map"]) {
+        // Snapshot page state immediately after /map finishes loading.
+        // Returns a value directly to the completionHandler (does NOT use postMessage)
+        // so this works even if the message bridge is unavailable on this page.
+        NSLog(@"WEBDIAG%@: didFinishNavigation /map — running snapshot evaluateJavaScript", [self _vcLabel]);
+        NSString *snapshotJS =
+            @"(function(){"
+            "function _ssItem(k){try{return k?sessionStorage.getItem(k):null;}catch(e){return null;}}"
+            "function _lsItem(k){try{return k?localStorage.getItem(k):null;}catch(e){return null;}}"
+            "var ssKeys=[];try{ssKeys=Object.keys(sessionStorage);}catch(e){}"
+            "var lsKeys=[];try{lsKeys=Object.keys(localStorage);}catch(e){}"
+            "var oidcSS=ssKeys.find(function(k){return k.indexOf('oidc.user:')===0||k.indexOf('oidc.')===0;});"
+            "var oidcLS=lsKeys.find(function(k){return k.indexOf('oidc.user:')===0||k.indexOf('oidc.')===0;});"
+            "var oidcRaw=_ssItem(oidcSS)||_lsItem(oidcLS);"
+            "var oidcUser=null;"
+            "try{oidcUser=oidcRaw?JSON.parse(oidcRaw):null;}catch(e){}"
+            "var metaCSP=document.querySelector('meta[http-equiv=\"Content-Security-Policy\"]');"
+            "return JSON.stringify({"
+            "  url:location.href,"
+            "  ssKeys:ssKeys.length,"
+            "  lsKeys:lsKeys.length,"
+            "  oidcKey:oidcSS||oidcLS||null,"
+            "  oidcStorage:oidcSS?'session':(oidcLS?'local':'none'),"
+            "  oidcUserFound:!!oidcUser,"
+            "  oidcExpiresAt:oidcUser?oidcUser.expires_at:null,"
+            "  nowEpoch:Math.floor(Date.now()/1000),"
+            "  cspMetaTag:metaCSP?metaCSP.getAttribute('content').substring(0,200):'(none)',"
+            "  postMessageAvail:!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.owntracks)"
+            "});"
+            "})();";
+        __weak typeof(self) wself = self;
+        [webView evaluateJavaScript:snapshotJS completionHandler:^(id result, NSError *error) {
+            if (error) {
+                NSLog(@"WEBDIAG%@: snapshot evalJS FAILED: %@", [wself _vcLabel], error.localizedDescription);
+            } else {
+                NSLog(@"WEBDIAG%@: snapshot = %@", [wself _vcLabel], result);
+            }
+        }];
+        // 3 seconds after load: inspect the actual rendered DOM to see what React produced.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            __strong typeof(wself) sself = wself;
+            if (!sself || ![sself.webView.URL.path isEqualToString:@"/map"]) return;
+            NSString *domJS =
+                @"(function(){"
+                "var root=document.getElementById('root')||document.body;"
+                "var mapEl=document.querySelector('.maplibregl-map,.mapboxgl-map,[class*=\"map-container\"],[class*=\"MapContainer\"]');"
+                "var mapStyle=mapEl?window.getComputedStyle(mapEl):null;"
+                "var bodyStyle=window.getComputedStyle(document.body);"
+                "var bodyHTML=document.body?document.body.innerHTML.substring(0,600):null;"
+                "var scripts=document.querySelectorAll('script');"
+                "var scriptSrcs=[];"
+                "for(var i=0;i<Math.min(scripts.length,10);i++){"
+                "  var s=scripts[i];"
+                "  scriptSrcs.push(s.src?s.src.substring(s.src.lastIndexOf('/')+1).substring(0,60):'inline('+s.innerHTML.length+'b)')"
+                "}"
+                "return JSON.stringify({"
+                "  url:location.href,"
+                "  bodyChildCount:document.body?document.body.children.length:0,"
+                "  rootChildCount:root?root.children.length:0,"
+                "  rootHTML:root?root.innerHTML.substring(0,400):null,"
+                "  bodyHTML:bodyHTML,"
+                "  scriptCount:scripts.length,"
+                "  scriptSrcs:scriptSrcs,"
+                "  reactHook:typeof window.__REACT_DEVTOOLS_GLOBAL_HOOK__!=='undefined',"
+                "  reactRoot:typeof window._reactRootContainer!=='undefined',"
+                "  mapFound:!!mapEl,"
+                "  mapDisplay:mapStyle?mapStyle.display:null,"
+                "  mapWidth:mapEl?mapEl.offsetWidth:null,"
+                "  mapHeight:mapEl?mapEl.offsetHeight:null,"
+                "  bodyOverflow:bodyStyle.overflow,"
+                "  viewportH:window.innerHeight,"
+                "  viewportW:window.innerWidth"
+                "});"
+                "})();";
+            [sself.webView evaluateJavaScript:domJS completionHandler:^(id domResult, NSError *domError) {
+                if (domError) {
+                    NSLog(@"WEBDIAG%@: dom3s evalJS FAILED: %@", [wself _vcLabel], domError.localizedDescription);
+                } else {
+                    NSLog(@"WEBDIAG%@: dom3s = %@", [wself _vcLabel], domResult);
+                }
+            }];
+        });
     } else if ([query containsString:@"code="] && [query containsString:@"state="]) {
         // React OIDC callback — the React OIDC client will handle this itself. Do nothing.
-        NSLog(@"AUTHDEBUG: OIDC callback page loaded — React OIDC client will handle token exchange");
+        NSLog(@"AUTHDEBUG%@: OIDC callback page loaded — React OIDC client will handle token exchange", [self _vcLabel]);
     }
 }
 
@@ -569,7 +795,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
     NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
     NSURL *url = urlString.length > 0 ? [NSURL URLWithString:urlString] : nil;
     if (!url) {
-        NSLog(@"AUTHDEBUG: forceLoadWebAppURL — no web app URL configured");
+        NSLog(@"AUTHDEBUG%@: forceLoadWebAppURL — no web app URL configured", [self _vcLabel]);
         return;
     }
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
@@ -582,19 +808,23 @@ static const CGFloat kMapHeaderPadding = 6.0;
     components.path = path;
     components.queryItems = @[ [NSURLQueryItem queryItemWithName:@"embedded" value:@"1"] ];
     NSURL *finalURL = components.URL;
-    NSLog(@"AUTHDEBUG: forceLoadWebAppURL → %@", finalURL.absoluteString);
+    NSLog(@"AUTHDEBUG%@: forceLoadWebAppURL → %@", [self _vcLabel], finalURL.absoluteString);
     if (finalURL) {
-        [self.webView loadRequest:[NSURLRequest requestWithURL:finalURL]];
+        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:finalURL];
+        [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
+        [self.webView loadRequest:req];
     }
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *requestURL = navigationAction.request.URL;
 
-    NSLog(@"AUTHDEBUG: decidePolicyForNavigationAction scheme=%@ host=%@ path=%@ mainFrame=%@",
+    NSLog(@"AUTHDEBUG%@: decidePolicyForNavigationAction scheme=%@ host=%@ path=%@ mainFrame=%@",
+          [self _vcLabel],
           requestURL.scheme ?: @"(nil)", requestURL.host ?: @"(nil)", requestURL.path ?: @"(nil)",
           navigationAction.targetFrame.isMainFrame ? @"YES" : @"NO");
-    NSLog(@"AUTHDEBUG:   oidcEndpoint=%@ discoveryLoginPath=%@",
+    NSLog(@"AUTHDEBUG%@:   oidcEndpoint=%@ discoveryLoginPath=%@",
+          [self _vcLabel],
           self.oidcAuthorizationEndpointURL.absoluteString ?: @"(nil)",
           self.discoveryLoginPath ?: @"(nil)");
 
@@ -616,7 +846,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
         if ([item.name isEqualToString:@"state"] && item.value.length > 0) hasState = YES;
     }
     if (hasCode && hasState) {
-        NSLog(@"AUTHDEBUG: → ALLOW callback-style navigation with code/state");
+        NSLog(@"AUTHDEBUG%@: → ALLOW callback-style navigation with code/state", [self _vcLabel]);
         decisionHandler(WKNavigationActionPolicyAllow);
         return;
     }
@@ -645,11 +875,11 @@ static const CGFloat kMapHeaderPadding = 6.0;
         (requestURL.scheme.length == 0 || [requestURL.scheme isEqualToString:self.oidcAuthorizationEndpointURL.scheme]) &&
         ([requestURL.path isEqualToString:self.oidcAuthorizationEndpointURL.path] || [requestURL.path hasPrefix:[self.oidcAuthorizationEndpointURL.path stringByAppendingString:@"/"]])) {
         if (inSuppressWindow) {
-            NSLog(@"AUTHDEBUG: → SUPPRESS IdP endpoint (within 30s post-passthrough window, prompt=%@)", promptValue ?: @"(none)");
+            NSLog(@"AUTHDEBUG%@: → SUPPRESS IdP endpoint (within 30s post-passthrough window, prompt=%@)", [self _vcLabel], promptValue ?: @"(none)");
             decisionHandler(WKNavigationActionPolicyCancel);
             return;
         }
-        NSLog(@"AUTHDEBUG: → INTERCEPT IdP endpoint — passthrough via ASWebAuthenticationSession (prompt=%@)", promptValue ?: @"(none)");
+        NSLog(@"AUTHDEBUG%@: → INTERCEPT IdP endpoint — passthrough via ASWebAuthenticationSession (prompt=%@)", [self _vcLabel], promptValue ?: @"(none)");
         decisionHandler(WKNavigationActionPolicyCancel);
         [self startPassthroughAuthWithIdPURL:requestURL];
         return;
@@ -684,11 +914,11 @@ static const CGFloat kMapHeaderPadding = 6.0;
             if ([item.name isEqualToString:@"response_type"] &&
                 [item.value isEqualToString:@"code"]) {
                 if (inSuppressWindow) {
-                    NSLog(@"AUTHDEBUG: → SUPPRESS external OIDC request (within 30s post-passthrough window, prompt=%@)", promptValue ?: @"(none)");
+                    NSLog(@"AUTHDEBUG%@: → SUPPRESS external OIDC request (within 30s post-passthrough window, prompt=%@)", [self _vcLabel], promptValue ?: @"(none)");
                     decisionHandler(WKNavigationActionPolicyCancel);
                     return;
                 }
-                NSLog(@"AUTHDEBUG: → INTERCEPT external OIDC request (fallback, client_id matches sauron, prompt=%@)", promptValue ?: @"(none)");
+                NSLog(@"AUTHDEBUG%@: → INTERCEPT external OIDC request (fallback, client_id matches sauron, prompt=%@)", [self _vcLabel], promptValue ?: @"(none)");
                 decisionHandler(WKNavigationActionPolicyCancel);
                 [self startPassthroughAuthWithIdPURL:requestURL];
                 return;
@@ -704,20 +934,28 @@ static const CGFloat kMapHeaderPadding = 6.0;
         requestURL.path.length > 0) {
         NSString *loginPath = [self.discoveryLoginPath hasPrefix:@"/"] ? self.discoveryLoginPath : [@"/" stringByAppendingString:self.discoveryLoginPath];
         if ([requestURL.path isEqualToString:loginPath]) {
-            NSLog(@"AUTHDEBUG: → INTERCEPT login path '%@' — fallback native auth", loginPath);
+            NSLog(@"AUTHDEBUG%@: → INTERCEPT login path '%@' — fallback native auth", [self _vcLabel], loginPath);
             decisionHandler(WKNavigationActionPolicyCancel);
             [self startNativeAuthFallback];
             return;
         }
     }
 
-    NSLog(@"AUTHDEBUG: → ALLOW");
+    NSLog(@"AUTHDEBUG%@: → ALLOW", [self _vcLabel]);
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
 // Primary: proxy the React app's own OIDC redirect through ASWebAuthenticationSession for SSO,
 // then return the authorization code to the React OIDC client to complete its own token exchange.
+// This path is React-initiated — the web app redirected to the IdP; we proxy through ASWebAuth
+// so iOS can use SSO cookies. This is the expected auth flow (not a token refresh failure).
 - (void)startPassthroughAuthWithIdPURL:(NSURL *)idpURL {
+    NSURLComponents *_dbgComps = [NSURLComponents componentsWithURL:idpURL resolvingAgainstBaseURL:NO];
+    NSString *_dbgPrompt = nil;
+    for (NSURLQueryItem *item in _dbgComps.queryItems) {
+        if ([item.name isEqualToString:@"prompt"]) { _dbgPrompt = item.value; break; }
+    }
+    NSLog(@"AUTHDEBUG%@: startPassthroughAuth — REACT-INITIATED OIDC redirect (expected flow), prompt=%@", [self _vcLabel], _dbgPrompt ?: @"(not set — likely initial auth or expired session)");
     NSURLComponents *idpComponents = [NSURLComponents componentsWithURL:idpURL resolvingAgainstBaseURL:NO];
     NSString *originalRedirectURI = nil;
     NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
@@ -730,14 +968,14 @@ static const CGFloat kMapHeaderPadding = 6.0;
         }
     }
     if (!originalRedirectURI) {
-        NSLog(@"AUTHDEBUG: startPassthroughAuth — no redirect_uri in IdP URL, using fallback");
+        NSLog(@"AUTHDEBUG%@: startPassthroughAuth — no redirect_uri in IdP URL, using fallback", [self _vcLabel]);
         [self startNativeAuthFallback];
         return;
     }
     idpComponents.queryItems = items;
     NSURL *modifiedURL = idpComponents.URL;
     self.pendingOIDCRedirectURI = originalRedirectURI;
-    NSLog(@"AUTHDEBUG: startPassthroughAuth — originalRedirectURI=%@", originalRedirectURI);
+    NSLog(@"AUTHDEBUG%@: startPassthroughAuth — originalRedirectURI=%@", [self _vcLabel], originalRedirectURI);
 
     __weak typeof(self) wself = self;
     [[WebAppAuthHelper sharedInstance] startPassthroughSessionWithURL:modifiedURL
@@ -745,11 +983,11 @@ static const CGFloat kMapHeaderPadding = 6.0;
         __strong typeof(wself) sself = wself;
         if (!sself) return;
         if (error) {
-            NSLog(@"AUTHDEBUG: passthrough session error: %@", error.localizedDescription);
+            NSLog(@"AUTHDEBUG%@: passthrough session error: %@", [sself _vcLabel], error.localizedDescription);
             return;
         }
         if (!callbackURL) {
-            NSLog(@"AUTHDEBUG: passthrough session cancelled by user");
+            NSLog(@"AUTHDEBUG%@: passthrough session cancelled by user", [sself _vcLabel]);
             return;
         }
         // callbackURL = owntracks:///auth/callback?code=CODE&state=STATE&...
@@ -757,7 +995,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
         NSURLComponents *cb = [NSURLComponents componentsWithURL:callbackURL resolvingAgainstBaseURL:NO];
         NSURLComponents *reactCB = [NSURLComponents componentsWithString:sself.pendingOIDCRedirectURI];
         if (!reactCB) {
-            NSLog(@"AUTHDEBUG: passthrough — invalid pendingOIDCRedirectURI");
+            NSLog(@"AUTHDEBUG%@: passthrough — invalid pendingOIDCRedirectURI", [sself _vcLabel]);
             return;
         }
         NSMutableArray<NSURLQueryItem *> *reactItems = [NSMutableArray arrayWithArray:reactCB.queryItems ?: @[]];
@@ -766,7 +1004,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
         }
         reactCB.queryItems = reactItems;
         NSURL *reactCallbackURL = reactCB.URL;
-        NSLog(@"AUTHDEBUG: passthrough complete — loading React OIDC callback URL (code redacted)");
+        NSLog(@"AUTHDEBUG%@: passthrough complete — loading React OIDC callback URL (code redacted)", [sself _vcLabel]);
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(wself) sself2 = wself;
             if (!sself2) return;
@@ -785,7 +1023,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
     if (!self.webAppOrigin) return;
     NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
     NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
-    NSLog(@"AUTHDEBUG: startNativeAuthFallback — webAppURL=%@, checking for stored refresh token first", webAppURL.absoluteString);
+    NSLog(@"AUTHDEBUG%@: startNativeAuthFallback — webAppURL=%@, checking for stored refresh token first", [self _vcLabel], webAppURL.absoluteString);
     __weak typeof(self) wself = self;
     [[WebAppAuthHelper sharedInstance] attemptSilentRefreshForWebAppURL:webAppURL
                                                                clientId:clientId.length > 0 ? clientId : nil
@@ -793,17 +1031,19 @@ static const CGFloat kMapHeaderPadding = 6.0;
         __strong typeof(wself) sself = wself;
         if (!sself) return;
         if (accessToken.length > 0) {
-            NSLog(@"AUTHDEBUG: startNativeAuthFallback — silent refresh succeeded, skipping OAuth prompt");
-            [sself loadWebViewWithAccessToken:accessToken];
+            NSLog(@"AUTHDEBUG%@: startNativeAuthFallback — silent refresh succeeded, skipping OAuth prompt", [sself _vcLabel]);
+            [sself loadWebViewWithAccessToken:accessToken refreshToken:nil];
             return;
         }
-        NSLog(@"AUTHDEBUG: startNativeAuthFallback — no stored refresh token or refresh failed, starting full OAuth flow");
+        // See [WebAppAuthHelper] REAUTH REASON log above for why silent refresh returned nil.
+        NSLog(@"AUTHDEBUG%@: startNativeAuthFallback — silent refresh returned nil (see REAUTH REASON above), starting full OAuth flow", [sself _vcLabel]);
         [sself startFullNativeAuth];
     }];
 }
 
 - (void)startFullNativeAuth {
     if (!self.webAppOrigin) return;
+    NSLog(@"AUTHDEBUG%@: startFullNativeAuth — PRESENTING PROVIDER LOGIN UI (ASWebAuthenticationSession PKCE)", [self _vcLabel]);
     NSURL *oidcURL = nil;
     NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference" inMOC:CoreData.sharedInstance.mainMOC];
     NSString *oidcURLString = [Settings stringForKey:@"oidc_discovery_url_preference" inMOC:CoreData.sharedInstance.mainMOC];
@@ -820,20 +1060,22 @@ static const CGFloat kMapHeaderPadding = 6.0;
             if (!sself) return;
             if (!accessToken.length) {
                 // Auth failed or cancelled — force-reload to recover from any blank/stuck state.
-                NSLog(@"AUTHDEBUG: startFullNativeAuth — auth failed/cancelled, reloading web app");
+                NSLog(@"AUTHDEBUG%@: startFullNativeAuth — auth failed/cancelled, reloading web app", [sself _vcLabel]);
                 [sself forceLoadWebAppURL];
                 return;
             }
-            [sself loadWebViewWithAccessToken:accessToken];
+            [sself loadWebViewWithAccessToken:accessToken refreshToken:nil];
         });
     }];
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSLog(@"WEBDIAG%@: didFailNavigation url=%@ error=%@", [self _vcLabel], webView.URL.absoluteString, error.localizedDescription);
     DDLogWarn(@"[WebAppViewController] didFailNavigation: %@", error.localizedDescription);
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSLog(@"WEBDIAG%@: didFailProvisional url=%@ error=%@", [self _vcLabel], webView.URL.absoluteString, error.localizedDescription);
     DDLogWarn(@"[WebAppViewController] didFailProvisionalNavigation: %@", error.localizedDescription);
 }
 
@@ -841,7 +1083,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
 // After termination webView.URL still holds the last URL but the page is blank.
 // We must reload; without this the user sees a blank screen that never recovers.
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
-    NSLog(@"AUTHDEBUG: webViewWebContentProcessDidTerminate — reloading web app");
+    NSLog(@"AUTHDEBUG%@: webViewWebContentProcessDidTerminate — reloading web app", [self _vcLabel]);
     [self forceLoadWebAppURL];
 }
 
