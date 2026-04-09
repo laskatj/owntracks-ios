@@ -21,11 +21,13 @@ static BOOL       const kTVMQTTTLS       = NO;
 static BOOL       const kTVMQTTWS        = YES;
 
 // Broker credentials
-static NSString * const kTVMQTTUser      = @"laskatj";
-static NSString * const kTVMQTTPassword  = @"abelard9";
+static NSString * const kTVMQTTUser      = @"tomsdevices";
+static NSString * const kTVMQTTPassword  = @"$@EAG&22iuia9y";
 
 // Client ID shown in broker logs; must be unique per connected client
 static NSString * const kTVMQTTClientId  = @"sauron-tv";
 
-// Topic filter — subscribes to all users and devices
-static NSString * const kTVBaseTopic     = @"owntracks/+/+";
+// Topic filter — # matches all levels so we receive both location messages
+// (owntracks/user/device) and sub-topic messages like cards
+// (owntracks/user/device/info) and events (owntracks/user/device/event).
+static NSString * const kTVBaseTopic     = @"owntracks/#";

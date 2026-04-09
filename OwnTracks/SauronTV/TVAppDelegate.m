@@ -10,6 +10,8 @@
 
 #import "TVAppDelegate.h"
 #import "TVMapViewController.h"
+#import "TVFriendsViewController.h"
+#import "TVFriendStore.h"
 #import "TVHardcodedConfig.h"
 
 #import <mqttc/MQTTNWTransport.h>
@@ -21,6 +23,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 @interface TVAppDelegate ()
 @property (strong, nonatomic) MQTTSession *mqttSession;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSData *> *cardImages;
 @property (nonatomic) BOOL intentionalDisconnect;
 @end
 
@@ -33,10 +36,25 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     DDLogInfo(@"[TVAppDelegate] didFinishLaunchingWithOptions");
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    TVMapViewController *mapVC = [[TVMapViewController alloc] init];
-    self.window.rootViewController = mapVC;
+
+    TVMapViewController     *mapVC     = [[TVMapViewController alloc] init];
+    TVFriendsViewController *friendsVC = [[TVFriendsViewController alloc] init];
+
+    mapVC.tabBarItem = [[UITabBarItem alloc]
+        initWithTitle:@"Map"
+                image:[UIImage systemImageNamed:@"map"]
+                  tag:0];
+    friendsVC.tabBarItem = [[UITabBarItem alloc]
+        initWithTitle:@"Friends"
+                image:[UIImage systemImageNamed:@"person.2"]
+                  tag:1];
+
+    UITabBarController *tabs  = [[UITabBarController alloc] init];
+    tabs.viewControllers      = @[mapVC, friendsVC];
+    self.window.rootViewController = tabs;
     [self.window makeKeyAndVisible];
 
+    [[TVFriendStore shared] start];
     [self connectMQTT];
     return YES;
 }
@@ -63,6 +81,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     session.protocolLevel     = MQTTProtocolVersion311;
     session.delegate          = self;
 
+    self.cardImages = [NSMutableDictionary dictionary];
     self.mqttSession = session;
     self.intentionalDisconnect = NO;
     [session connectWithConnectHandler:nil];
@@ -144,32 +163,82 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (![json isKindOfClass:[NSDictionary class]]) return YES;
 
     NSDictionary *dict = json;
-    if (![@"location" isEqualToString:dict[@"_type"]]) return YES;
+    NSString *type = dict[@"_type"];
+    DDLogInfo(@"[TVAppDelegate] MQTT message topic=%@ _type=%@", topic, type ?: @"(null)");
 
-    NSNumber *lat = dict[@"lat"];
-    NSNumber *lon = dict[@"lon"];
-    if (![lat isKindOfClass:[NSNumber class]] || ![lon isKindOfClass:[NSNumber class]]) return YES;
+    if ([type isEqualToString:@"location"]) {
+        NSNumber *lat = dict[@"lat"];
+        NSNumber *lon = dict[@"lon"];
+        if (![lat isKindOfClass:[NSNumber class]] || ![lon isKindOfClass:[NSNumber class]]) return YES;
 
-    NSString *tid = dict[@"tid"];
-    NSString *label = (tid && tid.length) ? tid : [topic lastPathComponent];
+        NSString *tid = dict[@"tid"];
+        NSString *label = (tid && tid.length) ? tid : [topic lastPathComponent];
 
-    NSDictionary *info = @{
-        @"topic": topic,
-        @"lat":   lat,
-        @"lon":   lon,
-        @"tst":   dict[@"tst"] ?: @(0),
-        @"label": label,
-    };
+        NSDictionary *info = @{
+            @"topic": topic,
+            @"lat":   lat,
+            @"lon":   lon,
+            @"tst":   dict[@"tst"] ?: @(0),
+            @"label": label,
+        };
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSNotificationCenter defaultCenter]
-            postNotificationName:@"OTLiveFriendLocation"
-                          object:nil
-                        userInfo:info];
-    });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:@"OTLiveFriendLocation"
+                              object:nil
+                            userInfo:info];
+        });
 
-    DDLogInfo(@"[TVAppDelegate] location %@ lat=%.5f lon=%.5f",
-              topic, lat.doubleValue, lon.doubleValue);
+        DDLogInfo(@"[TVAppDelegate] location %@ lat=%.5f lon=%.5f",
+                  topic, lat.doubleValue, lon.doubleValue);
+
+    } else if ([type isEqualToString:@"card"]) {
+        // Card messages arrive on <base>/info; normalize to the base device topic
+        // so the image key matches the location-message key used in TVMapViewController.
+        static NSSet *subtopics;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            subtopics = [NSSet setWithObjects:@"info", @"event", @"waypoints", @"waypoint", @"status", @"cmd", nil];
+        });
+        NSString *baseTopic = [[topic lastPathComponent] isEqual:subtopics.anyObject] || [subtopics containsObject:[topic lastPathComponent]]
+            ? [topic stringByDeletingLastPathComponent]
+            : topic;
+
+        NSString *cardName = dict[@"name"];
+        DDLogInfo(@"[TVAppDelegate] card received topic=%@ baseTopic=%@ name=%@",
+                  topic, baseTopic, cardName ?: @"(none)");
+
+        NSString *face    = dict[@"face"];
+        NSData   *imgData = nil;
+        if (face.length) {
+            imgData = [[NSData alloc] initWithBase64EncodedString:face options:0];
+            if (imgData) {
+                self.cardImages[baseTopic] = imgData;
+                DDLogInfo(@"[TVAppDelegate] card %@ decoded imageBytes=%lu",
+                          baseTopic, (unsigned long)imgData.length);
+            } else {
+                DDLogInfo(@"[TVAppDelegate] card %@ face base64 decode failed", baseTopic);
+            }
+        }
+
+        // Post whenever we have at least a name or an image.
+        if (cardName.length || imgData) {
+            NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:baseTopic forKey:@"topic"];
+            if (imgData)       payload[@"imageData"] = imgData;
+            if (cardName.length) payload[@"name"]    = cardName;
+            DDLogInfo(@"[TVAppDelegate] posting OTFriendCard for %@ name=%@ hasImage=%@",
+                      baseTopic, cardName ?: @"-", imgData ? @"YES" : @"NO");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter]
+                    postNotificationName:@"OTFriendCard"
+                                  object:nil
+                                userInfo:[payload copy]];
+                });
+        }
+    } else {
+        DDLogInfo(@"[TVAppDelegate] ignoring _type=%@ on %@", type ?: @"(null)", topic);
+    }
+
     return YES;
 }
 

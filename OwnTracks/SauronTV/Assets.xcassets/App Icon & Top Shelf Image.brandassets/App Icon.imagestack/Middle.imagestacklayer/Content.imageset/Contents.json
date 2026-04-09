@@ -1,16 +1,18 @@
 {
-  "images" : [
+  "images": [
     {
-      "idiom" : "tv",
-      "scale" : "1x"
+      "filename": "SauronTV-400x240.png",
+      "idiom": "tv",
+      "scale": "1x"
     },
     {
-      "idiom" : "tv",
-      "scale" : "2x"
+      "filename": "SauronTV-800x480.png",
+      "idiom": "tv",
+      "scale": "2x"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   }
 }

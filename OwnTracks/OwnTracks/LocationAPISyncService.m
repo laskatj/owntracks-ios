@@ -165,6 +165,16 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
         if (gLocationAPIOAuthPromptScheduledThisSession) {
             return;
         }
+        // Only present interactive auth when the app is truly foreground-active.
+        // Background wakeups (SLC, geofence) are too short-lived to host an
+        // ASWebAuthenticationSession — presenting causes applicationWillTerminate
+        // within milliseconds, killing the auth flow before a token is stored.
+        // Do NOT set the flag so the prompt can retry on the next poll when active.
+        UIApplicationState appState = [UIApplication sharedApplication].applicationState;
+        if (appState != UIApplicationStateActive) {
+            DDLogInfo(@"[LocationAPISyncService] Skipping OAuth prompt — app not active (state=%ld); will retry when foregrounded", (long)appState);
+            return;
+        }
         // Set flag immediately to prevent concurrent re-entrant calls during the async pre-check.
         // Will be reset to NO only if the prompt itself fails with a transient error.
         gLocationAPIOAuthPromptScheduledThisSession = YES;

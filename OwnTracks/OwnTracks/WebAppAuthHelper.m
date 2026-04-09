@@ -691,11 +691,22 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             }
             NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
             if (statusCode == 401 || statusCode == 400) {
-                DDLogInfo(@"[WebAppAuthHelper] REAUTH REASON: silent refresh rejected (%ld) — refresh token expired or revoked, clearing stored token", (long)statusCode);
-                if (matchedAccount.length > 0) {
-                    [sself deleteTokenForAccount:matchedAccount];
-                } else {
-                    [sself clearStoredTokensForOrigin:webAppURL];
+                // Only wipe the Keychain entry when the app is foreground-active.
+                // A background wakeup hitting a 401 (expired token, server restart, clock skew)
+                // would otherwise silently erase the credential with no chance for the user
+                // to re-auth in that same session, leaving the app in an unrecoverable state
+                // until a manual foreground sign-in. In background, preserve the entry so the
+                // next foreground launch can present the sign-in prompt instead.
+                BOOL isForeground = ([UIApplication sharedApplication].applicationState == UIApplicationStateActive);
+                DDLogInfo(@"[WebAppAuthHelper] REAUTH REASON: silent refresh rejected (%ld) — refresh token expired or revoked%@",
+                          (long)statusCode,
+                          isForeground ? @", clearing Keychain entry" : @" (background — preserving Keychain entry for foreground re-auth)");
+                if (isForeground) {
+                    if (matchedAccount.length > 0) {
+                        [sself deleteTokenForAccount:matchedAccount];
+                    } else {
+                        [sself clearStoredTokensForOrigin:webAppURL];
+                    }
                 }
                 fireAll(nil, nil);
                 return;
