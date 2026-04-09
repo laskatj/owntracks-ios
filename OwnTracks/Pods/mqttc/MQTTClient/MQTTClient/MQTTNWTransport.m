@@ -43,7 +43,7 @@ API_AVAILABLE(ios(13.0), macos(10.15))
 
     DDLogVerbose(@"[MQTTNWTransport] task");
     if (self.ws) {
-        NSString *urlString = [NSString stringWithFormat:@"ws%@://%@:%u/mqtt",
+        NSString *urlString = [NSString stringWithFormat:@"ws%@://%@:%u/ws",
                                self.tls ? @"s": @"",
                                self.host,
                                (unsigned int)self.port];

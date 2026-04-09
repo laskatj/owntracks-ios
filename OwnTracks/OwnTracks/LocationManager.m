@@ -24,6 +24,9 @@
 @property (strong, nonatomic) NSMutableArray *rangedBeacons;
 @property (strong, nonatomic) NSTimer *backgroundTimer;
 @property (strong, nonatomic) NSUserDefaults *sharedUserDefaults;
+@property (nonatomic) BOOL awaitingFreshWakeupLocation;
+@property (nonatomic) BOOL requestedFreshWakeupLocation;
+@property (strong, nonatomic) NSDate *freshWakeupRequestedAt;
 
 @property (nonatomic) CLAuthorizationStatus locationManagerAuthorizationStatus;
 
@@ -47,6 +50,8 @@
 
 #define BACKGROUND_STOP_AFTER 5.0 // seconds
 #define ASSUME_NO_MOTION 0.05 // meters per second (0.05 m/sec is 180 m/hour)
+static const NSTimeInterval kWakeupLocationMaxAge = 30.0; // seconds
+static const CLLocationAccuracy kWakeupLocationMaxHorizontalAccuracy = 200.0; // meters
 
 @implementation PendingRegionEvent
 
@@ -379,6 +384,9 @@ static LocationManager *theInstance = nil;
                  */
                 DDLogInfo(@"[LocationManager] Move mode: background wakeup - passive tracking only");
                 [self recordBackgroundWakeup];
+                self.awaitingFreshWakeupLocation = NO;
+                self.requestedFreshWakeupLocation = NO;
+                self.freshWakeupRequestedAt = nil;
                 [self.manager startMonitoringSignificantLocationChanges];
                 [self.manager startMonitoringVisits];
                 DDLogInfo(@"[LocationManager] Move/passive: SLC started ✓, Visits started ✓, "
@@ -420,9 +428,12 @@ static LocationManager *theInstance = nil;
             [self.manager startMonitoringVisits];
             if (self.backgroundWakeup) {
                 [self recordBackgroundWakeup];
+                self.awaitingFreshWakeupLocation = NO;
+                self.requestedFreshWakeupLocation = NO;
+                self.freshWakeupRequestedAt = nil;
             }
             break;
-            
+
         case LocationMonitoringManual:
         case LocationMonitoringQuiet:
         default:
@@ -614,25 +625,58 @@ static const NSUInteger kMaxWakeupEvents = 50;
         }
         
         if (self.backgroundWakeup) {
-            // Freshly relaunched from termination — no meaningful lastUsedLocation baseline.
-            // iOS delivers the SLC trigger location directly here; we don't fetch it.
-            // Accept only locations captured within the last 5 minutes. Anything older
-            // is a stale iOS-cached position from a prior session.
+            BOOL fromFreshAcquisition = self.awaitingFreshWakeupLocation;
             NSTimeInterval age = -[location.timestamp timeIntervalSinceNow];
-            DDLogInfo(@"[LocationManager] Location#%d backgroundWakeup absoluteAge=%.0fs "
-                      @"relativeToLastUsed=%.0fs location=%@",
-                      count, age,
+            BOOL hasValidAccuracy = location.horizontalAccuracy >= 0.0;
+            BOOL isRecentEnough = age <= kWakeupLocationMaxAge;
+            BOOL isAccurateEnough = hasValidAccuracy &&
+                                    location.horizontalAccuracy <= kWakeupLocationMaxHorizontalAccuracy;
+            BOOL isFreshEnoughForRequest = !fromFreshAcquisition ||
+                                           !self.freshWakeupRequestedAt ||
+                                           [location.timestamp timeIntervalSinceDate:self.freshWakeupRequestedAt] >= -2.0;
+
+            DDLogInfo(@"[LocationManager] Location#%d backgroundWakeup source=%@ age=%.0fs acc=%.0fm "
+                      @"appState=%ld relativeToLastUsed=%.0fs location=%@",
+                      count,
+                      fromFreshAcquisition ? @"fresh-acquisition" : @"slc-trigger",
+                      age,
+                      location.horizontalAccuracy,
+                      (long)[UIApplication sharedApplication].applicationState,
                       self.lastUsedLocation
                           ? [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp]
                           : 0.0,
                       [LocationManager CLLocationText:location]);
-            if (age > 300.0) {
-                DDLogInfo(@"[LocationManager] Location#%d DROPPED: stale SLC cache "
-                          @"(absoluteAge=%.0fs > 300s limit)", count, age);
+
+            if (!(isRecentEnough && isAccurateEnough && isFreshEnoughForRequest)) {
+                DDLogInfo(@"[LocationManager] Location#%d REJECTED source=%@ reason="
+                          @"recent=%d accurate=%d freshSinceRequest=%d age=%.0fs acc=%.0fm requestAt=%@",
+                          count,
+                          fromFreshAcquisition ? @"fresh-acquisition" : @"slc-trigger",
+                          isRecentEnough,
+                          isAccurateEnough,
+                          isFreshEnoughForRequest,
+                          age,
+                          location.horizontalAccuracy,
+                          self.freshWakeupRequestedAt);
+
+                if (!fromFreshAcquisition && !self.requestedFreshWakeupLocation) {
+                    self.requestedFreshWakeupLocation = YES;
+                    self.awaitingFreshWakeupLocation = YES;
+                    self.freshWakeupRequestedAt = [NSDate date];
+                    DDLogInfo(@"[LocationManager] Location#%d requesting fresh location fix after SLC trigger",
+                              count);
+                    [self.manager requestLocation];
+                }
                 continue;
             }
+            self.awaitingFreshWakeupLocation = NO;
+            self.requestedFreshWakeupLocation = NO;
+            self.freshWakeupRequestedAt = nil;
             // Skip distance filter: single-shot wakeup, no prior publish to compare against.
         } else {
+            self.awaitingFreshWakeupLocation = NO;
+            self.requestedFreshWakeupLocation = NO;
+            self.freshWakeupRequestedAt = nil;
             if (self.lastUsedLocation &&
                 [location.timestamp timeIntervalSinceDate:self.lastUsedLocation.timestamp] <= 0.0) {
                 continue;
@@ -927,4 +971,3 @@ didFailRangingBeaconsForConstraint:(CLBeaconIdentityConstraint *)beaconConstrain
 }
 
 @end
-

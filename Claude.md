@@ -138,6 +138,8 @@ All under `OwnTracks/OwnTracks/`:
 
 A special geofence named with a `+` prefix (e.g., `+30`) is a "follow" region — it re-centers on the user's current location at every `publishLocation:` call (in `OwnTracksAppDelegate.m` lines ~1697–1715). The radius is `max(speed × time_seconds, 50m)`. This means the follow geofence always surrounds the user and triggers an SLC exit when they leave it — providing the next background wakeup even if iOS SLC doesn't fire independently.
 
+**Critical gap:** `regionEvent:enter:NO` in `OwnTracksAppDelegate.m` (line ~1005) skips the publish for +follow exits when `monitoring == LocationMonitoringMove`. In foreground this is intentional (continuous GPS produces its own updates). But in `backgroundWakeup` mode this is wrong — the +follow geofence exit IS the wakeup trigger, and the app wakes, does nothing, and goes back to sleep without publishing. This means a large fraction of background wakes in Move+backgroundWakeup mode produce no location update at all. The fix is to also publish on +follow exit when `backgroundWakeup == YES`.
+
 ### Known Issues & Fixes Applied
 
 | Issue | Root Cause | Fix |
@@ -146,6 +148,7 @@ A special geofence named with a `+` prefix (e.g., `+30`) is a "follow" region �
 | Second SLC silently dropped | iOS delivers SLC location with timestamp 43ms earlier than the previous `lastUsedLocation` due to jitter | Time filter in `didUpdateLocations:` uses threshold `-60.0s` when `backgroundWakeup==YES` instead of `0.0` |
 | MQTT never disconnects after first SLC | `startBackgroundTimer` was not called in background publish path | Added `startBackgroundTimer` call in background-aware publish path |
 | `LocationAPISyncService` runs during wakeup | Service starts on every app launch, including background relaunches, generating OAuth network activity during the short wakeup window | Known issue; not yet suppressed during backgroundWakeup |
+| +follow geofence exit silently dropped in Move+backgroundWakeup | `regionEvent:enter:NO` skips publish when `monitoring == Move`; designed for foreground but wrong for backgroundWakeup where the geofence IS the wakeup source | **Not yet fixed** — condition at `OwnTracksAppDelegate.m:1005` must also allow publish when `backgroundWakeup == YES` |
 
 ### Log Signature for Background Wakeup
 

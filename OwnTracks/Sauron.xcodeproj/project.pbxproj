@@ -3,10 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		57E3949B2D59334DA7CC5B0E /* Pods_SauronTV.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8A7BDCE89FD144BB55060A0 /* Pods_SauronTV.framework */; };
 		6F96424309D0FAF52D234D4E /* Pods_Sauron.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 193A11F6D1065D89670EB00E /* Pods_Sauron.framework */; };
 		84001C141C78982800413E5B /* Queue+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 84001C111C78982800413E5B /* Queue+CoreDataProperties.m */; };
 		8400D9731D83825E00DEA134 /* HTTP.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8400D9721D83825E00DEA134 /* HTTP.plist */; };
@@ -150,6 +151,12 @@
 		0A2FDE06B0FB716EB485F358 /* Pods_OwnTracksWrist_WatchKit_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OwnTracksWrist_WatchKit_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B595FED5262D658D7AB357A /* Pods-Sauron.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sauron.release.xcconfig"; path = "Target Support Files/Pods-Sauron/Pods-Sauron.release.xcconfig"; sourceTree = "<group>"; };
 		193A11F6D1065D89670EB00E /* Pods_Sauron.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sauron.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		22CE19B52F85686200532809 /* SauronTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SauronTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		22CE19FA2F86C86000532809 /* TVAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TVAppDelegate.h; sourceTree = "<group>"; };
+		22CE19FB2F86C86000532809 /* TVAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TVAppDelegate.m; sourceTree = "<group>"; };
+		22CE19FC2F86C86000532809 /* TVHardcodedConfig.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TVHardcodedConfig.h; sourceTree = "<group>"; };
+		22CE19FD2F86C86000532809 /* TVMapViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TVMapViewController.h; sourceTree = "<group>"; };
+		22CE19FE2F86C86000532809 /* TVMapViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TVMapViewController.m; sourceTree = "<group>"; };
 		3BB208567F97092FB552528E /* Pods-OwnTracksWrist WatchKit Extension.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit Extension.release.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit Extension/Pods-OwnTracksWrist WatchKit Extension.release.xcconfig"; sourceTree = "<group>"; };
 		794B1518CFE4BFD07F305FFB /* Pods-OwnTracks.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracks.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.debug.xcconfig"; sourceTree = "<group>"; };
 		84001C0D1C78729200413E5B /* iAd.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = iAd.framework; path = System/Library/Frameworks/iAd.framework; sourceTree = SDKROOT; };
@@ -406,11 +413,36 @@
 		B1AC89FB2E2FDF3700E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B1AC89FD2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		B1AC89FE2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B23BF478C2DF040EB8AA1F21 /* Pods-SauronTV.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SauronTV.release.xcconfig"; path = "Target Support Files/Pods-SauronTV/Pods-SauronTV.release.xcconfig"; sourceTree = "<group>"; };
+		B8A7BDCE89FD144BB55060A0 /* Pods_SauronTV.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SauronTV.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA827F68D1E69AEA6BCC7251 /* Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit Extension/Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; sourceTree = "<group>"; };
 		BB060471B4BDB6B94FD6C4A2 /* Pods-OwnTracksWrist WatchKit App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit App.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit App/Pods-OwnTracksWrist WatchKit App.debug.xcconfig"; sourceTree = "<group>"; };
+		D21323BDD036B442B6FA625E /* Pods-SauronTV.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SauronTV.debug.xcconfig"; path = "Target Support Files/Pods-SauronTV/Pods-SauronTV.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		22CE19CD2F85686300532809 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 22CE19B42F85686200532809 /* SauronTV */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		22CE19B62F85686200532809 /* SauronTV */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (22CE19CD2F85686300532809 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SauronTV; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		22CE19B22F85686200532809 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				57E3949B2D59334DA7CC5B0E /* Pods_SauronTV.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8411B825189FDB140019D2D6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -464,6 +496,8 @@
 				96DD60728B6E7C01CD032AF5 /* Pods-OwnTracksWrist WatchKit App.release.xcconfig */,
 				A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */,
 				0B595FED5262D658D7AB357A /* Pods-Sauron.release.xcconfig */,
+				D21323BDD036B442B6FA625E /* Pods-SauronTV.debug.xcconfig */,
+				B23BF478C2DF040EB8AA1F21 /* Pods-SauronTV.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -474,6 +508,7 @@
 				8411B833189FDB140019D2D6 /* OwnTracks */,
 				843A57A824A9A4D600A5441B /* OwnTracksIntents */,
 				8456D0A32B55749E003A45D4 /* OwnTracksTests */,
+				22CE19B62F85686200532809 /* SauronTV */,
 				8411B82A189FDB140019D2D6 /* Frameworks */,
 				8411B829189FDB140019D2D6 /* Products */,
 				4148677DEE4BDFE13E9AF63F /* Pods */,
@@ -486,6 +521,7 @@
 				8411B828189FDB140019D2D6 /* Sauron.app */,
 				843A57A724A9A4D600A5441B /* SauronIntents.appex */,
 				8456D0A22B55749E003A45D4 /* SauronTests.xctest */,
+				22CE19B52F85686200532809 /* SauronTV.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -524,6 +560,7 @@
 				84D3072E1ACD644500FACB9E /* NotificationCenter.framework */,
 				0A2FDE06B0FB716EB485F358 /* Pods_OwnTracksWrist_WatchKit_App.framework */,
 				193A11F6D1065D89670EB00E /* Pods_Sauron.framework */,
+				B8A7BDCE89FD144BB55060A0 /* Pods_SauronTV.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -531,6 +568,11 @@
 		8411B833189FDB140019D2D6 /* OwnTracks */ = {
 			isa = PBXGroup;
 			children = (
+				22CE19FA2F86C86000532809 /* TVAppDelegate.h */,
+				22CE19FB2F86C86000532809 /* TVAppDelegate.m */,
+				22CE19FC2F86C86000532809 /* TVHardcodedConfig.h */,
+				22CE19FD2F86C86000532809 /* TVMapViewController.h */,
+				22CE19FE2F86C86000532809 /* TVMapViewController.m */,
 				8411B897189FEB790019D2D6 /* assets */,
 				8411B867189FE1ED0019D2D6 /* coredata */,
 				8411B83C189FDB140019D2D6 /* OwnTracksAppDelegate.h */,
@@ -738,6 +780,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		22CE19B42F85686200532809 /* SauronTV */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 22CE19CE2F85686300532809 /* Build configuration list for PBXNativeTarget "SauronTV" */;
+			buildPhases = (
+				BB1D63EB4B9001B156AF7FAA /* [CP] Check Pods Manifest.lock */,
+				22CE19B12F85686200532809 /* Sources */,
+				22CE19B22F85686200532809 /* Frameworks */,
+				22CE19B32F85686200532809 /* Resources */,
+				E3908CA711D5A1033E8B04E6 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				22CE19B62F85686200532809 /* SauronTV */,
+			);
+			name = SauronTV;
+			productName = SauronTV;
+			productReference = 22CE19B52F85686200532809 /* SauronTV.app */;
+			productType = "com.apple.product-type.application";
+		};
 		8411B827189FDB140019D2D6 /* Sauron */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8411B85A189FDB140019D2D6 /* Build configuration list for PBXNativeTarget "Sauron" */;
@@ -809,6 +873,9 @@
 				LastUpgradeCheck = 2640;
 				ORGANIZATIONNAME = OwnTracks;
 				TargetAttributes = {
+					22CE19B42F85686200532809 = {
+						CreatedOnToolsVersion = 26.4;
+					};
 					8411B827189FDB140019D2D6 = {
 						LastSwiftMigration = 1150;
 						SystemCapabilities = {
@@ -868,11 +935,19 @@
 				8411B827189FDB140019D2D6 /* Sauron */,
 				843A57A624A9A4D600A5441B /* SauronIntents */,
 				8456D0A12B55749E003A45D4 /* SauronTests */,
+				22CE19B42F85686200532809 /* SauronTV */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		22CE19B32F85686200532809 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8411B826189FDB140019D2D6 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -976,6 +1051,28 @@
 			shellScript = "
 ";
 		};
+		BB1D63EB4B9001B156AF7FAA /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-SauronTV-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		E1F1C1838DEABD333F5AC82C /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -997,9 +1094,37 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Sauron/Pods-Sauron-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		E3908CA711D5A1033E8B04E6 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-SauronTV/Pods-SauronTV-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-SauronTV/Pods-SauronTV-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SauronTV/Pods-SauronTV-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		22CE19B12F85686200532809 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8411B824189FDB140019D2D6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1206,6 +1331,96 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		22CE19CB2F85686300532809 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D21323BDD036B442B6FA625E /* Pods-SauronTV.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SauronTV/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Debug;
+		};
+		22CE19CC2F85686300532809 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B23BF478C2DF040EB8AA1F21 /* Pods-SauronTV.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = CFR426ZH5P;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SauronTV/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
 		8411B858189FDB140019D2D6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1578,6 +1793,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		22CE19CE2F85686300532809 /* Build configuration list for PBXNativeTarget "SauronTV" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				22CE19CB2F85686300532809 /* Debug */,
+				22CE19CC2F85686300532809 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8411B823189FDB140019D2D6 /* Build configuration list for PBXProject "Sauron" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

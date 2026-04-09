@@ -1003,7 +1003,11 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 [self publishLocation:[LocationManager sharedInstance].location trigger:@"c" withPOI:nil withImage:nil withImageName:nil];
             }
         } else {
-            if ([LocationManager sharedInstance].monitoring != LocationMonitoringMove) {
+            // +follow geofence exit: publish if not in Move foreground mode.
+            // In backgroundWakeup, Move mode is passive SLC-only — the +follow exit IS
+            // the wakeup trigger, so we must publish here just like SLC mode would.
+            if ([LocationManager sharedInstance].monitoring != LocationMonitoringMove
+                || [LocationManager sharedInstance].backgroundWakeup) {
                 [self publishLocation:[LocationManager sharedInstance].location trigger:@"C" withPOI:nil withImage:nil withImageName:nil];
             }
         }

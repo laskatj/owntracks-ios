@@ -1,0 +1,3 @@
+${PODS_ROOT}/Target Support Files/Pods-SauronTV/Pods-SauronTV-frameworks.sh
+${BUILT_PRODUCTS_DIR}/CocoaLumberjack-tvOS/CocoaLumberjack.framework
+${BUILT_PRODUCTS_DIR}/mqttc-tvOS/mqttc.framework

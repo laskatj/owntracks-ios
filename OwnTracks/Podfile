@@ -12,6 +12,13 @@ pod 'DSJSONSchemaValidation'
 pod 'Sodium'
 end
 
+target 'SauronTV' do
+  platform :tvos, '16.0'
+  pod 'mqttc/MinL', :git => 'https://github.com/ckrey/mqttc.git'
+  pod 'CocoaLumberjack'
+  # ABStaticTableViewController intentionally omitted — tvOS only
+end
+
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
@@ -19,6 +26,16 @@ post_install do |installer|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
       end
     end
+  end
+
+  # MQTTNWTransport uses /mqtt as the WebSocket path but Mosquitto's
+  # default WS listener uses /ws.  Patch the pod source so the path
+  # survives future `pod install` runs.
+  transport = 'Pods/mqttc/MQTTClient/MQTTClient/MQTTNWTransport.m'
+  if File.exist?(transport)
+    content = File.read(transport)
+    patched = content.gsub('"ws%@://%@:%u/mqtt"', '"ws%@://%@:%u/ws"')
+    File.write(transport, patched) if patched != content
   end
 end
 
