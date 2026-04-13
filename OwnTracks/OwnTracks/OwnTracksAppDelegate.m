@@ -1969,7 +1969,7 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
 }
 
 - (void)sendRegion:(Region *)region {
-    DDLogInfo(@"[OwnTracksAppDelegate] sendRegion %@", region);
+    DDLogDebug(@"[OwnTracksAppDelegate] sendRegion %@", region);
     NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
     
     if ([Settings validIdsInMOC:moc]) {

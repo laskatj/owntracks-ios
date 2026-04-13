@@ -150,7 +150,7 @@ static OwnTracking *theInstance = nil;
         }
         NSDate *timestamp = [NSDate dateWithTimeIntervalSince1970:tst.doubleValue];
         if (friend.lastLocation && [friend.lastLocation compare:timestamp] != NSOrderedAscending) {
-            DDLogInfo(@"[OwnTracking] skipped location for friend %@ @%@ (not newer)",
+            DDLogDebug(@"[OwnTracking] skipped location for friend %@ @%@ (not newer)",
                       friend.topic, timestamp);
             return;
         }

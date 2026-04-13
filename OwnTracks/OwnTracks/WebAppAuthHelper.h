@@ -27,6 +27,13 @@ typedef void (^WebAppAuthTokenPairCompletion)(NSString * _Nullable accessToken, 
 
 + (instancetype)sharedInstance;
 
+/// Decodes the JWT payload segment (base64url). Does NOT verify the signature — for logging/expiry checks only.
+/// Returns nil if the token is not a 3-part JWT or the payload is not valid JSON.
++ (nullable NSDictionary *)jwtPayloadClaimsFromToken:(NSString *)token;
+
+/// Returns a human-readable lifetime summary from JWT claims, e.g. "iat=Apr 12 21:53 exp=Jun 11 21:53 59d 23h remaining".
++ (NSString *)jwtLifetimeSummaryFromClaims:(nullable NSDictionary *)claims;
+
 /// Attempts a silent token refresh using a previously stored refresh token for the given origin.
 /// Calls completion with a new access token on success, or nil if no stored token / refresh failed.
 /// On failure the stored tokens for this origin are cleared so the next call goes through full auth.

@@ -224,6 +224,42 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [ad status];
 }
 
+- (IBAction)publishLogsPressed:(UIButton *)sender {
+    OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+
+    NSArray<DDLogFileInfo *> *logFiles = [ad.fl.logFileManager sortedLogFileInfos];
+    if (logFiles.count == 0) {
+        [NavigationController alert:NSLocalizedString(@"Publish Logs", @"Publish Logs")
+                            message:NSLocalizedString(@"No log file found", @"No log file found")
+                       dismissAfter:2];
+        return;
+    }
+
+    NSError *error;
+    NSString *logContent = [NSString stringWithContentsOfFile:logFiles.firstObject.filePath
+                                                     encoding:NSUTF8StringEncoding
+                                                        error:&error];
+    if (!logContent || error) {
+        DDLogError(@"publishLogsPressed: failed to read log file: %@", error);
+        return;
+    }
+
+    NSString *topic = [[Settings theGeneralTopicInMOC:[CoreData sharedInstance].mainMOC]
+                       stringByAppendingString:@"/logs"];
+    [ad.connection sendData:[logContent dataUsingEncoding:NSUTF8StringEncoding]
+                      topic:topic
+                 topicAlias:nil
+                        qos:0
+                     retain:NO];
+
+    // Roll the log file so subsequent writes go to a new empty file
+    [ad.fl rollLogFileWithCompletionBlock:nil];
+
+    [NavigationController alert:NSLocalizedString(@"Publish Logs", @"Publish Logs")
+                        message:NSLocalizedString(@"Log file published and cleared", @"Log file published and cleared")
+                   dismissAfter:2];
+}
+
 - (IBAction)webPressed:(UIButton *)sender {
     [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://owntracks.org"]
                                        options:@{}

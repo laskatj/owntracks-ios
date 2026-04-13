@@ -55,6 +55,18 @@ static NSString * const kPinId = @"FriendPin";
     DDLogInfo(@"[TVMapViewController] viewDidLoad");
 }
 
+- (BOOL)canBecomeFirstResponder { return YES; }
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self becomeFirstResponder];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self resignFirstResponder];
+}
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
@@ -87,7 +99,11 @@ static NSString * const kPinId = @"FriendPin";
         TVFriendAnnotation *ann = self.annotations[topic];
         if (ann) {
             CLLocationCoordinate2D coord = [self coordForTopic:topic store:store];
-            ann.coordinate = coord;
+            [UIView animateWithDuration:0.5
+                                  delay:0
+                                options:UIViewAnimationOptionCurveLinear
+                             animations:^{ ann.coordinate = coord; }
+                             completion:nil];
             ann.subtitle   = store.friendTimes[topic];
             if (self.selectedTopic && [topic isEqualToString:self.selectedTopic]) {
                 [self.mapView setCenterCoordinate:coord animated:YES];
@@ -147,6 +163,30 @@ static NSString * const kPinId = @"FriendPin";
     [self.mapView setVisibleMapRect:rect
                         edgePadding:UIEdgeInsetsMake(80, 80, 80, 80)
                            animated:YES];
+}
+
+#pragma mark - D-pad zoom
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    if (!self.selectedTopic) { [super pressesBegan:presses withEvent:event]; return; }
+    BOOL handled = NO;
+    for (UIPress *press in presses) {
+        if (press.type == UIPressTypeUpArrow)   { [self adjustZoom:YES]; handled = YES; }
+        if (press.type == UIPressTypeDownArrow) { [self adjustZoom:NO];  handled = YES; }
+    }
+    if (!handled) [super pressesBegan:presses withEvent:event];
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    [super pressesEnded:presses withEvent:event];
+}
+
+- (void)adjustZoom:(BOOL)zoomIn {
+    MKCoordinateRegion region = self.mapView.region;
+    double factor = zoomIn ? 0.5 : 2.0;
+    region.span.latitudeDelta  = MAX(0.001, MIN(region.span.latitudeDelta  * factor, 90.0));
+    region.span.longitudeDelta = MAX(0.001, MIN(region.span.longitudeDelta * factor, 180.0));
+    [self.mapView setRegion:region animated:YES];
 }
 
 #pragma mark - MKMapViewDelegate

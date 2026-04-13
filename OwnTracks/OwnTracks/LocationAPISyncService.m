@@ -56,6 +56,8 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 @property (nonatomic, copy, nullable) NSString *cachedOAuthClientIdFromDiscovery;
 /// Most recent access token used for GET /api/location; reused for device image fetches.
 @property (nonatomic, copy, nullable) NSString *cachedAccessToken;
+/// Unix timestamp (exp claim) of cachedAccessToken. Zero means unknown/uncached.
+@property (nonatomic) NSTimeInterval cachedAccessTokenExpiry;
 - (void)scheduleInteractiveOAuthIfNoTokenAfterFailure;
 /// OAuth stores refresh tokens under `keychainAccountForWebAppURL` using discovery `client_id` from `/.well-known/owntracks-app-auth`, not necessarily Settings `oauth_client_id_preference`. Try discovery id first, then settings, then nil lookup.
 - (void)trySilentRefreshWithCandidates:(NSArray<NSURL *> *)candidates
@@ -142,11 +144,22 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 
     self.fetchInFlight = YES;
     __weak typeof(self) wself = self;
-    [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable accessToken) {
+
+    // Use the cached access token if it still has >60 seconds of life remaining.
+    // This avoids a refresh-grant POST to Authentik on every 60-second poll — with
+    // token rotation enabled (Authentik threshold=seconds=0), unnecessary calls rotate
+    // the refresh token each time, creating race conditions between concurrent callers
+    // (WebApp tab, background wakeup processes) that share the same Keychain entry.
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSString *preCachedToken = nil;
+    if (self.cachedAccessToken.length > 0 && self.cachedAccessTokenExpiry > now + 60.0) {
+        preCachedToken = self.cachedAccessToken;
+        DDLogVerbose(@"[LocationAPISyncService] Reusing cached access token (exp in %.0fs)", self.cachedAccessTokenExpiry - now);
+    }
+
+    void (^withToken)(NSString *) = ^(NSString *accessToken) {
         __strong typeof(wself) sself = wself;
-        if (!sself) {
-            return;
-        }
+        if (!sself) return;
         if (!accessToken.length) {
             DDLogInfo(@"[LocationAPISyncService] Skipping GET /api/location — no access token. "
                       @"Sign in once via a Web tab (embedded map/friends) so a refresh token is stored, "
@@ -156,7 +169,15 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
             return;
         }
         [sself performGET:apiURL accessToken:accessToken allowRetryOn401:YES];
-    }];
+    };
+
+    if (preCachedToken) {
+        withToken(preCachedToken);
+    } else {
+        [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable accessToken) {
+            withToken(accessToken);
+        }];
+    }
 }
 
 /// Presents the same PKCE flow as the Web tab when there is no Keychain refresh token, so GET /api/location can run. At most once per cold start.
@@ -375,6 +396,8 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 
 - (void)performGET:(NSURL *)apiURL accessToken:(NSString *)accessToken allowRetryOn401:(BOOL)allowRetryOn401 {
     self.cachedAccessToken = accessToken;
+    NSDictionary *atClaims = [WebAppAuthHelper jwtPayloadClaimsFromToken:accessToken];
+    self.cachedAccessTokenExpiry = [atClaims[@"exp"] doubleValue]; // 0 if opaque/missing
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:apiURL];
     request.HTTPMethod = @"GET";
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
@@ -394,6 +417,9 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
         }
         NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
         if (status == 401 && allowRetryOn401) {
+            // Invalidate the cached token so the retry path always gets a fresh one.
+            sself.cachedAccessToken = nil;
+            sself.cachedAccessTokenExpiry = 0;
             [sself obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
                 __strong typeof(wself) sself2 = wself;
                 if (!sself2) {

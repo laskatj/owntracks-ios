@@ -231,6 +231,43 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     return base64;
 }
 
+/// Decodes the JWT payload segment (base64url). Does NOT verify the signature — for logging only.
++ (nullable NSDictionary *)jwtPayloadClaimsFromToken:(NSString *)token {
+    if (!token.length) return nil;
+    NSArray<NSString *> *parts = [token componentsSeparatedByString:@"."];
+    if (parts.count < 2) return nil;
+    NSMutableString *b64 = [parts[1] mutableCopy];
+    [b64 replaceOccurrencesOfString:@"-" withString:@"+" options:0 range:NSMakeRange(0, b64.length)];
+    [b64 replaceOccurrencesOfString:@"_" withString:@"/" options:0 range:NSMakeRange(0, b64.length)];
+    while (b64.length % 4 != 0) [b64 appendString:@"="];
+    NSData *data = [[NSData alloc] initWithBase64EncodedString:b64 options:0];
+    if (!data) return nil;
+    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [obj isKindOfClass:[NSDictionary class]] ? obj : nil;
+}
+
+/// Returns a human-readable lifetime summary from JWT claims, e.g. "iat=Apr 12 21:53 exp=Jun 11 21:53 59d 23h remaining".
++ (NSString *)jwtLifetimeSummaryFromClaims:(nullable NSDictionary *)claims {
+    if (![claims isKindOfClass:[NSDictionary class]]) return @"(not a JWT or undecodable)";
+    NSTimeInterval iat = [claims[@"iat"] doubleValue];
+    NSTimeInterval exp = [claims[@"exp"] doubleValue];
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"MMM d HH:mm";
+    NSString *iatStr = iat > 0 ? [fmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:iat]] : @"iat=?";
+    NSString *expStr = exp > 0 ? [fmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:exp]] : @"exp=?";
+    NSString *remainStr = @"";
+    if (exp > 0) {
+        NSTimeInterval rem = exp - now;
+        if (rem > 0) {
+            remainStr = [NSString stringWithFormat:@"%.0fd %.0fh remaining", floor(rem / 86400.0), fmod(floor(rem / 3600.0), 24.0)];
+        } else {
+            remainStr = [NSString stringWithFormat:@"EXPIRED %.0fd %.0fh ago", floor(-rem / 86400.0), fmod(floor(-rem / 3600.0), 24.0)];
+        }
+    }
+    return [NSString stringWithFormat:@"iat=%@ exp=%@ %@", iatStr, expStr, remainStr];
+}
+
 - (NSString *)generateState {
     NSMutableData *data = [NSMutableData dataWithLength:16];
     int result = SecRandomCopyBytes(kSecRandomDefault, 16, data.mutableBytes);
@@ -304,7 +341,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         if (error) {
             if (error.domain == ASWebAuthenticationSessionErrorDomain && error.code == ASWebAuthenticationSessionErrorCodeCanceledLogin) {
                 DDLogInfo(@"[WebAppAuthHelper] User canceled");
-                [sself finishWithError:nil];
+                [sself finishWithError:error]; // pass cancel error so callers can distinguish cancel from transient failure
             } else {
                 [sself finishWithError:error];
             }
@@ -429,6 +466,10 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                 return;
             }
             DDLogInfo(@"[WebAppAuthHelper] Token received (refresh_token=%@)", refreshToken ? @"yes" : @"no");
+            DDLogInfo(@"[WebAppAuthHelper]   access_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:accessToken]]);
+            if (refreshToken) {
+                DDLogInfo(@"[WebAppAuthHelper]   refresh_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:refreshToken]]);
+            }
             if (refreshToken && sself.pendingWebAppURL && sself.pendingTokenEndpoint && sself.pendingClientId) {
                 [sself storeRefreshToken:refreshToken tokenEndpoint:sself.pendingTokenEndpoint clientId:sself.pendingClientId forWebAppURL:sself.pendingWebAppURL];
             }
@@ -589,6 +630,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     OSStatus status = SecItemAdd((__bridge CFDictionaryRef)addQuery, nil);
     if (status == errSecSuccess) {
         DDLogInfo(@"[WebAppAuthHelper] Refresh token stored in Keychain for origin=%@", account);
+        DDLogInfo(@"[WebAppAuthHelper]   stored refresh_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:refreshToken]]);
     } else {
         DDLogWarn(@"[WebAppAuthHelper] Failed to store refresh token: %d", (int)status);
     }
@@ -664,6 +706,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     self.pendingRefreshCallbacks[accountKey] = [NSMutableArray arrayWithObject:[completion copy]];
 
     DDLogInfo(@"[WebAppAuthHelper] Attempting silent refresh for account=%@", matchedAccount);
+    DDLogInfo(@"[WebAppAuthHelper]   stored refresh_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:refreshToken]]);
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:tokenEndpoint]];
     request.HTTPMethod = @"POST";
     [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
@@ -725,6 +768,12 @@ static NSString * const kKeychainClientIdKey = @"client_id";
                 return;
             }
             DDLogInfo(@"[WebAppAuthHelper] Silent refresh successful");
+            DDLogInfo(@"[WebAppAuthHelper]   new access_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:newAccessToken]]);
+            if (newRefreshToken.length) {
+                DDLogInfo(@"[WebAppAuthHelper]   new refresh_token JWT: %@", [WebAppAuthHelper jwtLifetimeSummaryFromClaims:[WebAppAuthHelper jwtPayloadClaimsFromToken:newRefreshToken]]);
+            } else {
+                DDLogInfo(@"[WebAppAuthHelper]   no new refresh_token in response (keeping stored token)");
+            }
             // Update stored refresh token (servers often rotate them).
             NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
             [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forWebAppURL:webAppURL];

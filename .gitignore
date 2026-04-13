@@ -21,3 +21,4 @@ DerivedData
 OwnTracks/feedback.json
 OwnTracks/*.xccrashpoint/*
 *.log
+test.json

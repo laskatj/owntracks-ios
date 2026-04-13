@@ -166,6 +166,14 @@ If `"BACKGROUND WAKEUP"` never appears after `Location#1`, the location was drop
 
 ---
 
+## OAuth / Re-auth Investigation
+
+See [claud-authissues.md](claud-authissues.md) for the full write-up of the re-auth problem, all root causes identified, and the five fixes applied across `WebAppAuthHelper.m`, `LocationAPISyncService.m`, and the web app server.
+
+**TL;DR:** Every 60-second poll was calling the Authentik token endpoint unconditionally, rotating the refresh token ~60×/hour. Rotation races between concurrent callers (poll timer, WebApp tab, background wakeup processes) caused 400s that wiped the Keychain. Five fixes reduce rotation frequency, prevent background Keychain deletion, and suppress OAuth prompts during background wakeups.
+
+---
+
 ## Recent Development Focus
 
 From git log (most recent first):
