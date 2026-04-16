@@ -13,6 +13,7 @@
 #import "PersonTVC.h"
 #import "Friend+CoreDataClass.h"
 #import "FriendTableViewCell.h"
+#import "ViewController.h"
 #import "Waypoint+CoreDataClass.h"
 #import "CoreData.h"
 #import "FriendAnnotationV.h"
@@ -215,6 +216,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [vc performSelector:@selector(setCenter:) withObject:friend];
         if (tbc && targetIndex != NSNotFound) {
             tbc.selectedIndex = targetIndex;
+        }
+        if ([vc isKindOfClass:[ViewController class]]) {
+            [(ViewController *)vc followFriendFromList:friend];
         }
     }
 }

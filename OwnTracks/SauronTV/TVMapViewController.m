@@ -24,7 +24,7 @@ static NSString * const kPinId = @"FriendPin";
 
 
 // MKMapView subclass.
-+//
+//
 // Zoom routing on tvOS:
 //   Siri Remote touchpad swipes arrive as UIFocusSystem heading events, not UIPress
 //   events. Up swipes were intercepted by UITabBarController before reaching us.

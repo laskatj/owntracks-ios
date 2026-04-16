@@ -7,6 +7,7 @@
 //
 
 #import "ViewController.h"
+#import "FriendMarkerAnimator.h"
 #import "StatusTVC.h"
 #import "FriendAnnotationV.h"
 #import "PhotoAnnotationV.h"
@@ -59,6 +60,12 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
 /// Live MQTT track polyline overlays currently on the map, keyed by friend.topic.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
+/// Per-friend smooth marker animators, keyed by friend.topic.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, FriendMarkerAnimator *> *friendAnimators;
+/// CADisplayLink that re-centers the map on the selected friend every frame.
+@property (nonatomic, strong, nullable) CADisplayLink *followLink;
+/// Direct reference to the friend currently being followed (weak — Friend is owned by Core Data).
+@property (nonatomic, weak, nullable) Friend *followFriend;
 @end
 
 
@@ -73,6 +80,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.pendingRouteTopics = [NSMutableSet set];
     self.liveTrackPoints = [NSMutableDictionary dictionary];
     self.liveTrackPolylines = [NSMutableDictionary dictionary];
+    self.friendAnimators = [NSMutableDictionary dictionary];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(liveFriendLocationUpdate:)
                                                  name:@"OTLiveFriendLocation"
@@ -836,14 +844,21 @@ calloutAccessoryControlTapped:(UIControl *)control {
 - (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view {
     if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
+        DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
+                  friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
         [self fetchRouteForFriend:friend mapView:mapView];
         [self setCenter:view.annotation];
+        self.followFriend = friend;
+        [self startFollowLink];
     }
 }
 
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
     if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
+        DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
+        [self stopFollowLink];
+        self.followFriend = nil;
         [mapView removeOverlay:friend];
         MKPolyline *route = self.friendRoutePolylines[friend.topic];
         if (route) {
@@ -851,6 +866,52 @@ calloutAccessoryControlTapped:(UIControl *)control {
             [self.friendRoutePolylines removeObjectForKey:friend.topic];
         }
         [self.pendingRouteTopics removeObject:friend.topic];
+    }
+}
+
+#pragma mark - Smooth follow
+
+- (void)followFriendFromList:(Friend *)friend {
+    DDLogInfo(@"[Follow] followFriendFromList: topic=%@", friend.topic);
+    // Deselect any currently selected annotation so the previous follow stops cleanly.
+    for (id<MKAnnotation> ann in self.mapView.selectedAnnotations) {
+        [self.mapView deselectAnnotation:ann animated:NO];
+    }
+    self.followFriend = friend;
+    [self startFollowLink];
+}
+
+- (void)startFollowLink {
+    [self stopFollowLink];
+    DDLogInfo(@"[Follow] startFollowLink for topic=%@", self.followFriend.topic);
+    CADisplayLink *link = [CADisplayLink displayLinkWithTarget:self
+                                                      selector:@selector(followTick:)];
+    [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    self.followLink = link;
+}
+
+- (void)stopFollowLink {
+    if (self.followLink) DDLogInfo(@"[Follow] stopFollowLink");
+    [self.followLink invalidate];
+    self.followLink = nil;
+}
+
+- (void)followTick:(CADisplayLink *)link {
+    Friend *f = self.followFriend;
+    if (!f) { [self stopFollowLink]; return; }
+    CLLocationCoordinate2D coord = f.coordinate;
+    // Log every ~60 frames (≈1 s) so the console stays readable.
+    static NSUInteger sFollowTickCount = 0;
+    if (++sFollowTickCount % 60 == 0) {
+        CLLocationCoordinate2D center = self.mapView.centerCoordinate;
+        DDLogInfo(@"[Follow] tick#%lu friend=(%g,%g) mapCenter=(%g,%g) coordValid=%d",
+                  (unsigned long)sFollowTickCount,
+                  coord.latitude, coord.longitude,
+                  center.latitude, center.longitude,
+                  CLLocationCoordinate2DIsValid(coord));
+    }
+    if (CLLocationCoordinate2DIsValid(coord)) {
+        [self.mapView setCenterCoordinate:coord animated:NO];
     }
 }
 
@@ -1019,12 +1080,18 @@ calloutAccessoryControlTapped:(UIControl *)control {
     CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
     if (!CLLocationCoordinate2DIsValid(coord) || (lat == 0.0 && lon == 0.0)) return;
 
-    // Move the marker in place via KVO — no remove/readd, live track polyline is unaffected.
+    // Smooth-animate the marker via CADisplayLink; no remove/readd, live track polyline is unaffected.
+    NSTimeInterval tst = [note.userInfo[@"tst"] doubleValue];
     for (id<MKAnnotation> ann in self.mapView.annotations) {
         if ([ann isKindOfClass:[Friend class]]) {
             Friend *friend = (Friend *)ann;
             if ([friend.topic isEqualToString:topic]) {
-                [friend setLiveCoordinate:coord];
+                FriendMarkerAnimator *animator = self.friendAnimators[topic];
+                if (!animator) {
+                    animator = [[FriendMarkerAnimator alloc] initWithFriend:friend];
+                    self.friendAnimators[topic] = animator;
+                }
+                [animator startOrUpdateWithLatitude:lat longitude:lon timestamp:tst];
                 break;
             }
         }
@@ -1184,6 +1251,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
                     [self.liveTrackPolylines removeObjectForKey:friend.topic];
                 }
                 [self.liveTrackPoints removeObjectForKey:friend.topic];
+                [self.friendAnimators[friend.topic] cancel];
+                [self.friendAnimators removeObjectForKey:friend.topic];
+                if (self.followFriend == friend) {
+                    [self stopFollowLink];
+                    self.followFriend = nil;
+                }
                 break;
             }
 
