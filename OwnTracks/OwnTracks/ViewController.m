@@ -52,8 +52,8 @@
 @property (strong, nonatomic) UITextField *osmCopyright;
 @property (strong, nonatomic) MKTileOverlay *osmOverlay;
 #endif
-/// Standalone route polylines fetched from the backend, keyed by friend.topic.
-@property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *friendRoutePolylines;
+/// Topics for which the historical route has been fetched and merged into liveTrackPoints this session.
+@property (nonatomic, strong) NSMutableSet<NSString *> *routeFetchedTopics;
 /// Topics with an in-flight route fetch; used to cancel/ignore stale responses on deselect.
 @property (nonatomic, strong) NSMutableSet<NSString *> *pendingRouteTopics;
 /// Live MQTT track points (session-only), keyed by friend.topic.
@@ -76,7 +76,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [super viewDidLoad];
 
     self.warning = FALSE;
-    self.friendRoutePolylines = [NSMutableDictionary dictionary];
+    self.routeFetchedTopics = [NSMutableSet set];
     self.pendingRouteTopics = [NSMutableSet set];
     self.liveTrackPoints = [NSMutableDictionary dictionary];
     self.liveTrackPolylines = [NSMutableDictionary dictionary];
@@ -846,10 +846,16 @@ calloutAccessoryControlTapped:(UIControl *)control {
         Friend *friend = (Friend *)view.annotation;
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
-        [self fetchRouteForFriend:friend mapView:mapView];
-        [self setCenter:view.annotation];
         self.followFriend = friend;
         [self startFollowLink];
+        [self setCenter:view.annotation];
+        if ([self.routeFetchedTopics containsObject:friend.topic]
+                && self.liveTrackPoints[friend.topic].count >= 2) {
+            // History already merged — show the cached track immediately, no network call.
+            [self rebuildLiveTrackForTopic:friend.topic];
+        } else {
+            [self fetchRouteForFriend:friend mapView:mapView];
+        }
     }
 }
 
@@ -860,10 +866,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self stopFollowLink];
         self.followFriend = nil;
         [mapView removeOverlay:friend];
-        MKPolyline *route = self.friendRoutePolylines[friend.topic];
-        if (route) {
-            [mapView removeOverlay:route];
-            [self.friendRoutePolylines removeObjectForKey:friend.topic];
+        // Hide the live track while deselected; keep liveTrackPoints cached for instant re-show.
+        MKPolyline *liveTrack = self.liveTrackPolylines[friend.topic];
+        if (liveTrack) {
+            [mapView removeOverlay:liveTrack];
+            [self.liveTrackPolylines removeObjectForKey:friend.topic];
         }
         [self.pendingRouteTopics removeObject:friend.topic];
     }
@@ -879,6 +886,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
     self.followFriend = friend;
     [self startFollowLink];
+    if ([self.routeFetchedTopics containsObject:friend.topic]
+            && self.liveTrackPoints[friend.topic].count >= 2) {
+        [self rebuildLiveTrackForTopic:friend.topic];
+    } else {
+        [self fetchRouteForFriend:friend mapView:self.mapView];
+    }
 }
 
 - (void)startFollowLink {
@@ -937,9 +950,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
 
     if (!routeUser.length || !routeDevice.length) {
-        // Cannot determine user/device — fall back to local waypoints polyline.
-        DDLogInfo(@"[ViewController] route fetch: cannot determine user/device for %@, using local polyline", topic);
-        [mapView addOverlay:friend];
+        // Cannot determine user/device — show any cached live track and bail.
+        DDLogInfo(@"[ViewController] route fetch: cannot determine user/device for %@, showing cached track", topic);
+        [self rebuildLiveTrackForTopic:topic];
         return;
     }
 
@@ -951,9 +964,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
     NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC];
     if (!origin) {
-        DDLogInfo(@"[ViewController] route fetch: no origin URL, using local polyline for %@", topic);
+        DDLogInfo(@"[ViewController] route fetch: no origin URL, showing cached track for %@", topic);
         [self.pendingRouteTopics removeObject:topic];
-        [mapView addOverlay:friend];
+        [self rebuildLiveTrackForTopic:topic];
         return;
     }
 
@@ -974,7 +987,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (!routeURL) {
         DDLogWarn(@"[ViewController] route fetch: could not build URL for %@", topic);
         [self.pendingRouteTopics removeObject:topic];
-        [mapView addOverlay:friend];
+        [self rebuildLiveTrackForTopic:topic];
         return;
     }
 
@@ -996,8 +1009,8 @@ calloutAccessoryControlTapped:(UIControl *)control {
                       topic, (unsigned long)data.length, error.localizedDescription ?: @"none");
 
             if (error || !data.length) {
-                DDLogInfo(@"[ViewController] route fetch failed for %@: %@, using local polyline", topic, error.localizedDescription);
-                [mapView addOverlay:friend];
+                DDLogInfo(@"[ViewController] route fetch failed for %@: %@, showing cached track", topic, error.localizedDescription);
+                [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
 
@@ -1025,14 +1038,14 @@ calloutAccessoryControlTapped:(UIControl *)control {
             DDLogInfo(@"[ViewController] route fetch: %lu raw points for %@", (unsigned long)points.count, topic);
 
             if (!points.count) {
-                DDLogInfo(@"[ViewController] route fetch: no points for %@, using local polyline", topic);
-                [mapView addOverlay:friend];
+                DDLogInfo(@"[ViewController] route fetch: no points for %@, showing cached track", topic);
+                [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
 
             CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
             if (!coords) {
-                [mapView addOverlay:friend];
+                [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
             NSUInteger count = 0;
@@ -1049,16 +1062,26 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
             if (count == 0) {
                 free(coords);
-                DDLogInfo(@"[ViewController] route fetch: no valid coords for %@, using local polyline", topic);
-                [mapView addOverlay:friend];
+                DDLogInfo(@"[ViewController] route fetch: no valid coords for %@, showing cached track", topic);
+                [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
 
-            MKPolyline *polyline = [MKPolyline polylineWithCoordinates:coords count:count];
+            // Build NSValue array from parsed historical coords.
+            NSMutableArray<NSValue *> *historical = [NSMutableArray arrayWithCapacity:count];
+            for (NSUInteger i = 0; i < count; i++) {
+                [historical addObject:[NSValue valueWithMKCoordinate:coords[i]]];
+            }
             free(coords);
-            sself.friendRoutePolylines[topic] = polyline;
-            [mapView addOverlay:polyline];
-            DDLogInfo(@"[ViewController] route fetch: drew %lu points for %@", (unsigned long)count, topic);
+
+            // Prepend historical data; append any MQTT points that arrived during the fetch.
+            NSMutableArray<NSValue *> *existing = sself.liveTrackPoints[topic] ?: [NSMutableArray array];
+            [historical addObjectsFromArray:existing];
+            sself.liveTrackPoints[topic] = historical;
+            [sself.routeFetchedTopics addObject:topic];
+            [sself rebuildLiveTrackForTopic:topic];
+            DDLogInfo(@"[ViewController] route fetch: seeded %lu historical + %lu live points for %@",
+                      (unsigned long)count, (unsigned long)existing.count, topic);
         });
     }];
 }
@@ -1071,6 +1094,24 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [frc performFetch:&error];
         if (error) DDLogError(@"[%@ %@] %@ (%@)", NSStringFromClass([self class]), NSStringFromSelector(_cmd), [error localizedDescription], [error localizedFailureReason]);
     }
+}
+
+/// Rebuilds liveTrackPolylines[topic] from liveTrackPoints[topic] and adds it to the map.
+/// No-op if fewer than 2 points are available. Safe to call from the main thread only.
+- (void)rebuildLiveTrackForTopic:(NSString *)topic {
+    NSArray<NSValue *> *points = self.liveTrackPoints[topic];
+    if (points.count < 2) return;
+    CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
+    if (!coords) return;
+    for (NSUInteger i = 0; i < points.count; i++) {
+        coords[i] = [points[i] MKCoordinateValue];
+    }
+    MKPolyline *old = self.liveTrackPolylines[topic];
+    if (old) [self.mapView removeOverlay:old];
+    MKPolyline *updated = [MKPolyline polylineWithCoordinates:coords count:points.count];
+    free(coords);
+    self.liveTrackPolylines[topic] = updated;
+    [self.mapView addOverlay:updated];
 }
 
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
@@ -1097,27 +1138,17 @@ calloutAccessoryControlTapped:(UIControl *)control {
         }
     }
 
-    // Append new coordinate and replace the live track polyline.
+    // Accumulate points for all friends (builds the cache regardless of selection state).
     if (!self.liveTrackPoints[topic]) {
         self.liveTrackPoints[topic] = [NSMutableArray array];
     }
     [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
 
-    NSArray<NSValue *> *points = self.liveTrackPoints[topic];
-    CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
-    if (!coords) return;
-    for (NSUInteger i = 0; i < points.count; i++) {
-        coords[i] = [points[i] MKCoordinateValue];
-    }
+    DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)self.liveTrackPoints[topic].count);
 
-    MKPolyline *old = self.liveTrackPolylines[topic];
-    if (old) [self.mapView removeOverlay:old];
-    MKPolyline *updated = [MKPolyline polylineWithCoordinates:coords count:points.count];
-    free(coords);
-    self.liveTrackPolylines[topic] = updated;
-    [self.mapView addOverlay:updated];
-
-    DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)points.count);
+    // Only update the visible overlay for the currently selected/followed friend.
+    if (![self.followFriend.topic isEqualToString:topic]) return;
+    [self rebuildLiveTrackForTopic:topic];
 }
 
 - (NSFetchedResultsController *)frcFriends {
@@ -1251,6 +1282,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                     [self.liveTrackPolylines removeObjectForKey:friend.topic];
                 }
                 [self.liveTrackPoints removeObjectForKey:friend.topic];
+                [self.routeFetchedTopics removeObject:friend.topic];
                 [self.friendAnimators[friend.topic] cancel];
                 [self.friendAnimators removeObjectForKey:friend.topic];
                 if (self.followFriend == friend) {
