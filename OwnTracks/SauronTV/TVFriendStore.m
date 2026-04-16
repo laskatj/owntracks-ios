@@ -16,11 +16,12 @@ static NSString * const kLocationNote  = @"OTLiveFriendLocation";
 static NSString * const kCardNote      = @"OTFriendCard";
 
 @interface TVFriendStore ()
-@property (strong, nonatomic) NSMutableArray<NSString *>              *mTopics;
-@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *> *mLabels;
-@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *> *mTimes;
-@property (strong, nonatomic) NSMutableDictionary<NSString *, UIImage *>  *mImages;
-@property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *>  *mCoords;
+@property (strong, nonatomic) NSMutableArray<NSString *>                   *mTopics;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mLabels;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mTimes;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, UIImage *>   *mImages;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *>   *mCoords;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mRawTimestamps;
 @end
 
 @implementation TVFriendStore
@@ -34,11 +35,12 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
 - (instancetype)init {
     if ((self = [super init])) {
-        _mTopics = [NSMutableArray array];
-        _mLabels = [NSMutableDictionary dictionary];
-        _mTimes  = [NSMutableDictionary dictionary];
-        _mImages = [NSMutableDictionary dictionary];
-        _mCoords = [NSMutableDictionary dictionary];
+        _mTopics         = [NSMutableArray array];
+        _mLabels         = [NSMutableDictionary dictionary];
+        _mTimes          = [NSMutableDictionary dictionary];
+        _mImages         = [NSMutableDictionary dictionary];
+        _mCoords         = [NSMutableDictionary dictionary];
+        _mRawTimestamps  = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -64,6 +66,10 @@ static NSString * const kCardNote      = @"OTFriendCard";
 - (NSDictionary<NSString *, UIImage *>  *)friendImages { return [self.mImages copy]; }
 - (NSDictionary<NSString *, NSValue *>  *)friendCoords { return [self.mCoords copy]; }
 
+- (NSTimeInterval)rawTimestampForTopic:(NSString *)topic {
+    return [self.mRawTimestamps[topic] doubleValue];
+}
+
 - (UIImage *)imageForTopic:(NSString *)topic {
     UIImage *img = self.mImages[topic];
     if (img) return img;
@@ -84,8 +90,9 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
     NSString *label = info[@"label"] ?: [topic lastPathComponent];
     self.mLabels[topic] = label;
-    self.mTimes[topic]  = [self timestampStringFromInfo:info];
-    self.mCoords[topic] = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
+    self.mTimes[topic]          = [self timestampStringFromInfo:info];
+    self.mCoords[topic]         = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
+    self.mRawTimestamps[topic]  = @([info[@"tst"] doubleValue]);
 
     BOOL isNew = ![self.mTopics containsObject:topic];
     NSString *change;

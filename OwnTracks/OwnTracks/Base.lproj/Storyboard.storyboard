@@ -774,6 +774,30 @@
                                             </constraints>
                                         </tableViewCellContentView>
                                     </tableViewCell>
+                                    <tableViewCell contentMode="scaleToFill" selectionStyle="none" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="Clear-Auth-Cell">
+                                        <rect key="frame" x="0.0" y="132" width="320" height="44"/>
+                                        <autoresizingMask key="autoresizingMask"/>
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="Clear-Auth-Cell" id="Clear-Auth-Content">
+                                            <rect key="frame" x="0.0" y="0.0" width="320" height="44"/>
+                                            <autoresizingMask key="autoresizingMask"/>
+                                            <subviews>
+                                                <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Clear-Auth-Btn">
+                                                    <rect key="frame" x="20" y="7" width="280" height="30"/>
+                                                    <state key="normal" title="Clear Auth Token">
+                                                        <color key="titleColor" red="1" green="0.23137254901960785" blue="0.18823529411764706" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                                    </state>
+                                                    <connections>
+                                                        <action selector="clearAuthTokenPressed:" destination="nAk-La-kdM" eventType="touchUpInside" id="Clear-Auth-Action"/>
+                                                    </connections>
+                                                </button>
+                                            </subviews>
+                                            <constraints>
+                                                <constraint firstItem="Clear-Auth-Btn" firstAttribute="leading" secondItem="Clear-Auth-Content" secondAttribute="leading" constant="20" symbolic="YES" id="Clear-Auth-Lead"/>
+                                                <constraint firstAttribute="trailing" secondItem="Clear-Auth-Btn" secondAttribute="trailing" constant="20" symbolic="YES" id="Clear-Auth-Trail"/>
+                                                <constraint firstAttribute="centerY" secondItem="Clear-Auth-Btn" secondAttribute="centerY" id="Clear-Auth-CenterY"/>
+                                            </constraints>
+                                        </tableViewCellContentView>
+                                    </tableViewCell>
                                 </cells>
                             </tableViewSection>
                             <tableViewSection headerTitle="Expert Mode" id="NRQ-7X-SLM">
@@ -1842,6 +1866,7 @@
                         <outlet property="UIwebappurl" destination="WebApp-URL-Field" id="WebApp-URL-Outlet"/>
                         <outlet property="UIoidcDiscoveryURL" destination="OIDC-Discovery-Field" id="OIDC-Discovery-Outlet"/>
                         <outlet property="UIoauthClientID" destination="OIDC-ClientID-Field" id="OIDC-ClientID-Outlet"/>
+                        <outlet property="clearAuthTokenButton" destination="Clear-Auth-Btn" id="Clear-Auth-Outlet"/>
                         <outlet property="createCardButton" destination="7rX-Bq-DGb" id="V9S-zi-hVj"/>
                         <outlet property="toursButton" destination="tiK-11-lia" id="Rxn-5u-N9i"/>
                     </connections>

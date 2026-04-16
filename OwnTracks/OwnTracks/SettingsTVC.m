@@ -14,6 +14,7 @@
 #import "Friend+CoreDataClass.h"
 #import "CoreData.h"
 #import "OwnTracking.h"
+#import "WebAppAuthHelper.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 @interface SettingsTVC ()
@@ -79,6 +80,7 @@
 @property (weak, nonatomic) IBOutlet UIButton *createCardButton;
 @property (weak, nonatomic) IBOutlet UIButton *toursButton;
 @property (weak, nonatomic) IBOutlet UIButton *logsButton;
+@property (weak, nonatomic) IBOutlet UIButton *clearAuthTokenButton;
 
 @property (strong, nonatomic) UIDocumentInteractionController *dic;
 @property (nonatomic) BOOL warningShown;
@@ -1348,6 +1350,35 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         self.UIpassphrase.text = @"";
     }
     [self updateValues];
+}
+
+- (IBAction)clearAuthTokenPressed:(UIButton *)sender {
+    NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    NSURL *webAppURL = urlString.length > 0 ? [NSURL URLWithString:urlString] : nil;
+
+    if (!webAppURL) {
+        UIAlertController *noURL = [UIAlertController
+            alertControllerWithTitle:@"No Web App URL"
+            message:@"Configure a Web App URL first."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [noURL addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:noURL animated:YES completion:nil];
+        return;
+    }
+
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Clear Auth Token"
+        message:@"This will delete the stored refresh token, requiring a full re-login on next use of the Web App tab."
+        preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Clear" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:webAppURL];
+        DDLogInfo(@"[SettingsTVC] Auth token cleared by user");
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)reconnect {

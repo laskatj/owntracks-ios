@@ -49,6 +49,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 @property (strong, nonatomic) NSTimer *holdTimer;
 @property (strong, nonatomic) NSTimer *bgTimer;
 
+// Tracks the timestamp of the newest location published during the current background
+// wakeup session. Prevents a stale SLC-cached location (within the 30s age window)
+// from overwriting a fresher geofence-exit location on MQTT and regressing the
+// +follow geofence center behind the user's actual position.
+@property (strong, nonatomic) NSDate *wakeupBestPublishedAt;
+
 @end
 
 @implementation OwnTracksAppDelegate
@@ -236,9 +242,21 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                   @"(UIApplicationLaunchOptionsLocationKey present). "
                   @"backgroundWakeup → YES; Move mode will use passive SLC-only tracking.");
         locationManager.backgroundWakeup = YES;
+    } else if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) {
+        // BGAppRefresh or BGProcessingTask launched the app silently in the background.
+        // No location key is present, but activating startUpdatingLocation here would
+        // cause Move mode to publish continuously with no user interaction.
+        // Treat this the same as a location-wakeup: passive SLC-only tracking only.
+        DDLogInfo(@"[OwnTracksAppDelegate] *** BGAppRefresh/BGTask launch *** "
+                  @"applicationState=BACKGROUND but no location key. "
+                  @"backgroundWakeup → YES to suppress Move mode GPS.");
+        locationManager.backgroundWakeup = YES;
     } else {
         DDLogInfo(@"[OwnTracksAppDelegate] normal launch (no location key) - "
                   @"backgroundWakeup remains NO; full tracking will apply.");
+    }
+    if (locationManager.backgroundWakeup) {
+        self.wakeupBestPublishedAt = nil;
     }
 
     NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
@@ -688,6 +706,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
                   (long)locationManager.monitoring);
         locationManager.backgroundWakeup = NO;
         locationManager.monitoring = locationManager.monitoring;
+        self.wakeupBestPublishedAt = nil;
     } else {
         DDLogInfo(@"[OwnTracksAppDelegate] applicationDidBecomeActive: normal foreground return "
                   @"(no background wakeup pending), monitoring=%ld",
@@ -1674,11 +1693,31 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
     }
 
     
+    // In background wakeup mode, never publish a location older than the best already
+    // published this session. This prevents a stale SLC-cached location (within the
+    // 30s kWakeupLocationMaxAge window) from overwriting a fresher geofence-exit
+    // location on MQTT and regressing the +follow geofence center behind the user.
+    LocationManager *lm = [LocationManager sharedInstance];
+    if (lm.backgroundWakeup && self.wakeupBestPublishedAt &&
+        [location.timestamp compare:self.wakeupBestPublishedAt] == NSOrderedAscending) {
+        DDLogInfo(@"[OwnTracksAppDelegate] publishLocation SKIPPED in backgroundWakeup: "
+                  @"location tst=%.0f older than wakeupBest=%.0f — stale SLC dropped",
+                  location.timestamp.timeIntervalSince1970,
+                  self.wakeupBestPublishedAt.timeIntervalSince1970);
+        return NO;
+    }
+    if (lm.backgroundWakeup) {
+        if (!self.wakeupBestPublishedAt ||
+            [location.timestamp compare:self.wakeupBestPublishedAt] != NSOrderedAscending) {
+            self.wakeupBestPublishedAt = location.timestamp;
+        }
+    }
+
     if (![Settings validIdsInMOC:moc]) {
         DDLogError(@"[OwnTracksAppDelegate] settings not valid (yet)");
         return FALSE;
     }
-        
+
     int ignoreInaccurateLocations =
     [Settings intForKey:@"ignoreinaccuratelocations_preference"
                   inMOC:moc];

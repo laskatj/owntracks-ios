@@ -44,6 +44,10 @@ extern NSString * const TVFriendStoreDidUpdateNotification;
 /// Returns the stored photo for topic, or a blue-circle placeholder with the friend's initials.
 - (UIImage *)imageForTopic:(NSString *)topic;
 
+/// Returns the Unix-epoch timestamp (seconds) of the most recent location fix,
+/// or 0 if unknown.
+- (NSTimeInterval)rawTimestampForTopic:(NSString *)topic;
+
 @end
 
 NS_ASSUME_NONNULL_END
