@@ -15,6 +15,7 @@
 #import "CoreData.h"
 #import "OwnTracking.h"
 #import "WebAppAuthHelper.h"
+#import "OwnTracksWatchBridge.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 @interface SettingsTVC ()
@@ -420,6 +421,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
 
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
+
+    [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath

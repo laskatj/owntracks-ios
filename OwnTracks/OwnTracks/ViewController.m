@@ -847,7 +847,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
         self.followFriend = friend;
-        [self startFollowLink];
         [self setCenter:view.annotation];
         if ([self.routeFetchedTopics containsObject:friend.topic]
                 && self.liveTrackPoints[friend.topic].count >= 2) {
@@ -855,6 +854,20 @@ calloutAccessoryControlTapped:(UIControl *)control {
             [self rebuildLiveTrackForTopic:friend.topic];
         } else {
             [self fetchRouteForFriend:friend mapView:mapView];
+        }
+    }
+}
+
+- (void)mapView:(MKMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
+    // If the user initiated a pan or zoom gesture, stop following.
+    UIView *mapContentView = mapView.subviews.firstObject;
+    for (UIGestureRecognizer *gr in mapContentView.gestureRecognizers) {
+        if (gr.state == UIGestureRecognizerStateBegan ||
+            gr.state == UIGestureRecognizerStateChanged) {
+            DDLogInfo(@"[Follow] user gesture detected — stopping follow");
+            [self stopFollowLink];
+            self.followFriend = nil;
+            return;
         }
     }
 }
@@ -885,7 +898,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self.mapView deselectAnnotation:ann animated:NO];
     }
     self.followFriend = friend;
-    [self startFollowLink];
+    [self setCenter:friend];
     if ([self.routeFetchedTopics containsObject:friend.topic]
             && self.liveTrackPoints[friend.topic].count >= 2) {
         [self rebuildLiveTrackForTopic:friend.topic];
@@ -1149,6 +1162,10 @@ calloutAccessoryControlTapped:(UIControl *)control {
     // Only update the visible overlay for the currently selected/followed friend.
     if (![self.followFriend.topic isEqualToString:topic]) return;
     [self rebuildLiveTrackForTopic:topic];
+    // Pan map to keep the followed friend centered when a real location update arrives.
+    if (CLLocationCoordinate2DIsValid(coord)) {
+        [self.mapView setCenterCoordinate:coord animated:YES];
+    }
 }
 
 - (NSFetchedResultsController *)frcFriends {

@@ -22,6 +22,13 @@
 - **Dependencies (CocoaPods):** `mqttc/MinL`, `Sodium`, `CocoaLumberjack`, `DSJSONSchemaValidation`, `ABStaticTableViewController`
 - **Workspace:** `OwnTracks/Sauron.xcworkspace` (target name: "Sauron")
 
+## watchOS companion (`SauronWatch`)
+
+- **Target:** `SauronWatch` (SwiftUI), embedded in the iOS app (`Embed Watch Content`).
+- **Config:** iOS pushes HTTP ingest settings via `OwnTracksWatchBridge` + WatchConnectivity (`updateApplicationContext` / `transferUserInfo`).
+- **Tracking:** Hybrid passive (coarse updates) vs active (higher frequency); see `docs/watch/TRACKING_MODES.md`.
+- **Auth:** Keychain + `WatchOAuthRefresher` stub; see `docs/watch/WATCH_AUTH_API.md`.
+
 ## Tab Structure
 
 | Tab | Controller | Purpose |

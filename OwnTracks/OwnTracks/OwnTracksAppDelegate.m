@@ -20,6 +20,7 @@
 #import "NSNumber+decimals.h"
 #import "Validation.h"
 #import "LocationAPISyncService.h"
+#import "OwnTracksWatchBridge.h"
 
 #import "OwnTracksSendNowIntent.h"
 #import "OwnTracksChangeMonitoringIntent.h"
@@ -277,6 +278,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     });
 
     [[LocationAPISyncService sharedInstance] start];
+
+    [[OwnTracksWatchBridge shared] activate];
     
     return YES;
 }
@@ -714,6 +717,8 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
     }
 
     [[OwnTracking sharedInstance] publishStatus:YES];
+
+    [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
     
     [self.connection connectToLast];
     
