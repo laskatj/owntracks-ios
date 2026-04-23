@@ -986,8 +986,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
     NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
     NSInteger startTs = endTs - 1 * 24 * 60 * 60;
 
-    NSString *encodedUser = [routeUser stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
-    NSString *encodedDevice = [routeDevice stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
     NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
 
     NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];

@@ -11,6 +11,7 @@
 #import "TVAppDelegate.h"
 #import "TVMapViewController.h"
 #import "TVFriendsViewController.h"
+#import "TVRecorderAuthViewController.h"
 #import "TVFriendStore.h"
 #import "TVHardcodedConfig.h"
 
@@ -37,8 +38,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
 
-    TVMapViewController     *mapVC     = [[TVMapViewController alloc] init];
-    TVFriendsViewController *friendsVC = [[TVFriendsViewController alloc] init];
+    TVMapViewController        *mapVC     = [[TVMapViewController alloc] init];
+    TVFriendsViewController    *friendsVC = [[TVFriendsViewController alloc] init];
+    TVRecorderAuthViewController *authVC  = [[TVRecorderAuthViewController alloc] init];
 
     mapVC.tabBarItem = [[UITabBarItem alloc]
         initWithTitle:@"Map"
@@ -48,9 +50,13 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         initWithTitle:@"Friends"
                 image:[UIImage systemImageNamed:@"person.2"]
                   tag:1];
+    authVC.tabBarItem = [[UITabBarItem alloc]
+        initWithTitle:@"Recorder"
+                image:[UIImage systemImageNamed:@"key.horizontal"]
+                  tag:2];
 
     UITabBarController *tabs  = [[UITabBarController alloc] init];
-    tabs.viewControllers      = @[mapVC, friendsVC];
+    tabs.viewControllers      = @[mapVC, friendsVC, authVC];
     self.window.rootViewController = tabs;
     [self.window makeKeyAndVisible];
 

@@ -9,12 +9,18 @@
 
 #import "TVMapViewController.h"
 #import "TVFriendStore.h"
+#import "TVHardcodedConfig.h"
+#import "TVRecorderOAuthClient.h"
+#import "TVRecorderTokenStore.h"
 #import "SmoothMarkerAnimator.h"
+#import <CoreLocation/CoreLocation.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 static NSString * const kPinId = @"FriendPin";
+/// Same notification name as iOS OwnTracksAppDelegate / TVAppDelegate.
+static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocation";
 
 // Carries the MQTT topic on the annotation so viewForAnnotation: can look up the image.
 @interface TVFriendAnnotation : MKPointAnnotation
@@ -72,11 +78,15 @@ static NSString * const kPinId = @"FriendPin";
 }
 
 // Log when our GRs are asked to begin — if this doesn't fire, touches never reached us.
+// MKMapView may set this view as delegate for its own recognizers (e.g. UITapGestureRecognizer);
+// only UISwipeGestureRecognizer responds to -direction (Play/Pause can hit the tap path).
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gr {
+    long dir = -1;
+    if ([gr isKindOfClass:[UISwipeGestureRecognizer class]]) {
+        dir = (long)[(UISwipeGestureRecognizer *)gr direction];
+    }
     NSLog(@"[zoomfix] gestureRecognizerShouldBegin: %@ dir=%ld enabled=%d",
-          NSStringFromClass([gr class]),
-          (long)[(UISwipeGestureRecognizer *)gr direction],
-          gr.enabled);
+          NSStringFromClass([gr class]), dir, gr.enabled);
     return YES;
 }
 
@@ -164,9 +174,17 @@ static NSString * const kPinId = @"FriendPin";
 @property (assign, nonatomic) CFTimeInterval trackingStartTime;
 @property (strong, nonatomic, nullable) CADisplayLink *followLink;
 @property (assign, nonatomic) NSUInteger followTickCount;
+/// Throttles follow pans: 60Hz setRegion + per-frame SmoothMarkerAnimator updates stress MapKit Metal.
+@property (assign, nonatomic) CFAbsoluteTime lastFollowPanTime;
 @property (strong, nonatomic) UIView      *trackingHUD;
 @property (strong, nonatomic) UIImageView *hudPhotoView;
 @property (strong, nonatomic) UILabel     *hudNameLabel;
+
+/// Live route cache (same pattern as iOS ViewController).
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
+@property (strong, nonatomic) NSMutableSet<NSString *> *routeFetchedTopics;
+@property (strong, nonatomic) NSMutableSet<NSString *> *pendingRouteTopics;
 @end
 
 @implementation TVMapViewController
@@ -197,11 +215,20 @@ static NSString * const kPinId = @"FriendPin";
     [super viewDidLoad];
     self.annotations = [NSMutableDictionary dictionary];
     self.animators   = [NSMutableDictionary dictionary];
+    self.liveTrackPoints    = [NSMutableDictionary dictionary];
+    self.liveTrackPolylines = [NSMutableDictionary dictionary];
+    self.routeFetchedTopics = [NSMutableSet set];
+    self.pendingRouteTopics = [NSMutableSet set];
 
     [[NSNotificationCenter defaultCenter]
         addObserver:self
            selector:@selector(storeUpdated:)
                name:TVFriendStoreDidUpdateNotification
+             object:nil];
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(liveFriendLocationUpdated:)
+               name:kOTLiveFriendLocationNotification
              object:nil];
 
     [self buildTrackingHUD];
@@ -342,6 +369,7 @@ static NSString * const kPinId = @"FriendPin";
 - (void)startFollowLink {
     [self stopFollowLink];
     self.followTickCount = 0;
+    self.lastFollowPanTime = 0;
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:self
                                                       selector:@selector(followTick:)];
     [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
@@ -357,9 +385,288 @@ static NSString * const kPinId = @"FriendPin";
     if (!self.selectedTopic) { [self stopFollowLink]; return; }
     TVFriendAnnotation *ann = self.annotations[self.selectedTopic];
     if (!ann) return;
+
+    CLLocationCoordinate2D target = ann.coordinate;
+    if (!CLLocationCoordinate2DIsValid(target)) return;
+
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    const CFTimeInterval kFollowPanMinInterval = 0.2;
+    if (now - self.lastFollowPanTime < kFollowPanMinInterval) return;
+
+    CLLocation *mapCtr = [[CLLocation alloc] initWithLatitude:self.mapView.region.center.latitude
+                                                    longitude:self.mapView.region.center.longitude];
+    CLLocation *pinLoc = [[CLLocation alloc] initWithLatitude:target.latitude longitude:target.longitude];
+    CLLocationDistance driftM = [mapCtr distanceFromLocation:pinLoc];
+    const CLLocationDistance kFollowPanMinDriftM = 5.0;
+    if (driftM < kFollowPanMinDriftM) {
+        self.lastFollowPanTime = now;
+        return;
+    }
+
+    self.lastFollowPanTime = now;
     MKCoordinateRegion region = self.mapView.region;
-    region.center = ann.coordinate;
+    region.center = target;
     [self.mapView setRegion:region animated:NO];
+}
+
+#pragma mark - Live route (iOS ViewController pattern)
+
+- (void)removeVisibleRouteAndPendingForTopic:(NSString *)topic {
+    MKPolyline *liveTrack = self.liveTrackPolylines[topic];
+    if (liveTrack) {
+        [self.mapView removeOverlay:liveTrack];
+        [self.liveTrackPolylines removeObjectForKey:topic];
+    }
+    [self.pendingRouteTopics removeObject:topic];
+}
+
+/// Derives Recorder API user and device from MQTT topic `owntracks/{user}/{device...}`.
+- (void)routeUser:(NSString * _Nullable * _Nonnull)outUser
+           device:(NSString * _Nullable * _Nonnull)outDevice
+         fromTopic:(NSString *)topic {
+    *outUser = nil;
+    *outDevice = nil;
+    NSArray<NSString *> *parts = [topic componentsSeparatedByString:@"/"];
+    if (parts.count >= 3) {
+        *outUser = parts[1];
+        *outDevice = [[parts subarrayWithRange:NSMakeRange(2, parts.count - 2)]
+                      componentsJoinedByString:@"/"];
+    }
+}
+
+- (void)rebuildLiveTrackForTopic:(NSString *)topic {
+    NSArray<NSValue *> *points = self.liveTrackPoints[topic];
+    if (points.count < 2) return;
+    CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
+    if (!coords) return;
+    for (NSUInteger i = 0; i < points.count; i++) {
+        coords[i] = [points[i] MKCoordinateValue];
+    }
+    MKPolyline *old = self.liveTrackPolylines[topic];
+    if (old) [self.mapView removeOverlay:old];
+    MKPolyline *updated = [MKPolyline polylineWithCoordinates:coords count:points.count];
+    free(coords);
+    self.liveTrackPolylines[topic] = updated;
+    [self.mapView addOverlay:updated];
+}
+
+- (void)liveFriendLocationUpdated:(NSNotification *)note {
+    NSString *topic = note.userInfo[@"topic"];
+    double lat = [note.userInfo[@"lat"] doubleValue];
+    double lon = [note.userInfo[@"lon"] doubleValue];
+    CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
+    if (!topic.length || !CLLocationCoordinate2DIsValid(coord) || (lat == 0.0 && lon == 0.0)) return;
+
+    if (!self.liveTrackPoints[topic]) {
+        self.liveTrackPoints[topic] = [NSMutableArray array];
+    }
+    [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
+
+    if (self.selectedTopic.length && [self.selectedTopic isEqualToString:topic]) {
+        [self rebuildLiveTrackForTopic:topic];
+    }
+}
+
+- (void)fetchRouteForTopic:(NSString *)topic {
+    NSString *routeUser = nil;
+    NSString *routeDevice = nil;
+    [self routeUser:&routeUser device:&routeDevice fromTopic:topic];
+
+    DDLogInfo(@"[TVMapViewController] route fetch: topic=%@ user=%@ device=%@",
+              topic, routeUser ?: @"(nil)", routeDevice ?: @"(nil)");
+
+    if (!routeUser.length || !routeDevice.length) {
+        DDLogInfo(@"[TVMapViewController] route fetch: cannot derive user/device — cached MQTT track only");
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
+    if ([self.pendingRouteTopics containsObject:topic]) return;
+
+    NSURL *origin = [NSURL URLWithString:kTVWebAppOriginURL];
+    if (!origin || !kTVWebAppOriginURL.length) {
+        DDLogInfo(@"[TVMapViewController] route fetch: no Recorder origin URL — MQTT track only");
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
+    [self.pendingRouteTopics addObject:topic];
+
+    __weak typeof(self) weak = self;
+    UIViewController *pvc = self.tabBarController;
+    if (!pvc) pvc = self.view.window.rootViewController;
+
+    [[TVRecorderOAuthClient shared] ensureValidAccessTokenPresentingSignInFrom:pvc
+                                                                      completion:^(NSString *token, NSError *err) {
+        __strong typeof(weak) sself = weak;
+        if (!sself) return;
+        if (![sself.pendingRouteTopics containsObject:topic]) return;
+        if (!token.length) {
+            DDLogInfo(@"[TVMapViewController] route fetch: no bearer token — MQTT only (%@)",
+                      err.localizedDescription ?: @"not configured");
+            [sself.pendingRouteTopics removeObject:topic];
+            [sself rebuildLiveTrackForTopic:topic];
+            return;
+        }
+        [sself performRouteGETForTopic:topic
+                             routeUser:routeUser
+                           routeDevice:routeDevice
+                                origin:origin
+                           accessToken:token
+                            is401Retry:NO];
+    }];
+}
+
+- (void)applyRouteHistoryJSONToTopic:(NSString *)topic data:(NSData *)data {
+    NSError *jsonError = nil;
+    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+    if (jsonError) {
+        DDLogWarn(@"[TVMapViewController] route JSON error %@: %@", topic, jsonError.localizedDescription);
+    }
+    NSArray *points = nil;
+    if ([obj isKindOfClass:[NSDictionary class]]) {
+        id p = ((NSDictionary *)obj)[@"points"];
+        if ([p isKindOfClass:[NSArray class]]) {
+            points = (NSArray *)p;
+        }
+    }
+
+    if (!points.count) {
+        DDLogInfo(@"[TVMapViewController] route fetch: API points count=0 for %@", topic);
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
+    CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
+    if (!coords) {
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+    NSUInteger count = 0;
+    for (id pt in points) {
+        if (![pt isKindOfClass:[NSDictionary class]]) continue;
+        id latObj = ((NSDictionary *)pt)[@"latitude"];
+        id lonObj = ((NSDictionary *)pt)[@"longitude"];
+        if (![latObj isKindOfClass:[NSNumber class]] || ![lonObj isKindOfClass:[NSNumber class]]) continue;
+        double plat = [(NSNumber *)latObj doubleValue];
+        double plon = [(NSNumber *)lonObj doubleValue];
+        if (plat == 0.0 && plon == 0.0) continue;
+        coords[count++] = CLLocationCoordinate2DMake(plat, plon);
+    }
+
+    if (count == 0) {
+        DDLogInfo(@"[TVMapViewController] route fetch: API points count=%lu usable=0 for %@",
+                  (unsigned long)points.count, topic);
+        free(coords);
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
+    NSMutableArray<NSValue *> *historical = [NSMutableArray arrayWithCapacity:count];
+    for (NSUInteger i = 0; i < count; i++) {
+        [historical addObject:[NSValue valueWithMKCoordinate:coords[i]]];
+    }
+    free(coords);
+
+    NSMutableArray<NSValue *> *existing = self.liveTrackPoints[topic] ?: [NSMutableArray array];
+    NSUInteger mqttBefore = existing.count;
+    [historical addObjectsFromArray:existing];
+    self.liveTrackPoints[topic] = historical;
+    [self.routeFetchedTopics addObject:topic];
+    [self rebuildLiveTrackForTopic:topic];
+    DDLogInfo(@"[TVMapViewController] route fetch: API points count=%lu usable=%lu MQTT buffered=%lu merged total=%lu for %@",
+              (unsigned long)points.count, (unsigned long)count, (unsigned long)mqttBefore,
+              (unsigned long)historical.count, topic);
+}
+
+- (void)performRouteGETForTopic:(NSString *)topic
+                      routeUser:(NSString *)routeUser
+                    routeDevice:(NSString *)routeDevice
+                         origin:(NSURL *)origin
+                    accessToken:(NSString *)token
+                     is401Retry:(BOOL)is401Retry {
+    NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
+    NSInteger startTs = endTs - 1 * 24 * 60 * 60;
+
+    // Do not pre-encode: NSURLComponents encodes path once when building .URL; pre-encoding
+    // produces %2520 for spaces (double-encoded).
+    NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
+
+    NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    components.path = path;
+    components.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"start" value:@(startTs).stringValue],
+        [NSURLQueryItem queryItemWithName:@"end" value:@(endTs).stringValue],
+    ];
+    NSURL *routeURL = components.URL;
+    if (!routeURL) {
+        DDLogWarn(@"[TVMapViewController] route fetch: bad URL for %@", topic);
+        [self.pendingRouteTopics removeObject:topic];
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
+    DDLogInfo(@"[TVMapViewController] route fetch: GET %@", routeURL);
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:routeURL];
+    [req setHTTPMethod:@"GET"];
+    [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+
+    __weak typeof(self) weak = self;
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:req
+        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weak) sself = weak;
+                if (!sself) return;
+                if (![sself.pendingRouteTopics containsObject:topic]) return;
+
+                NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]]
+                    ? (NSHTTPURLResponse *)response : nil;
+                NSInteger status = http ? http.statusCode : 0;
+
+                if (status == 401 && !is401Retry && !kTVWebAppBearerToken.length
+                        && [TVRecorderTokenStore refreshToken].length) {
+                    [[TVRecorderOAuthClient shared] refreshAccessTokenWithCompletion:^(NSString *newTok, NSError *re) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            __strong typeof(weak) inner = weak;
+                            if (!inner) return;
+                            if (![inner.pendingRouteTopics containsObject:topic]) return;
+                            if (newTok.length) {
+                                [inner performRouteGETForTopic:topic
+                                                   routeUser:routeUser
+                                                 routeDevice:routeDevice
+                                                      origin:origin
+                                                 accessToken:newTok
+                                                  is401Retry:YES];
+                            } else {
+                                DDLogInfo(@"[TVMapViewController] route fetch: refresh failed after 401 — %@", re);
+                                [inner.pendingRouteTopics removeObject:topic];
+                                if ([inner.selectedTopic isEqualToString:topic]) {
+                                    [inner rebuildLiveTrackForTopic:topic];
+                                }
+                            }
+                        });
+                    }];
+                    return;
+                }
+
+                [sself.pendingRouteTopics removeObject:topic];
+
+                if (![sself.selectedTopic isEqualToString:topic]) {
+                    DDLogInfo(@"[TVMapViewController] route fetch: discard (deselected) %@", topic);
+                    return;
+                }
+
+                if (error || !data.length) {
+                    DDLogInfo(@"[TVMapViewController] route fetch failed %@: %@", topic, error.localizedDescription ?: @"no data");
+                    [sself rebuildLiveTrackForTopic:topic];
+                    return;
+                }
+
+                [sself applyRouteHistoryJSONToTopic:topic data:data];
+            });
+        }];
+    [task resume];
 }
 
 #pragma mark - TVFriendStore updates
@@ -424,18 +731,32 @@ static NSString * const kPinId = @"FriendPin";
 #pragma mark - Public selection API
 
 - (void)selectFriendByTopic:(nullable NSString *)topic {
-    self.selectedTopic = topic;
-    self.mapView.interceptUpDown = (topic != nil);
+    NSString *previous = self.selectedTopic;
+
     if (topic) {
+        if (previous.length && ![previous isEqualToString:topic]) {
+            [self removeVisibleRouteAndPendingForTopic:previous];
+        }
+        self.selectedTopic = topic;
+        self.mapView.interceptUpDown = YES;
         self.trackingStartTime = CACurrentMediaTime();
-        // Hide the tab bar so its system upward-swipe gesture recognizer
-        // (which reveals the tab bar) cannot intercept our zoom-in swipes.
         self.tabBarController.tabBar.hidden = YES;
         [self showTrackingHUDForTopic:topic];
         [self zoomToFriend:topic];
+
+        if ([self.routeFetchedTopics containsObject:topic] && self.liveTrackPoints[topic].count >= 2) {
+            [self rebuildLiveTrackForTopic:topic];
+        } else {
+            [self fetchRouteForTopic:topic];
+        }
         [self startFollowLink];
         DDLogInfo(@"[TVMapViewController] following %@", topic);
     } else {
+        if (previous.length) {
+            [self removeVisibleRouteAndPendingForTopic:previous];
+        }
+        self.selectedTopic = nil;
+        self.mapView.interceptUpDown = NO;
         self.tabBarController.tabBar.hidden = NO;
         [self hideTrackingHUD];
         [self stopFollowLink];
@@ -498,6 +819,16 @@ static NSString * const kPinId = @"FriendPin";
     }
 
     return view;
+}
+
+- (MKOverlayRenderer *)mapView:(MKMapView *)mapView rendererForOverlay:(id<MKOverlay>)overlay {
+    if (![overlay isKindOfClass:[MKPolyline class]]) {
+        return nil;
+    }
+    MKPolylineRenderer *renderer = [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
+    renderer.lineWidth   = 3;
+    renderer.strokeColor = [UIColor colorNamed:@"trackColor"];
+    return renderer;
 }
 
 @end
