@@ -2,6 +2,9 @@
 //  LocationAPISyncService.m
 //  OwnTracks
 //
+//  GET /api/location updates Core Data (Friend/Waypoint) via OwnTracking — same store as MQTT.
+//  Recorder route history (GET .../history/.../route) is ViewController liveTrackPoints only, not persisted here.
+//
 
 #import "LocationAPISyncService.h"
 #import "WebAppURLResolver.h"
@@ -48,10 +51,13 @@ static UIViewController *LocationAPISyncTopMostViewController(void) {
 
 /// Poll interval while app is active (no Settings UI).
 static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
+/// Minimum seconds between debounced refreshes (Friends tab, etc.) and the last successful GET /api/location apply.
+static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.0;
 
 @interface LocationAPISyncService ()
 @property (nonatomic, strong, nullable) NSTimer *pollTimer;
 @property (nonatomic) BOOL fetchInFlight;
+@property (nonatomic, strong, nullable) NSDate *lastSuccessfulLocationAPIFetchDate;
 /// Filled from `/.well-known/owntracks-app-auth` when Settings OAuth Client ID is empty; needed so Keychain lookup uses the same client_id the token was stored with.
 @property (nonatomic, copy, nullable) NSString *cachedOAuthClientIdFromDiscovery;
 /// Most recent access token used for GET /api/location; reused for device image fetches.
@@ -127,6 +133,20 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 - (void)stopPollTimer {
     [self.pollTimer invalidate];
     self.pollTimer = nil;
+}
+
+- (void)requestLocationRefreshIfAppropriate {
+    if (self.fetchInFlight) {
+        DDLogVerbose(@"[LocationAPISyncService] debounced refresh skipped (fetch in flight)");
+        return;
+    }
+    NSDate *last = self.lastSuccessfulLocationAPIFetchDate;
+    if (last && [[NSDate date] timeIntervalSinceDate:last] < kLocationAPIDebouncedRefreshMinIntervalSeconds) {
+        DDLogVerbose(@"[LocationAPISyncService] debounced refresh skipped (last fetch %.1fs ago)",
+                      [[NSDate date] timeIntervalSinceDate:last]);
+        return;
+    }
+    [self fetchAndApply];
 }
 
 - (void)fetchAndApply {
@@ -440,6 +460,7 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
             return;
         }
         [sself applyLocationJSONData:data];
+        sself.lastSuccessfulLocationAPIFetchDate = [NSDate date];
         sself.fetchInFlight = NO;
     }];
     [task resume];
@@ -590,6 +611,11 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
     id conn = device[@"connection"];
     if ([conn isKindOfClass:[NSString class]] && [(NSString *)conn length] > 0) {
         d[@"conn"] = conn;
+    }
+
+    id zoneName = device[@"zoneName"];
+    if ([zoneName isKindOfClass:[NSString class]] && [(NSString *)zoneName length] > 0) {
+        d[@"zonename"] = zoneName;
     }
 
     return [d copy];

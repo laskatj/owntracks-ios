@@ -36,6 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nullable, nonatomic, copy) NSString *ssid;
 @property (nullable, nonatomic, copy) NSString *tag;
 @property (nullable, nonatomic, copy) NSString *trigger;
+@property (nullable, nonatomic, copy) NSString *zoneName;
 @property (nullable, nonatomic, copy) NSDate *tst;
 @property (nullable, nonatomic, copy) NSNumber *vac;
 @property (nullable, nonatomic, copy) NSNumber *vel;

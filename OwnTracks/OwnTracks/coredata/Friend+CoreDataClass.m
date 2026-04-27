@@ -325,6 +325,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                        bs:(NSNumber *)bs
                  pressure:(NSNumber *)pressure
          motionActivities:(NSArray <NSString *> *)motionActivities
+                 zoneName:(NSString *)zoneName
 {
     Waypoint *waypoint = [NSEntityDescription insertNewObjectForEntityForName:@"Waypoint"
                                                        inManagedObjectContext:self.managedObjectContext];
@@ -332,6 +333,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     waypoint.trigger = trigger;
     waypoint.poi = poi;
     waypoint.tag = tag;
+    waypoint.zoneName = zoneName.length ? zoneName : nil;
     waypoint.acc = @(location.horizontalAccuracy);
     waypoint.alt = @(location.altitude);
     waypoint.lat = @(location.coordinate.latitude);

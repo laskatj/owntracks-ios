@@ -35,6 +35,7 @@
 @dynamic ssid;
 @dynamic tag;
 @dynamic trigger;
+@dynamic zoneName;
 @dynamic tst;
 @dynamic vac;
 @dynamic vel;

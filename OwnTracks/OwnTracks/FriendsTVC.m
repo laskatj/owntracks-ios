@@ -18,6 +18,7 @@
 #import "CoreData.h"
 #import "FriendAnnotationV.h"
 #import "OwnTracking.h"
+#import "LocationAPISyncService.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 #import <Contacts/Contacts.h>
 
@@ -141,6 +142,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         //
     }
     [self.tableView reloadData];
+    [[LocationAPISyncService sharedInstance] requestLocationRefreshIfAppropriate];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -413,7 +415,9 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     
     Waypoint *waypoint = friend.newestWaypoint;
     if (waypoint) {
-        if (waypoint.placemark) {
+        if (waypoint.zoneName.length) {
+            friendTableViewCell.address.text = waypoint.zoneName;
+        } else if (waypoint.placemark) {
             friendTableViewCell.address.text = waypoint.placemark;
         } else {
             DDLogVerbose(@"[FriendsTVC] configureCell resolving %@", waypoint);
@@ -423,24 +427,25 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         }
         friendAnnotationView.speed = (waypoint.vel).doubleValue;
         friendAnnotationView.course = (waypoint.cog).doubleValue;
+
+        NSDateComponents *dateComponents = [[NSCalendar currentCalendar]
+                                            components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
+                                            fromDate:[NSDate date]];
+        NSDate *thisMorning = [[NSCalendar currentCalendar] dateFromComponents:dateComponents];
+        if ([waypoint.tst timeIntervalSinceDate:thisMorning] > 0) {
+            friendTableViewCell.timestamp.text = [NSDateFormatter localizedStringFromDate:waypoint.tst
+                                                                                dateStyle:NSDateFormatterNoStyle
+                                                                                timeStyle:NSDateFormatterShortStyle];
+        } else {
+            friendTableViewCell.timestamp.text = [NSDateFormatter localizedStringFromDate:waypoint.tst
+                                                                                dateStyle:NSDateFormatterShortStyle
+                                                                                timeStyle:NSDateFormatterNoStyle];
+        }
     } else {
         friendTableViewCell.address.text = @"";
         friendAnnotationView.speed = -1;
         friendAnnotationView.course = -1;
-    }
-    
-    NSDateComponents *dateComponents = [[NSCalendar currentCalendar]
-                                        components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
-                                        fromDate:[NSDate date]];
-    NSDate *thisMorning = [[NSCalendar currentCalendar] dateFromComponents:dateComponents];
-    if ([waypoint.tst timeIntervalSinceDate:thisMorning] > 0) {
-        friendTableViewCell.timestamp.text = [NSDateFormatter localizedStringFromDate:waypoint.tst
-                                                                            dateStyle:NSDateFormatterNoStyle
-                                                                            timeStyle:NSDateFormatterShortStyle];
-    } else {
-        friendTableViewCell.timestamp.text = [NSDateFormatter localizedStringFromDate:waypoint.tst
-                                                                            dateStyle:NSDateFormatterShortStyle
-                                                                            timeStyle:NSDateFormatterNoStyle];
+        friendTableViewCell.timestamp.text = @"";
     }
     
     friendTableViewCell.image.image = [friendAnnotationView getImage];

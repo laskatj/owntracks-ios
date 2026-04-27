@@ -49,7 +49,8 @@ m:(nullable NSNumber *)m
 conn:(nullable NSString *)conn
 bs:(nullable NSNumber *)bs
 pressure:(nullable NSNumber *)pressure
-motionActivities:(nullable NSArray <NSString *> *)motionActivities;
+motionActivities:(nullable NSArray <NSString *> *)motionActivities
+zoneName:(nullable NSString *)zoneName;
 
 - (NSInteger)limitWaypointsToMaximum:(NSInteger)max;
 - (NSInteger)limitWaypointsToMaximumDays:(NSInteger)days;

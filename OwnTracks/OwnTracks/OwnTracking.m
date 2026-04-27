@@ -19,6 +19,15 @@
 #import <UserNotifications/UserNotifications.h>
 #import <UserNotifications/UNUserNotificationCenter.h>
 
+/*
+ Core Data vs Recorder API (friend locations):
+ - MQTT and GET /api/location are the only writers into Friend/Waypoint (see processLocation). Same path keeps the Friends list and map pins consistent.
+ - GET .../history/.../route (Recorder) is for the ephemeral map polyline only (ViewController liveTrackPoints); it does not persist route points into Core Data.
+ */
+@interface OwnTracking ()
+- (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary fromLocationAPI:(BOOL)fromLocationAPI;
+@end
+
 @implementation OwnTracking
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 static OwnTracking *theInstance = nil;
@@ -138,10 +147,17 @@ static OwnTracking *theInstance = nil;
         return;
     }
     Friend *friend = [Friend friendWithTopic:topic inManagedObjectContext:context];
-    [self processLocation:friend dictionary:dictionary];
+    [self processLocation:friend dictionary:dictionary fromLocationAPI:YES];
 }
 
 - (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary {
+    [self processLocation:friend dictionary:dictionary fromLocationAPI:NO];
+}
+
+- (void)processLocation:(Friend *)friend dictionary:(NSDictionary *)dictionary fromLocationAPI:(BOOL)fromLocationAPI {
+    if (!friend) {
+        return;
+    }
     if (dictionary && [dictionary isKindOfClass:[NSDictionary class]]) {
         NSNumber *tst = dictionary[@"tst"];
         if (!tst || ![tst isKindOfClass:[NSNumber class]]) {
@@ -149,10 +165,11 @@ static OwnTracking *theInstance = nil;
             return;
         }
         NSDate *timestamp = [NSDate dateWithTimeIntervalSince1970:tst.doubleValue];
-        if (friend.lastLocation && [friend.lastLocation compare:timestamp] != NSOrderedAscending) {
-            DDLogDebug(@"[OwnTracking] skipped location for friend %@ @%@ (not newer)",
-                      friend.topic, timestamp);
-            return;
+
+        NSString *incomingZoneName = nil;
+        id znRaw = dictionary[@"zonename"] ?: dictionary[@"zoneName"];
+        if ([znRaw isKindOfClass:[NSString class]] && [(NSString *)znRaw length]) {
+            incomingZoneName = (NSString *)znRaw;
         }
 
         NSNumber *lat = dictionary[@"lat"];
@@ -168,7 +185,7 @@ static OwnTracking *theInstance = nil;
             return;
         }
         CLLocationDegrees lonDegrees = lon.doubleValue;
-        
+
         if (lat.doubleValue == 0.0 && lon.doubleValue == 0.0) {
             DDLogError(@"[OwnTracking processLocation] coord is 0.0,0.0: not processed");
             return;
@@ -178,6 +195,28 @@ static OwnTracking *theInstance = nil;
         if (!CLLocationCoordinate2DIsValid(coord)) {
             DDLogError(@"[OwnTracking processLocation] coord is no valid: not processed");
             return;
+        }
+
+        if (friend.lastLocation && [friend.lastLocation compare:timestamp] != NSOrderedAscending) {
+            if (!fromLocationAPI) {
+                DDLogDebug(@"[OwnTracking] skipped location for friend %@ @%@ (not newer)",
+                           friend.topic, timestamp);
+                return;
+            }
+            Waypoint *nw = friend.newestWaypoint;
+            const double kCoordEps = 5e-5;
+            BOOL coordsMoved = !nw || fabs((nw.lat).doubleValue - latDegrees) > kCoordEps
+                || fabs((nw.lon).doubleValue - lonDegrees) > kCoordEps;
+            NSString *prevZone = nw.zoneName;
+            BOOL zoneChanged = (incomingZoneName.length > 0 || prevZone.length > 0)
+                && ![incomingZoneName ?: @"" isEqualToString:prevZone ?: @""];
+            if (!coordsMoved && !zoneChanged) {
+                DDLogVerbose(@"[OwnTracking] skipped API location for friend %@ @%@ (same tst/coords/zone as newest)",
+                             friend.topic, timestamp);
+                return;
+            }
+            DDLogVerbose(@"[OwnTracking] applying API location despite non-newer tst (coordsMoved=%d zoneChanged=%d) friend=%@",
+                         coordsMoved, zoneChanged, friend.topic);
         }
         
         NSNumber *vel = dictionary[@"vel"];
@@ -377,7 +416,8 @@ static OwnTracking *theInstance = nil;
                              conn:conn
                                bs:bs
                          pressure:p
-                 motionActivities:motionActivities];
+                 motionActivities:motionActivities
+                         zoneName:incomingZoneName];
         int positions = [Settings intForKey:@"positions_preference" inMOC:friend.managedObjectContext];
         NSInteger remainingPositions = [friend limitWaypointsToMaximum:positions];
         DDLogInfo(@"[OwnTracking] processed location for friend %@ @%@ (%ld)",
@@ -660,7 +700,11 @@ static OwnTracking *theInstance = nil;
     if (waypoint.tag && waypoint.tag.length > 0) {
         json[@"tag"] = waypoint.tag;
     }
-    
+
+    if (waypoint.zoneName.length) {
+        json[@"zonename"] = waypoint.zoneName;
+    }
+
     if (waypoint.image) {
         json[@"image"] = [waypoint.image base64EncodedStringWithOptions:0];
     }

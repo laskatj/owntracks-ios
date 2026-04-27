@@ -54,7 +54,7 @@
                                         conn:nil
                                           bs:nil
                                     pressure:nil
-                            motionActivities:nil];
+                            motionActivities:nil zoneName:nil];
     XCTAssertNotNil(waypoint);
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
@@ -96,7 +96,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
     }
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
@@ -145,7 +145,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
     }
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
@@ -194,7 +194,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
     }
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
@@ -243,7 +243,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
         NSInteger remainingPositions = [friend limitWaypointsToMaximumDays:30];
         NSLog(@"addWaypoint remainingPositions=%ld", remainingPositions);
     }
@@ -288,7 +288,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
         NSInteger remainingPositions = [friend limitWaypointsToMaximumDays:30];
         NSLog(@"addWaypoint remainingPositions=%ld", remainingPositions);
     }
@@ -333,7 +333,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
     }
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
@@ -382,7 +382,7 @@
                              conn:nil
                                bs:nil
                          pressure:nil
-                 motionActivities:nil];
+                 motionActivities:nil zoneName:nil];
     }
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;

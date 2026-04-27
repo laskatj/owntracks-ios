@@ -16,6 +16,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Registers for foreground/background notifications. Safe to call once from application:didFinishLaunchingWithOptions:.
 - (void)start;
 
+/// Triggers GET /api/location when not already in flight and the last successful fetch is older than a short debounce (e.g. Friends tab pull-to-refresh on appear).
+- (void)requestLocationRefreshIfAppropriate;
+
 /// Makes an authenticated GET to `url`, obtaining and refreshing the OAuth token as needed.
 /// Completion is called on an arbitrary background thread with the raw response data or an error.
 - (void)performAuthenticatedGET:(NSURL *)url

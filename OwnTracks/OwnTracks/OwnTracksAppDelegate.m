@@ -1893,7 +1893,8 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                         conn:conn
                                           bs:bs
                                     pressure:p
-                            motionActivities:motionActivities];
+                            motionActivities:motionActivities
+                                zoneName:nil];
     if (waypoint) {
         NSDictionary *json = [[OwnTracking sharedInstance] waypointAsJSON:waypoint];
         if (json) {
