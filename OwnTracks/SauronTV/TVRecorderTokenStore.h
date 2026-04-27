@@ -21,7 +21,8 @@ extern NSString * const TVRecorderOAuthTokensDidChangeNotification;
 /// True if access token exists and is not within 60s of expiry.
 + (BOOL)hasUsableAccessToken;
 
-+ (void)saveAccessToken:(NSString *)accessToken
+/// Returns NO if Keychain write failed (caller should treat sign-in as failed).
++ (BOOL)saveAccessToken:(NSString *)accessToken
            refreshToken:(nullable NSString *)refreshToken
               expiresIn:(NSInteger)expiresIn;
 

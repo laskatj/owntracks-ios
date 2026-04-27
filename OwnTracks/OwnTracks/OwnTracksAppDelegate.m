@@ -1256,6 +1256,27 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                                           data:data
                                                       retained:retained
                                                        context:CoreData.sharedInstance.queuedMOC];
+            // Own-device location: mirror remote friends so the map can smooth-animate and extend liveTrackPoints.
+            if (ownDevice && dictionary && [type isKindOfClass:[NSString class]] &&
+                [type isEqualToString:@"location"] &&
+                [dictionary[@"lat"] isKindOfClass:[NSNumber class]] &&
+                [dictionary[@"lon"] isKindOfClass:[NSNumber class]]) {
+                NSString *genTopic = [Settings theGeneralTopicInMOC:CoreData.sharedInstance.queuedMOC];
+                if (genTopic.length) {
+                    NSDictionary *liveUserInfo = @{
+                        @"topic": genTopic,
+                        @"lat": dictionary[@"lat"],
+                        @"lon": dictionary[@"lon"],
+                        @"tst": dictionary[@"tst"] ?: @(0),
+                    };
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [[NSNotificationCenter defaultCenter]
+                            postNotificationName:@"OTLiveFriendLocation"
+                                          object:nil
+                                        userInfo:liveUserInfo];
+                    });
+                }
+            }
             if (ownDevice) {
                 if (dictionary) {
                     if (type && [type isKindOfClass:[NSString class]]) {

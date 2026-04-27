@@ -13,6 +13,21 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 NSString * const TVRecorderOAuthErrorDomain = @"TVRecorderOAuthErrorDomain";
 
+/// Encode `application/x-www-form-urlencoded` components using RFC 3986 unreserved only.
+/// Avoids `NSURLComponents.percentEncodedQuery`, which can mishandle values like `device_code` (`+`, etc.).
+static NSString *TVRecorderOAuthFormEncode(NSString *s) {
+    if (!s.length) return @"";
+    static NSCharacterSet *allowed;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSMutableCharacterSet *cs = [NSMutableCharacterSet alphanumericCharacterSet];
+        [cs addCharactersInString:@"-._~"];
+        allowed = [cs copy];
+    });
+    NSString *out = [s stringByAddingPercentEncodingWithAllowedCharacters:allowed];
+    return out ?: @"";
+}
+
 @interface TVRecorderOAuthClient ()
 @property (nonatomic, readwrite, nullable) NSURL *deviceAuthorizationEndpoint;
 @property (nonatomic, readwrite, nullable) NSURL *tokenEndpoint;
@@ -43,10 +58,16 @@ NSString * const TVRecorderOAuthErrorDomain = @"TVRecorderOAuthErrorDomain";
 #pragma mark - Form POST helper
 
 - (nullable NSData *)formBodyForQueryItems:(NSArray<NSURLQueryItem *> *)items {
-    NSURLComponents *c = [NSURLComponents new];
-    c.queryItems = items;
-    NSString *q = c.percentEncodedQuery;
-    return q ? [q dataUsingEncoding:NSUTF8StringEncoding] : nil;
+    if (!items.count) return nil;
+    NSMutableArray<NSString *> *pairs = [NSMutableArray arrayWithCapacity:items.count];
+    for (NSURLQueryItem *item in items) {
+        NSString *name = item.name ?: @"";
+        NSString *value = item.value ?: @"";
+        [pairs addObject:[NSString stringWithFormat:@"%@=%@", TVRecorderOAuthFormEncode(name),
+                                                    TVRecorderOAuthFormEncode(value)]];
+    }
+    NSString *q = [pairs componentsJoinedByString:@"&"];
+    return [q dataUsingEncoding:NSUTF8StringEncoding];
 }
 
 - (void)postFormToURL:(NSURL *)url
@@ -240,9 +261,10 @@ static NSString *TVRecorderOAuthErrorStringFromDict(NSDictionary *dict) {
             NSString *desc = ([ed isKindOfClass:[NSString class]] && [(NSString *)ed length])
                 ? (NSString *)ed : oauthErr;
             if ([oauthErr isEqualToString:@"invalid_grant"]) {
-                DDLogWarn(@"[TVRecorderOAuth] device token invalid_grant — if the Authentik app is "
-                          @"confidential, set kTVOAuthClientSecret; if public, ensure client_id matches "
-                          @"the app used at the device URL.");
+                DDLogWarn(@"[TVRecorderOAuth] device token invalid_grant: %@ — Authentik: use the same "
+                          @"client_id as the OAuth app; if the provider is Confidential, set "
+                          @"kTVOAuthClientSecret; if Public, leave the secret empty.",
+                          desc);
             }
             completion(nil, NO, NO, [NSError errorWithDomain:TVRecorderOAuthErrorDomain
                                                           code:TVRecorderOAuthErrorNetwork
@@ -335,7 +357,12 @@ static NSString *TVRecorderOAuthErrorStringFromDict(NSDictionary *dict) {
             } else if ([ei isKindOfClass:[NSString class]]) {
                 exp = [(NSString *)ei integerValue];
             }
-            [TVRecorderTokenStore saveAccessToken:at refreshToken:newRt expiresIn:exp];
+            if (![TVRecorderTokenStore saveAccessToken:at refreshToken:newRt expiresIn:exp]) {
+                completion(nil, [NSError errorWithDomain:TVRecorderOAuthErrorDomain
+                                                      code:TVRecorderOAuthErrorNetwork
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Could not save refreshed token"}]);
+                return;
+            }
             DDLogInfo(@"[TVRecorderOAuth] refresh OK");
             completion(at, nil);
         }];

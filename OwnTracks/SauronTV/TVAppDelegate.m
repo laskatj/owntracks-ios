@@ -4,8 +4,8 @@
 //
 //  Minimal subscribe-only MQTT client for tvOS.
 //  Connects to the broker using TVHardcodedConfig.h credentials,
-//  subscribes to kTVBaseTopic, and posts OTLiveFriendLocation
-//  notifications for incoming location messages.
+//  subscribes per allowed device topic after GET /api/location, and posts
+//  OTLiveFriendLocation notifications for incoming location messages.
 //
 
 #import "TVAppDelegate.h"
@@ -14,6 +14,8 @@
 #import "TVRecorderAuthViewController.h"
 #import "TVFriendStore.h"
 #import "TVHardcodedConfig.h"
+#import "TVLocationDevicesFetcher.h"
+#import "TVRecorderOAuthClient.h"
 
 #import <mqttc/MQTTNWTransport.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
@@ -26,6 +28,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 @property (strong, nonatomic) MQTTSession *mqttSession;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSData *> *cardImages;
 @property (nonatomic) BOOL intentionalDisconnect;
+@property (copy, nonatomic) NSArray<NSString *> *lastMQTTSubscriptionPatterns;
 @end
 
 @implementation TVAppDelegate
@@ -61,8 +64,142 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self.window makeKeyAndVisible];
 
     [[TVFriendStore shared] start];
-    [self connectMQTT];
+    self.lastMQTTSubscriptionPatterns = @[];
+
+    __weak typeof(self) weakSelf = self;
+    [self refreshLocationAllowlistPresentingSignInFrom:tabs
+                                             completion:^(BOOL success) {
+        [weakSelf connectMQTT];
+    }];
     return YES;
+}
+
+#pragma mark - Location API allowlist
+
+- (NSArray<NSString *> *)mqttSubscriptionPatterns {
+    NSMutableArray<NSString *> *p = [NSMutableArray array];
+    for (NSString *base in [TVFriendStore shared].allowedBaseMQTTTopics) {
+        [p addObject:[NSString stringWithFormat:@"%@/#", base]];
+    }
+    return [p copy];
+}
+
+- (void)subscribePatterns:(NSArray<NSString *> *)patterns
+                  session:(MQTTSession *)session {
+    for (NSString *pat in patterns) {
+        DDLogInfo(@"[TVAppDelegate] MQTT subscribe %@", pat);
+        [session subscribeToTopicV5:pat
+                            atLevel:MQTTQosLevelAtLeastOnce
+                            noLocal:NO
+                  retainAsPublished:NO
+                     retainHandling:MQTTSendRetained
+             subscriptionIdentifier:0
+                     userProperties:nil
+                   subscribeHandler:nil];
+    }
+}
+
+- (void)resyncMQTTSubscriptions {
+    MQTTSession *s = self.mqttSession;
+    if (!s || s.status != MQTTSessionStatusConnected) {
+        return;
+    }
+
+    NSArray<NSString *> *newPatterns = [self mqttSubscriptionPatterns];
+    NSArray<NSString *> *oldPatterns = self.lastMQTTSubscriptionPatterns ?: @[];
+    if ([[NSSet setWithArray:oldPatterns] isEqualToSet:[NSSet setWithArray:newPatterns]]) {
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    if (oldPatterns.count) {
+        [s unsubscribeTopicsV5:oldPatterns
+                  userProperties:nil
+              unsubscribeHandler:^(NSError *error, NSString *reasonString,
+                                   NSArray<NSDictionary<NSString *, NSString *> *> *userProperties,
+                                   NSArray<NSNumber *> *reasonCodes) {
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                      __strong typeof(weakSelf) selfStrong = weakSelf;
+                      if (!selfStrong) {
+                          return;
+                      }
+                      MQTTSession *sess = selfStrong.mqttSession;
+                      if (!sess || sess.status != MQTTSessionStatusConnected) {
+                          return;
+                      }
+                      [selfStrong subscribePatterns:newPatterns session:sess];
+                      selfStrong.lastMQTTSubscriptionPatterns = [newPatterns copy];
+                  });
+              }];
+    } else {
+        [self subscribePatterns:newPatterns session:s];
+        self.lastMQTTSubscriptionPatterns = [newPatterns copy];
+    }
+}
+
+- (void)refreshLocationAllowlistPresentingSignInFrom:(UIViewController *)pvc
+                                          completion:(void (^)(BOOL))completion {
+    NSURL *apiURL = [TVLocationDevicesFetcher locationAPIURL];
+    if (!apiURL) {
+        DDLogInfo(@"[TVAppDelegate] refreshLocationAllowlist: no API URL");
+        [[TVFriendStore shared] applyLocationAPIDevices:@[]];
+        [self resyncMQTTSubscriptions];
+        if (completion) {
+            completion(NO);
+        }
+        return;
+    }
+    (void)apiURL;
+
+    __weak typeof(self) weakSelf = self;
+    [[TVRecorderOAuthClient shared] ensureValidAccessTokenPresentingSignInFrom:pvc
+                                                                    completion:^(NSString *token, NSError *err) {
+        __strong typeof(weakSelf) selfStrong = weakSelf;
+        if (!selfStrong) {
+            if (completion) {
+                completion(NO);
+            }
+            return;
+        }
+
+        if (!token.length) {
+            DDLogInfo(@"[TVAppDelegate] refreshLocationAllowlist: no bearer token (%@)",
+                      err.localizedDescription ?: @"");
+            [[TVFriendStore shared] applyLocationAPIDevices:@[]];
+            [selfStrong resyncMQTTSubscriptions];
+            if (completion) {
+                completion(NO);
+            }
+            return;
+        }
+
+        [TVLocationDevicesFetcher fetchDevicesWithBearerToken:token
+                                                   completion:^(NSArray<TVLocationAPIDevice *> *devices,
+                                                                NSError *fetchErr) {
+            __strong typeof(weakSelf) ss = weakSelf;
+            if (!ss) {
+                if (completion) {
+                    completion(NO);
+                }
+                return;
+            }
+            if (fetchErr || !devices) {
+                DDLogInfo(@"[TVAppDelegate] refreshLocationAllowlist: GET failed %@",
+                          fetchErr.localizedDescription ?: @"");
+                [[TVFriendStore shared] applyLocationAPIDevices:@[]];
+                [ss resyncMQTTSubscriptions];
+                if (completion) {
+                    completion(NO);
+                }
+                return;
+            }
+            [[TVFriendStore shared] applyLocationAPIDevices:devices];
+            [ss resyncMQTTSubscriptions];
+            if (completion) {
+                completion(YES);
+            }
+        }];
+    }];
 }
 
 #pragma mark - MQTT
@@ -107,15 +244,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 - (void)connected:(MQTTSession *)session sessionPresent:(BOOL)sessionPresent {
     DDLogInfo(@"[TVAppDelegate] MQTT connected sessionPresent=%d", sessionPresent);
 
-    // Subscribe to all friend topics
-    [session subscribeToTopicV5:kTVBaseTopic
-                          atLevel:MQTTQosLevelAtLeastOnce
-                          noLocal:NO
-                retainAsPublished:NO
-                   retainHandling:MQTTSendRetained
-           subscriptionIdentifier:0
-                   userProperties:nil
-                 subscribeHandler:nil];
+    NSArray<NSString *> *patterns = [self mqttSubscriptionPatterns];
+    [self subscribePatterns:patterns session:session];
+    self.lastMQTTSubscriptionPatterns = [patterns copy];
 }
 
 - (void)handleEvent:(MQTTSession *)session
@@ -162,11 +293,20 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                      contentType:(NSString *)contentType
          subscriptionIdentifiers:(NSArray<NSNumber *> *)subscriptionIdentifiers {
 
-    if (!data) return YES;
+    if (!data) {
+        return YES;
+    }
 
     NSError *err;
     id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&err];
-    if (![json isKindOfClass:[NSDictionary class]]) return YES;
+    if (![json isKindOfClass:[NSDictionary class]]) {
+        return YES;
+    }
+
+    NSString *baseTopic = [TVFriendStore baseMQTTTopicFromMessageTopic:topic];
+    if (![[TVFriendStore shared] isBaseTopicAllowed:baseTopic]) {
+        return YES;
+    }
 
     NSDictionary *dict = json;
     NSString *type = dict[@"_type"];
@@ -175,13 +315,15 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if ([type isEqualToString:@"location"]) {
         NSNumber *lat = dict[@"lat"];
         NSNumber *lon = dict[@"lon"];
-        if (![lat isKindOfClass:[NSNumber class]] || ![lon isKindOfClass:[NSNumber class]]) return YES;
+        if (![lat isKindOfClass:[NSNumber class]] || ![lon isKindOfClass:[NSNumber class]]) {
+            return YES;
+        }
 
         NSString *tid = dict[@"tid"];
-        NSString *label = (tid && tid.length) ? tid : [topic lastPathComponent];
+        NSString *label = (tid && tid.length) ? tid : [baseTopic lastPathComponent];
 
         NSDictionary *info = @{
-            @"topic": topic,
+            @"topic": baseTopic,
             @"lat":   lat,
             @"lon":   lon,
             @"tst":   dict[@"tst"] ?: @(0),
@@ -196,20 +338,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         });
 
         DDLogInfo(@"[TVAppDelegate] location %@ lat=%.5f lon=%.5f",
-                  topic, lat.doubleValue, lon.doubleValue);
+                  baseTopic, lat.doubleValue, lon.doubleValue);
 
     } else if ([type isEqualToString:@"card"]) {
-        // Card messages arrive on <base>/info; normalize to the base device topic
-        // so the image key matches the location-message key used in TVMapViewController.
-        static NSSet *subtopics;
-        static dispatch_once_t once;
-        dispatch_once(&once, ^{
-            subtopics = [NSSet setWithObjects:@"info", @"event", @"waypoints", @"waypoint", @"status", @"cmd", nil];
-        });
-        NSString *baseTopic = [[topic lastPathComponent] isEqual:subtopics.anyObject] || [subtopics containsObject:[topic lastPathComponent]]
-            ? [topic stringByDeletingLastPathComponent]
-            : topic;
-
         NSString *cardName = dict[@"name"];
         DDLogInfo(@"[TVAppDelegate] card received topic=%@ baseTopic=%@ name=%@",
                   topic, baseTopic, cardName ?: @"(none)");
@@ -227,11 +358,14 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             }
         }
 
-        // Post whenever we have at least a name or an image.
         if (cardName.length || imgData) {
             NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:baseTopic forKey:@"topic"];
-            if (imgData)       payload[@"imageData"] = imgData;
-            if (cardName.length) payload[@"name"]    = cardName;
+            if (imgData) {
+                payload[@"imageData"] = imgData;
+            }
+            if (cardName.length) {
+                payload[@"name"] = cardName;
+            }
             DDLogInfo(@"[TVAppDelegate] posting OTFriendCard for %@ name=%@ hasImage=%@",
                       baseTopic, cardName ?: @"-", imgData ? @"YES" : @"NO");
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -239,7 +373,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                     postNotificationName:@"OTFriendCard"
                                   object:nil
                                 userInfo:[payload copy]];
-                });
+            });
         }
     } else {
         DDLogInfo(@"[TVAppDelegate] ignoring _type=%@ on %@", type ?: @"(null)", topic);

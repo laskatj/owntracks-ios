@@ -73,7 +73,7 @@ static NSString *TVRecorderKeychainAccount(void) {
     return ok;
 }
 
-+ (void)saveAccessToken:(NSString *)accessToken
++ (BOOL)saveAccessToken:(NSString *)accessToken
            refreshToken:(nullable NSString *)refreshToken
               expiresIn:(NSInteger)expiresIn {
     NSMutableDictionary *payload = [[self readPayload] mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -99,7 +99,7 @@ static NSString *TVRecorderKeychainAccount(void) {
     NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&err];
     if (!data) {
         DDLogError(@"[TVRecorderTokenStore] JSON encode failed: %@", err);
-        return;
+        return NO;
     }
 
     [self clear];
@@ -114,7 +114,7 @@ static NSString *TVRecorderKeychainAccount(void) {
     if (addSt != errSecSuccess) {
         DDLogError(@"[TVRecorderTokenStore] SecItemAdd failed status=%d (access_len=%lu refresh=%d expires_in=%ld)",
                     (int)addSt, (unsigned long)accessToken.length, refreshToken.length > 0, (long)expiresIn);
-        return;
+        return NO;
     }
     DDLogInfo(@"[TVRecorderTokenStore] saved tokens keychain OK (access_len=%lu has_refresh=%d expires_in=%ld exp_epoch=%.0f skew=%.0f)",
               (unsigned long)accessToken.length, refreshToken.length > 0, (long)expiresIn, exp, skew);
@@ -122,6 +122,7 @@ static NSString *TVRecorderKeychainAccount(void) {
         [[NSNotificationCenter defaultCenter]
             postNotificationName:TVRecorderOAuthTokensDidChangeNotification object:nil];
     });
+    return YES;
 }
 
 + (void)clear {

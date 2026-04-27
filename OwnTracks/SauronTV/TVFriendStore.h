@@ -12,10 +12,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class TVLocationAPIDevice;
+
 /// Posted on the main thread whenever friend data changes.
 /// userInfo keys:
-///   @"topic"  — NSString, the affected MQTT topic
-///   @"change" — @"new" | @"location" | @"image"
+///   @"topic"  — NSString, the affected MQTT topic (optional for bulk @"allowlist")
+///   @"change" — @"new" | @"location" | @"image" | @"card" | @"allowlist"
 extern NSString * const TVFriendStoreDidUpdateNotification;
 
 @interface TVFriendStore : NSObject
@@ -26,10 +28,10 @@ extern NSString * const TVFriendStoreDidUpdateNotification;
 /// Loads disk-cached card images and starts observing MQTT notifications.
 - (void)start;
 
-/// Topics sorted Z→A by display label.
+/// Topics sorted A→Z by display label.
 @property (nonatomic, readonly) NSArray<NSString *> *friendTopics;
 
-/// topic → display label (tid or last path component of MQTT topic)
+/// topic → display label (API deviceName when available, else tid / last path component)
 @property (nonatomic, readonly) NSDictionary<NSString *, NSString *> *friendLabels;
 
 /// topic → last-seen time string (short time style)
@@ -41,12 +43,24 @@ extern NSString * const TVFriendStoreDidUpdateNotification;
 /// topic → NSValue wrapping CLLocationCoordinate2D
 @property (nonatomic, readonly) NSDictionary<NSString *, NSValue *> *friendCoords;
 
+/// Base MQTT topics from the last successful GET /api/location (authoritative allowlist).
+@property (nonatomic, readonly, copy) NSArray<NSString *> *allowedBaseMQTTTopics;
+
 /// Returns the stored photo for topic, or a blue-circle placeholder with the friend's initials.
 - (UIImage *)imageForTopic:(NSString *)topic;
 
 /// Returns the Unix-epoch timestamp (seconds) of the most recent location fix,
 /// or 0 if unknown.
 - (NSTimeInterval)rawTimestampForTopic:(NSString *)topic;
+
+/// Strips /info, /event, etc. so the key matches API mqttTopic.
++ (NSString *)baseMQTTTopicFromMessageTopic:(NSString *)topic;
+
+/// Whether the base topic is in the current API allowlist (NO until first apply).
+- (BOOL)isBaseTopicAllowed:(NSString *)baseTopic;
+
+/// Replaces allowlist and friend rows from GET /api/location. Posts change @"allowlist".
+- (void)applyLocationAPIDevices:(NSArray<TVLocationAPIDevice *> *)devices;
 
 @end
 

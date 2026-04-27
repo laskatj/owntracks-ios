@@ -22,8 +22,74 @@
 #import "OwnTracking.h"
 #import "LocationAPISyncService.h"
 #import "WebAppURLResolver.h"
+#import "Settings.h"
 
 #import "OwnTracksChangeMonitoringIntent.h"
+
+static NSString * const kMapRouteHistoryHoursKey = @"mapRouteHistoryHours";
+
+/// Best-effort unix seconds from a Recorder route point dict (for 6h/12h alignment debug).
+static NSTimeInterval RouteHistoryPointUnixTime(NSDictionary *pt) {
+    if (![pt isKindOfClass:[NSDictionary class]]) {
+        return NAN;
+    }
+    NSArray<NSString *> *keys = @[ @"tst", @"timestamp", @"time", @"createdAt", @"created_at" ];
+    for (NSString *key in keys) {
+        id v = pt[key];
+        if ([v isKindOfClass:[NSNumber class]]) {
+            double t = [(NSNumber *)v doubleValue];
+            if (t > 1e12) {
+                t /= 1000.0;
+            }
+            if (t > 946684800 && t < 4102444800) {
+                return t;
+            }
+        } else if ([v isKindOfClass:[NSString class]]) {
+            NSString *s = (NSString *)v;
+            double t = [s doubleValue];
+            if (t > 1e12) {
+                t /= 1000.0;
+            }
+            if (t > 946684800 && t < 4102444800) {
+                return t;
+            }
+            static NSISO8601DateFormatter *isoFmt;
+            static dispatch_once_t onceToken;
+            dispatch_once(&onceToken, ^{
+                isoFmt = [[NSISO8601DateFormatter alloc] init];
+            });
+            NSDate *d = [isoFmt dateFromString:s];
+            if (d) {
+                return [d timeIntervalSince1970];
+            }
+        }
+    }
+    return NAN;
+}
+
+/// US Pacific for route debug (`America/Los_Angeles` — PST or PDT by calendar).
+static NSString *RouteDebugTimeStringPST(NSTimeInterval unix) {
+    NSDate *d = [NSDate dateWithTimeIntervalSince1970:unix];
+    static NSDateFormatter *fmt;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        fmt = [[NSDateFormatter alloc] init];
+        fmt.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        fmt.timeZone = [NSTimeZone timeZoneWithName:@"America/Los_Angeles"];
+        fmt.dateFormat = @"yyyy-MM-dd HH:mm:ss zzz";
+    });
+    return [fmt stringFromDate:d];
+}
+
+static NSString *RouteDebugPSTOrUnknown(id unixObj) {
+    if (!unixObj || unixObj == [NSNull null]) {
+        return @"(time unknown)";
+    }
+    if ([unixObj isKindOfClass:[NSNumber class]]) {
+        return RouteDebugTimeStringPST([(NSNumber *)unixObj doubleValue]);
+    }
+    return @"(time unknown)";
+}
 
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -56,8 +122,12 @@
 @property (nonatomic, strong) NSMutableSet<NSString *> *routeFetchedTopics;
 /// Topics with an in-flight route fetch; used to cancel/ignore stale responses on deselect.
 @property (nonatomic, strong) NSMutableSet<NSString *> *pendingRouteTopics;
+/// Per-topic `liveTrackPoints` count when a route GET was issued — only MQTT points appended after this are merged with the API response (avoids dragging old session points outside the requested window).
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *routeFetchMQTTBaselineByTopic;
 /// Live MQTT track points (session-only), keyed by friend.topic.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
+/// Parallel to `liveTrackPoints[topic]`: `NSNumber` unix seconds, or `NSNull` when unknown (for debug / PST labels).
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray *> *liveTrackPointUnixByTopic;
 /// Live MQTT track polyline overlays currently on the map, keyed by friend.topic.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
 /// Per-friend smooth marker animators, keyed by friend.topic.
@@ -66,6 +136,10 @@
 @property (nonatomic, strong, nullable) CADisplayLink *followLink;
 /// Direct reference to the friend currently being followed (weak — Friend is owned by Core Data).
 @property (nonatomic, weak, nullable) Friend *followFriend;
+/// Toggles Recorder route history window between 6h and 12h (top-trailing on map).
+@property (nonatomic, strong) UIButton *routeHistoryToggleButton;
+/// One-shot debug payload for the next `rebuildLiveTrackForTopic:` after a route GET merges (REST window vs API tst).
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *routeLastFetchDebugByTopic;
 @end
 
 
@@ -78,9 +152,12 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.warning = FALSE;
     self.routeFetchedTopics = [NSMutableSet set];
     self.pendingRouteTopics = [NSMutableSet set];
+    self.routeFetchMQTTBaselineByTopic = [NSMutableDictionary dictionary];
     self.liveTrackPoints = [NSMutableDictionary dictionary];
+    self.liveTrackPointUnixByTopic = [NSMutableDictionary dictionary];
     self.liveTrackPolylines = [NSMutableDictionary dictionary];
     self.friendAnimators = [NSMutableDictionary dictionary];
+    self.routeLastFetchDebugByTopic = [NSMutableDictionary dictionary];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(liveFriendLocationUpdate:)
                                                  name:@"OTLiveFriendLocation"
@@ -126,6 +203,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
      }];
     
     [self noMap];
+    [self setupRouteHistoryToggle];
 }
 
 - (void)setupModes {
@@ -227,6 +305,198 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                                                      constant:0];
     
     [NSLayoutConstraint activateConstraints:@[bottomScale, leadingScale]];
+}
+
+#pragma mark - Route history (Recorder window + UI)
+
+- (NSInteger)routeHistoryHours {
+    NSInteger h = [[NSUserDefaults standardUserDefaults] integerForKey:kMapRouteHistoryHoursKey];
+    return (h == 6) ? 6 : 12;
+}
+
+- (void)setRouteHistoryHours:(NSInteger)hours {
+    NSInteger h = (hours == 6) ? 6 : 12;
+    [[NSUserDefaults standardUserDefaults] setInteger:h forKey:kMapRouteHistoryHoursKey];
+}
+
+- (void)setupRouteHistoryToggle {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    btn.backgroundColor = [[UIColor secondarySystemBackgroundColor] colorWithAlphaComponent:0.92];
+    btn.layer.cornerRadius = 10;
+    btn.clipsToBounds = YES;
+    [btn addTarget:self action:@selector(routeHistoryToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
+    self.routeHistoryToggleButton = btn;
+    [self updateRouteHistoryToggleTitle];
+    [self.view addSubview:btn];
+    btn.hidden = YES;
+    // Pin to the map (not the VC top safe area) so the control stays visible above the map tiles; keep above siblings.
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
+        [btn.topAnchor constraintEqualToAnchor:self.mapView.topAnchor constant:52],
+        [btn.widthAnchor constraintGreaterThanOrEqualToConstant:56],
+        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:36],
+    ]];
+    [self.view bringSubviewToFront:btn];
+}
+
+- (void)updateRouteHistoryToggleTitle {
+    NSInteger h = [self routeHistoryHours];
+    NSString *title = (h == 12)
+        ? NSLocalizedString(@"12h", @"Route history window 12 hours")
+        : NSLocalizedString(@"6h", @"Route history window 6 hours");
+    [self.routeHistoryToggleButton setTitle:title forState:UIControlStateNormal];
+}
+
+- (void)updateRouteHistoryToggleVisibility {
+    if (!self.routeHistoryToggleButton) {
+        return;
+    }
+    Friend *f = self.followFriend;
+    if (!f) {
+        self.routeHistoryToggleButton.hidden = YES;
+        return;
+    }
+    NSString *t = f.topic;
+    BOOL show = (self.liveTrackPolylines[t] != nil)
+        || [self.pendingRouteTopics containsObject:t]
+        || (self.liveTrackPoints[t].count >= 2);
+    self.routeHistoryToggleButton.hidden = !show;
+    if (show) {
+        [self.view bringSubviewToFront:self.routeHistoryToggleButton];
+    }
+}
+
+- (void)routeHistoryToggleTapped:(UIButton *)sender {
+    NSInteger next = ([self routeHistoryHours] == 12) ? 6 : 12;
+    [self setRouteHistoryHours:next];
+    [self updateRouteHistoryToggleTitle];
+
+    Friend *f = self.followFriend;
+    if (f) {
+        NSString *t = f.topic;
+        MKPolyline *pl = self.liveTrackPolylines[t];
+        if (pl) {
+            [self.mapView removeOverlay:pl];
+            [self.liveTrackPolylines removeObjectForKey:t];
+        }
+        [self.routeFetchedTopics removeObject:t];
+        [self.pendingRouteTopics removeObject:t];
+        CLLocationCoordinate2D c = f.coordinate;
+        if (CLLocationCoordinate2DIsValid(c)) {
+            self.liveTrackPoints[t] = [NSMutableArray arrayWithObject:[NSValue valueWithMKCoordinate:c]];
+            NSTimeInterval seedUnix = [[NSDate date] timeIntervalSince1970];
+            Waypoint *nw = f.newestWaypoint;
+            if (nw.tst) {
+                seedUnix = [nw.tst timeIntervalSince1970];
+            }
+            self.liveTrackPointUnixByTopic[t] = [NSMutableArray arrayWithObject:@(seedUnix)];
+        } else {
+            self.liveTrackPoints[t] = [NSMutableArray array];
+            self.liveTrackPointUnixByTopic[t] = [NSMutableArray array];
+        }
+        [self fetchRouteForFriend:f mapView:self.mapView historyHours:next];
+    }
+    [self updateRouteHistoryToggleVisibility];
+}
+
+/// Removes live-track `MKPolyline` overlays for all topics except `topic` (nil = remove all).
+- (void)removeFriendLiveTrackOverlaysExceptTopic:(NSString *)topic {
+    NSArray<NSString *> *keys = [self.liveTrackPolylines.allKeys copy];
+    NSUInteger removed = 0;
+    for (NSString *k in keys) {
+        if (topic.length && [k isEqualToString:topic]) {
+            continue;
+        }
+        MKPolyline *pl = self.liveTrackPolylines[k];
+        if (pl) {
+            [self.mapView removeOverlay:pl];
+            [self.liveTrackPolylines removeObjectForKey:k];
+            removed++;
+            DDLogInfo(@"[RouteDebug] remove liveTrack MKPolyline topic=%@ (keeping %@)",
+                      k, topic.length ? topic : @"(none)");
+        }
+    }
+    if (removed || keys.count) {
+        DDLogInfo(@"[RouteDebug] liveTrackPolylines keys now %lu (removed %lu), followFriend=%@",
+                  (unsigned long)self.liveTrackPolylines.count, (unsigned long)removed,
+                  self.followFriend.topic ?: @"(nil)");
+    }
+}
+
+/// Core Data waypoint trails: `Friend` used as `MKOverlay` (renderer uses `friend.polyLine`).
+/// Only the followed friend should show this breadcrumb; others must be removed or the map shows every trail at once.
+- (void)removeFriendBreadcrumbOverlaysExceptFriend:(Friend *)friendOrNil {
+    NSArray<id<MKOverlay>> *overlays = [self.mapView.overlays copy];
+    NSUInteger removed = 0;
+    for (id<MKOverlay> ov in overlays) {
+        if (![ov isKindOfClass:[Friend class]]) {
+            continue;
+        }
+        Friend *f = (Friend *)ov;
+        if (friendOrNil && f == friendOrNil) {
+            continue;
+        }
+        [self.mapView removeOverlay:f];
+        removed++;
+        DDLogInfo(@"[RouteDebug] remove Friend breadcrumb overlay topic=%@", f.topic);
+    }
+    DDLogInfo(@"[RouteDebug] Friend breadcrumb overlays removed=%lu keep=%@ mapOverlays=%lu",
+              (unsigned long)removed,
+              friendOrNil.topic ?: @"(nil)",
+              (unsigned long)self.mapView.overlays.count);
+}
+
+/// `Friend.polyLine` pulls up to 1000 Core Data waypoints (weeks/months). When a Recorder/MQTT `MKPolyline`
+/// is already shown for the same topic, drawing both yields duplicate red lines and jagged jumps to old fixes.
+- (BOOL)liveTrackPolylineSupersedesBreadcrumbForTopic:(NSString *)topic {
+    return topic.length && self.liveTrackPolylines[topic] != nil;
+}
+
+/// Ensures only `followed` has a waypoint-breadcrumb overlay; adds/refreshes theirs, strips all others.
+- (void)syncFollowedFriendBreadcrumbOverlay:(Friend *)followed {
+    if (followed && [self liveTrackPolylineSupersedesBreadcrumbForTopic:followed.topic]) {
+        [self removeFriendBreadcrumbOverlaysExceptFriend:nil];
+        DDLogInfo(@"[RouteDebug] breadcrumb suppressed; liveTrack MKPolyline already shows topic=%@",
+                  followed.topic);
+        return;
+    }
+    [self removeFriendBreadcrumbOverlaysExceptFriend:followed];
+    if (!followed) {
+        return;
+    }
+    Waypoint *wp = followed.newestWaypoint;
+    BOOL hadWaypoint = wp && (wp.lat).doubleValue != 0.0 && (wp.lon).doubleValue != 0.0;
+    if (!hadWaypoint) {
+        DDLogInfo(@"[RouteDebug] sync breadcrumb: no waypoint for %@", followed.topic);
+        return;
+    }
+    if (![self.mapView.overlays containsObject:followed]) {
+        [self.mapView addOverlay:followed];
+        DDLogInfo(@"[RouteDebug] add Friend breadcrumb overlay topic=%@", followed.topic);
+    } else {
+        [self.mapView removeOverlay:followed];
+        [self.mapView addOverlay:followed];
+        DDLogInfo(@"[RouteDebug] refresh Friend breadcrumb overlay topic=%@", followed.topic);
+    }
+}
+
+- (void)refreshFriendAnnotationViewForFriend:(Friend *)friend {
+    MKAnnotationView *v = [self.mapView viewForAnnotation:friend];
+    if (![v isKindOfClass:[FriendAnnotationV class]]) {
+        return;
+    }
+    FriendAnnotationV *friendAnnotationV = (FriendAnnotationV *)v;
+    Waypoint *waypoint = friend.newestWaypoint;
+    NSData *data = friend.image;
+    UIImage *image = [UIImage imageWithData:data];
+    friendAnnotationV.personImage = image;
+    friendAnnotationV.tid = friend.effectiveTid;
+    friendAnnotationV.speed = (waypoint.vel).doubleValue;
+    friendAnnotationV.course = (waypoint.cog).doubleValue;
+    friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
+    [friendAnnotationV setNeedsDisplay];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -487,6 +757,16 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     
     if (self.noMap == 0) {
         [self askForMap:nil];
+    }
+
+    // Only one Friend may show the Core Data waypoint breadcrumb; clear leftovers when not following.
+    if (!self.followFriend) {
+        [self removeFriendBreadcrumbOverlaysExceptFriend:nil];
+    } else {
+        [self syncFollowedFriendBreadcrumbOverlay:self.followFriend];
+    }
+    if (self.routeHistoryToggleButton) {
+        [self.view bringSubviewToFront:self.routeHistoryToggleButton];
     }
 }
 
@@ -846,27 +1126,19 @@ calloutAccessoryControlTapped:(UIControl *)control {
         Friend *friend = (Friend *)view.annotation;
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
-        self.followFriend = friend;
-        [self setCenter:view.annotation];
-        if ([self.routeFetchedTopics containsObject:friend.topic]
-                && self.liveTrackPoints[friend.topic].count >= 2) {
-            // History already merged — show the cached track immediately, no network call.
-            [self rebuildLiveTrackForTopic:friend.topic];
-        } else {
-            [self fetchRouteForFriend:friend mapView:mapView];
-        }
+        [self applyFollowSelectionForMapFriend:friend mapView:mapView];
     }
 }
 
 - (void)mapView:(MKMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
-    // If the user initiated a pan or zoom gesture, stop following.
+    // Pan/zoom must NOT clear the selected friend or their route — selection is tied to the
+    // annotation (see didDeselectAnnotationView). Only stop optional camera-follow CADisplayLink.
     UIView *mapContentView = mapView.subviews.firstObject;
     for (UIGestureRecognizer *gr in mapContentView.gestureRecognizers) {
         if (gr.state == UIGestureRecognizerStateBegan ||
             gr.state == UIGestureRecognizerStateChanged) {
-            DDLogInfo(@"[Follow] user gesture detected — stopping follow");
+            DDLogInfo(@"[Follow] map pan/zoom — stopFollowLink only (keep selection + route)");
             [self stopFollowLink];
-            self.followFriend = nil;
             return;
         }
     }
@@ -886,25 +1158,83 @@ calloutAccessoryControlTapped:(UIControl *)control {
             [self.liveTrackPolylines removeObjectForKey:friend.topic];
         }
         [self.pendingRouteTopics removeObject:friend.topic];
+        [self.routeFetchMQTTBaselineByTopic removeObjectForKey:friend.topic];
+        [self.routeLastFetchDebugByTopic removeObjectForKey:friend.topic];
+        [self removeFriendLiveTrackOverlaysExceptTopic:nil];
+        [self removeFriendBreadcrumbOverlaysExceptFriend:nil];
+        DDLogInfo(@"[RouteDebug] didDeselectAnnotationView done topic=%@", friend.topic);
+        [self updateRouteHistoryToggleVisibility];
     }
 }
 
 #pragma mark - Smooth follow
 
-- (void)followFriendFromList:(Friend *)friend {
-    DDLogInfo(@"[Follow] followFriendFromList: topic=%@", friend.topic);
-    // Deselect any currently selected annotation so the previous follow stops cleanly.
-    for (id<MKAnnotation> ann in self.mapView.selectedAnnotations) {
-        [self.mapView deselectAnnotation:ann animated:NO];
+/// MapKit only reliably selects the exact `Friend` instance that was `addAnnotation:`'d. The Friends
+/// list may hand us another `Friend` fault for the same topic; `selectAnnotation:` is a no-op then,
+/// which used to leave follow/route state wrong until the user tapped the pin on the map.
+- (Friend *)friendAnnotationOnMapForTopic:(NSString *)topic {
+    if (!topic.length) {
+        return nil;
     }
+    for (id<MKAnnotation> ann in self.mapView.annotations) {
+        if ([ann isKindOfClass:[Friend class]]) {
+            Friend *f = (Friend *)ann;
+            if ([f.topic isEqualToString:topic]) {
+                return f;
+            }
+        }
+    }
+    return nil;
+}
+
+- (void)applyFollowSelectionForMapFriend:(Friend *)friend mapView:(MKMapView *)mapView {
     self.followFriend = friend;
+    [self removeFriendLiveTrackOverlaysExceptTopic:friend.topic];
+    [self syncFollowedFriendBreadcrumbOverlay:friend];
     [self setCenter:friend];
     if ([self.routeFetchedTopics containsObject:friend.topic]
             && self.liveTrackPoints[friend.topic].count >= 2) {
         [self rebuildLiveTrackForTopic:friend.topic];
     } else {
-        [self fetchRouteForFriend:friend mapView:self.mapView];
+        [self fetchRouteForFriend:friend mapView:mapView];
     }
+    [self updateRouteHistoryToggleVisibility];
+}
+
+- (void)followFriendFromList:(Friend *)friend {
+    if (!friend.topic.length) {
+        DDLogWarn(@"[Follow] followFriendFromList: missing topic");
+        return;
+    }
+    Friend *mapFriend = [self friendAnnotationOnMapForTopic:friend.topic] ?: friend;
+    DDLogInfo(@"[Follow] followFriendFromList: topic=%@ mapFriend==argFriend %d",
+              friend.topic, (mapFriend == friend));
+    // Drive selection through MapKit so tapping empty map deselects the pin and clears the route
+    // (didSelectAnnotationView / didDeselectAnnotationView). Avoid manual deselect loop — it fires
+    // didDeselect and would clear state before the new friend is selected.
+    id<MKAnnotation> current = self.mapView.selectedAnnotations.firstObject;
+    NSString *currentTopic = nil;
+    if ([current isKindOfClass:[Friend class]]) {
+        currentTopic = ((Friend *)current).topic;
+    }
+    BOOL alreadyThisTopic = [currentTopic isEqualToString:friend.topic];
+
+    if (!alreadyThisTopic) {
+        [self.mapView selectAnnotation:mapFriend animated:YES];
+        id<MKAnnotation> sel = self.mapView.selectedAnnotations.firstObject;
+        NSString *selTopic = nil;
+        if ([sel isKindOfClass:[Friend class]]) {
+            selTopic = ((Friend *)sel).topic;
+        }
+        if (![selTopic isEqualToString:friend.topic]) {
+            DDLogInfo(@"[Follow] followFriendFromList: selectAnnotation did not select topic %@ — applying follow directly",
+                      friend.topic);
+            [self applyFollowSelectionForMapFriend:mapFriend mapView:self.mapView];
+        }
+        return;
+    }
+    // Same topic already selected on the map — refresh route UI without relying on didSelect re-entry.
+    [self applyFollowSelectionForMapFriend:mapFriend mapView:self.mapView];
 }
 
 - (void)startFollowLink {
@@ -941,13 +1271,19 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
 }
 
+/// `historyHoursOverride`: pass 6 or 12 to force that window (e.g. toggle); pass -1 to use `NSUserDefaults` via `routeHistoryHours`.
 - (void)fetchRouteForFriend:(Friend *)friend mapView:(MKMapView *)mapView {
+    [self fetchRouteForFriend:friend mapView:mapView historyHours:-1];
+}
+
+- (void)fetchRouteForFriend:(Friend *)friend mapView:(MKMapView *)mapView historyHours:(NSInteger)historyHoursOverride {
     NSString *routeUser = friend.routeAPIUser;
     NSString *routeDevice = friend.tid;
     NSString *topic = friend.topic;
 
-    DDLogInfo(@"[ViewController] route fetch: tapped topic=%@ routeAPIUser=%@ tid=%@",
-              topic, routeUser ?: @"(nil)", routeDevice ?: @"(nil)");
+    DDLogInfo(@"[ViewController] route fetch: tapped topic=%@ routeAPIUser=%@ tid=%@ historyHoursOverride=%ld defaultsHours=%ld",
+              topic, routeUser ?: @"(nil)", routeDevice ?: @"(nil)",
+              (long)historyHoursOverride, (long)[self routeHistoryHours]);
 
     // If the REST API poll hasn't run yet, derive user/device directly from the
     // MQTT topic (format: owntracks/{user}/{device}).
@@ -973,6 +1309,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
     [self.pendingRouteTopics addObject:topic];
+    [self updateRouteHistoryToggleVisibility];
 
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
     NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC];
@@ -984,7 +1321,10 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
 
     NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
-    NSInteger startTs = endTs - 1 * 24 * 60 * 60;
+    NSInteger hours = (historyHoursOverride == 6 || historyHoursOverride == 12)
+        ? historyHoursOverride
+        : [self routeHistoryHours];
+    NSInteger startTs = endTs - hours * 60 * 60;
 
     NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
 
@@ -1002,7 +1342,14 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
 
-    DDLogInfo(@"[ViewController] route fetch: GET %@ (start=%ld end=%ld)", routeURL, (long)startTs, (long)endTs);
+    DDLogInfo(@"[ViewController] route fetch: GET %@ windowHours=%ld spanSec=%ld start=%ld end=%ld",
+              routeURL, (long)hours, (long)(endTs - startTs), (long)startTs, (long)endTs);
+
+    NSUInteger mqttBaseline = [self.liveTrackPoints[topic] count];
+    self.routeFetchMQTTBaselineByTopic[topic] = @(mqttBaseline);
+    DDLogInfo(@"[ViewController] route fetch: MQTT baseline count=%lu for topic=%@ (only points added after this merge with API)",
+              (unsigned long)mqttBaseline, topic);
+
     __weak typeof(self) wself = self;
     [[LocationAPISyncService sharedInstance] performAuthenticatedGET:routeURL
                                                           completion:^(NSData * _Nullable data, NSError * _Nullable error) {
@@ -1012,6 +1359,8 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
             if (![sself.pendingRouteTopics containsObject:topic]) {
                 // Friend was deselected while the request was in flight — discard.
+                [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
+                [sself updateRouteHistoryToggleVisibility];
                 return;
             }
             [sself.pendingRouteTopics removeObject:topic];
@@ -1021,6 +1370,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
             if (error || !data.length) {
                 DDLogInfo(@"[ViewController] route fetch failed for %@: %@, showing cached track", topic, error.localizedDescription);
+                [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
                 [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
@@ -1050,49 +1400,106 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
             if (!points.count) {
                 DDLogInfo(@"[ViewController] route fetch: no points for %@, showing cached track", topic);
+                [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
                 [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
 
-            CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
-            if (!coords) {
-                [sself rebuildLiveTrackForTopic:topic];
-                return;
-            }
-            NSUInteger count = 0;
+            NSMutableArray<NSValue *> *historical = [NSMutableArray array];
+            NSMutableArray *apiUnix = [NSMutableArray array];
+            BOOL haveAnyTs = NO;
+            NSTimeInterval apiMinTs = 0;
+            NSTimeInterval apiMaxTs = 0;
+            NSUInteger pointsWithTst = 0;
+            NSUInteger tsOutsideLow = 0;
+            NSUInteger tsOutsideHigh = 0;
             for (id pt in points) {
-                if (![pt isKindOfClass:[NSDictionary class]]) continue;
-                id latObj = ((NSDictionary *)pt)[@"latitude"];
-                id lonObj = ((NSDictionary *)pt)[@"longitude"];
-                if (![latObj isKindOfClass:[NSNumber class]] || ![lonObj isKindOfClass:[NSNumber class]]) continue;
+                if (![pt isKindOfClass:[NSDictionary class]]) {
+                    continue;
+                }
+                NSDictionary *d = (NSDictionary *)pt;
+                id latObj = d[@"latitude"];
+                id lonObj = d[@"longitude"];
+                if (![latObj isKindOfClass:[NSNumber class]] || ![lonObj isKindOfClass:[NSNumber class]]) {
+                    continue;
+                }
                 double lat = [(NSNumber *)latObj doubleValue];
                 double lon = [(NSNumber *)lonObj doubleValue];
-                if (lat == 0.0 && lon == 0.0) continue;
-                coords[count++] = CLLocationCoordinate2DMake(lat, lon);
+                if (lat == 0.0 && lon == 0.0) {
+                    continue;
+                }
+                NSTimeInterval unix = RouteHistoryPointUnixTime(d);
+                if (!isnan(unix)) {
+                    pointsWithTst++;
+                    if (!haveAnyTs) {
+                        haveAnyTs = YES;
+                        apiMinTs = apiMaxTs = unix;
+                    } else {
+                        apiMinTs = MIN(apiMinTs, unix);
+                        apiMaxTs = MAX(apiMaxTs, unix);
+                    }
+                    if (unix < (NSTimeInterval)startTs) {
+                        tsOutsideLow++;
+                    }
+                    if (unix > (NSTimeInterval)endTs) {
+                        tsOutsideHigh++;
+                    }
+                }
+                [historical addObject:[NSValue valueWithMKCoordinate:CLLocationCoordinate2DMake(lat, lon)]];
+                [apiUnix addObject:(!isnan(unix) ? @(unix) : [NSNull null])];
             }
 
-            if (count == 0) {
-                free(coords);
+            if (historical.count == 0) {
                 DDLogInfo(@"[ViewController] route fetch: no valid coords for %@, showing cached track", topic);
+                [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
                 [sself rebuildLiveTrackForTopic:topic];
                 return;
             }
 
-            // Build NSValue array from parsed historical coords.
-            NSMutableArray<NSValue *> *historical = [NSMutableArray arrayWithCapacity:count];
-            for (NSUInteger i = 0; i < count; i++) {
-                [historical addObject:[NSValue valueWithMKCoordinate:coords[i]]];
-            }
-            free(coords);
+            NSUInteger count = historical.count;
 
-            // Prepend historical data; append any MQTT points that arrived during the fetch.
+            // API points define the requested time window. Only append MQTT fixes that arrived *after* this GET
+            // started (see mqttBaseline above) — older session points have no timestamps here and would extend
+            // the polyline outside [start,end] and confuse the 6h/12h window.
             NSMutableArray<NSValue *> *existing = sself.liveTrackPoints[topic] ?: [NSMutableArray array];
-            [historical addObjectsFromArray:existing];
+            NSMutableArray *existingUnix = sself.liveTrackPointUnixByTopic[topic] ?: [NSMutableArray array];
+            NSNumber *baselineObj = sself.routeFetchMQTTBaselineByTopic[topic];
+            NSUInteger baseline = baselineObj ? baselineObj.unsignedIntegerValue : existing.count;
+            [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
+
+            NSMutableArray *mergedUnix = [apiUnix mutableCopy];
+            NSMutableArray<NSValue *> *mqttDuringFetch = [NSMutableArray array];
+            if (existing.count > baseline) {
+                [mqttDuringFetch addObjectsFromArray:[existing subarrayWithRange:NSMakeRange(baseline,
+                                                                                            existing.count - baseline)]];
+                for (NSUInteger i = baseline; i < existing.count; i++) {
+                    id u = (i < existingUnix.count) ? existingUnix[i] : [NSNull null];
+                    [mergedUnix addObject:u];
+                }
+            }
+            [historical addObjectsFromArray:mqttDuringFetch];
             sself.liveTrackPoints[topic] = historical;
+            sself.liveTrackPointUnixByTopic[topic] = mergedUnix;
             [sself.routeFetchedTopics addObject:topic];
+            NSMutableDictionary *fetchDbg = [@{
+                @"reqStart" : @(startTs),
+                @"reqEnd" : @(endTs),
+                @"windowHours" : @(hours),
+                @"apiPoints" : @(count),
+                @"apiPointsWithTst" : @(pointsWithTst),
+                @"mqttDuringFetch" : @(mqttDuringFetch.count),
+                @"apiTsBeforeStart" : @(tsOutsideLow),
+                @"apiTsAfterEnd" : @(tsOutsideHigh),
+            } mutableCopy];
+            if (haveAnyTs) {
+                fetchDbg[@"apiMinTs"] = @(apiMinTs);
+                fetchDbg[@"apiMaxTs"] = @(apiMaxTs);
+            }
+            sself.routeLastFetchDebugByTopic[topic] = [fetchDbg copy];
             [sself rebuildLiveTrackForTopic:topic];
-            DDLogInfo(@"[ViewController] route fetch: seeded %lu historical + %lu live points for %@",
-                      (unsigned long)count, (unsigned long)existing.count, topic);
+            [sself updateRouteHistoryToggleVisibility];
+            DDLogInfo(@"[ViewController] route fetch: seeded %lu API + %lu MQTT(during-fetch) points for %@",
+                      (unsigned long)count, (unsigned long)mqttDuringFetch.count, topic);
         });
     }];
 }
@@ -1107,11 +1514,84 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
 }
 
+/// After a polyline is drawn: total points, geographic first/last, and (when present) REST window vs API tst span.
+- (void)logRoutePolylineDrawnForTopic:(NSString *)topic
+                               points:(NSArray<NSValue *> *)points
+                            unixTimes:(NSArray *)unixTimes
+                           fetchDebug:(NSDictionary *)fetchDebug {
+    if (!topic.length || points.count < 2) {
+        return;
+    }
+    CLLocationCoordinate2D c0 = [points.firstObject MKCoordinateValue];
+    CLLocationCoordinate2D c1 = [points.lastObject MKCoordinateValue];
+    BOOL unixAligned = (unixTimes.count == points.count);
+    NSString *firstPST = unixAligned ? RouteDebugPSTOrUnknown(unixTimes.firstObject)
+                                     : [NSString stringWithFormat:@"(PST n/a — unix count %lu vs points %lu)",
+                                        (unsigned long)unixTimes.count, (unsigned long)points.count];
+    NSString *lastPST = unixAligned ? RouteDebugPSTOrUnknown(unixTimes.lastObject)
+                                    : @"(PST n/a)";
+    DDLogInfo(@"[RouteDebug] drawn topic=%@ totalPoints=%lu polylineOrder first=(%.5f,%.5f) %@ polylineOrder last=(%.5f,%.5f) %@ (America/Los_Angeles)",
+              topic, (unsigned long)points.count,
+              c0.latitude, c0.longitude, firstPST,
+              c1.latitude, c1.longitude, lastPST);
+    if (!fetchDebug.count) {
+        DDLogInfo(@"[RouteDebug] drawn topic=%@ — no REST merge context (cached/MQTT-only redraw)",
+                  topic);
+        return;
+    }
+    NSInteger rs = [fetchDebug[@"reqStart"] longValue];
+    NSInteger re = [fetchDebug[@"reqEnd"] longValue];
+    NSInteger wh = [fetchDebug[@"windowHours"] longValue];
+    NSUInteger apiN = [fetchDebug[@"apiPoints"] unsignedIntegerValue];
+    NSUInteger mqttN = [fetchDebug[@"mqttDuringFetch"] unsignedIntegerValue];
+    NSUInteger withTst = [fetchDebug[@"apiPointsWithTst"] unsignedIntegerValue];
+    NSUInteger outLo = [fetchDebug[@"apiTsBeforeStart"] unsignedIntegerValue];
+    NSUInteger outHi = [fetchDebug[@"apiTsAfterEnd"] unsignedIntegerValue];
+    NSDate *drs = [NSDate dateWithTimeIntervalSince1970:rs];
+    NSDate *dre = [NSDate dateWithTimeIntervalSince1970:re];
+    NSString *rsStr = [NSDateFormatter localizedStringFromDate:drs dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterMediumStyle];
+    NSString *reStr = [NSDateFormatter localizedStringFromDate:dre dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterMediumStyle];
+    DDLogInfo(@"[RouteDebug] drawn topic=%@ REST client window %ldh requestedUnix [%ld … %ld] (%@ — %@) merged apiPoints=%lu mqttDuringFetch=%lu apiPointsWithParsableTst=%lu",
+              topic, (long)wh, (long)rs, (long)re, rsStr, reStr,
+              (unsigned long)apiN, (unsigned long)mqttN, (unsigned long)withTst);
+    NSNumber *minTs = fetchDebug[@"apiMinTs"];
+    NSNumber *maxTs = fetchDebug[@"apiMaxTs"];
+    if (minTs && maxTs) {
+        NSDate *dmin = [NSDate dateWithTimeIntervalSince1970:minTs.doubleValue];
+        NSDate *dmax = [NSDate dateWithTimeIntervalSince1970:maxTs.doubleValue];
+        NSString *smin = [NSDateFormatter localizedStringFromDate:dmin dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterMediumStyle];
+        NSString *smax = [NSDateFormatter localizedStringFromDate:dmax dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterMediumStyle];
+        NSTimeInterval skewStart = minTs.doubleValue - (double)rs;
+        NSTimeInterval skewEnd = maxTs.doubleValue - (double)re;
+        BOOL misaligned = (skewStart < -5.0 || skewEnd > 5.0);
+        DDLogInfo(@"[RouteDebug] drawn topic=%@ API tst earliest=%@ (unix=%.0f) latest=%@ (unix=%.0f) apiPointsWithTstBeforeWindow=%lu afterWindow=%lu skewVsRequestStartSec=%.0f skewVsRequestEndSec=%.0f possiblyOutside6or12hWindow=%d",
+                  topic, smin, minTs.doubleValue, smax, maxTs.doubleValue,
+                  (unsigned long)outLo, (unsigned long)outHi, skewStart, skewEnd, misaligned);
+    } else {
+        DDLogInfo(@"[RouteDebug] drawn topic=%@ no parsable tst on API points — cannot compare to %ldh window; extend RouteHistoryPointUnixTime if server uses another field",
+                  topic, (long)wh);
+    }
+    if (mqttN > 0) {
+        DDLogInfo(@"[RouteDebug] drawn topic=%@ note: %lu trailing points are MQTT during fetch (no per-point tst in client; polyline last coord may be newer than API latest tst)",
+                  topic, (unsigned long)mqttN);
+    }
+}
+
 /// Rebuilds liveTrackPolylines[topic] from liveTrackPoints[topic] and adds it to the map.
 /// No-op if fewer than 2 points are available. Safe to call from the main thread only.
 - (void)rebuildLiveTrackForTopic:(NSString *)topic {
     NSArray<NSValue *> *points = self.liveTrackPoints[topic];
-    if (points.count < 2) return;
+    if (!points || points.count < 2) {
+        DDLogInfo(@"[RouteDebug] rebuildLiveTrack skip topic=%@ points=%lu", topic, (unsigned long)points.count);
+        if (topic.length) {
+            [self.routeLastFetchDebugByTopic removeObjectForKey:topic];
+        }
+        [self updateRouteHistoryToggleVisibility];
+        return;
+    }
+    DDLogInfo(@"[RouteDebug] rebuildLiveTrack topic=%@ points=%lu followFriend=%@",
+              topic, (unsigned long)points.count, self.followFriend.topic ?: @"(nil)");
+    [self removeFriendLiveTrackOverlaysExceptTopic:topic];
     CLLocationCoordinate2D *coords = malloc(points.count * sizeof(CLLocationCoordinate2D));
     if (!coords) return;
     for (NSUInteger i = 0; i < points.count; i++) {
@@ -1123,6 +1603,16 @@ calloutAccessoryControlTapped:(UIControl *)control {
     free(coords);
     self.liveTrackPolylines[topic] = updated;
     [self.mapView addOverlay:updated];
+    NSDictionary *fetchDbg = self.routeLastFetchDebugByTopic[topic];
+    [self logRoutePolylineDrawnForTopic:topic points:points unixTimes:self.liveTrackPointUnixByTopic[topic] fetchDebug:fetchDbg];
+    if (fetchDbg) {
+        [self.routeLastFetchDebugByTopic removeObjectForKey:topic];
+    }
+    Friend *followed = self.followFriend;
+    if (followed && [followed.topic isEqualToString:topic]) {
+        [self syncFollowedFriendBreadcrumbOverlay:followed];
+    }
+    [self updateRouteHistoryToggleVisibility];
 }
 
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
@@ -1153,17 +1643,32 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (!self.liveTrackPoints[topic]) {
         self.liveTrackPoints[topic] = [NSMutableArray array];
     }
+    if (!self.liveTrackPointUnixByTopic[topic]) {
+        self.liveTrackPointUnixByTopic[topic] = [NSMutableArray array];
+    }
+    while (self.liveTrackPointUnixByTopic[topic].count < self.liveTrackPoints[topic].count) {
+        [self.liveTrackPointUnixByTopic[topic] addObject:[NSNull null]];
+    }
     [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
+    NSTimeInterval tstSec = tst;
+    if (tstSec <= 0.0) {
+        tstSec = [[NSDate date] timeIntervalSince1970];
+    }
+    [self.liveTrackPointUnixByTopic[topic] addObject:@(tstSec)];
 
     DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)self.liveTrackPoints[topic].count);
 
     // Only update the visible overlay for the currently selected/followed friend.
-    if (![self.followFriend.topic isEqualToString:topic]) return;
+    Friend *followed = self.followFriend;
+    if (!followed || ![followed.topic isEqualToString:topic]) {
+        return;
+    }
     [self rebuildLiveTrackForTopic:topic];
     // Pan map to keep the followed friend centered when a real location update arrives.
     if (CLLocationCoordinate2DIsValid(coord)) {
         [self.mapView setCenterCoordinate:coord animated:YES];
     }
+    [self updateRouteHistoryToggleVisibility];
 }
 
 - (NSFetchedResultsController *)frcFriends {
@@ -1283,6 +1788,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
                         if (CLLocationCoordinate2DIsValid(seed)) {
                             self.liveTrackPoints[friend.topic] =
                                 [NSMutableArray arrayWithObject:[NSValue valueWithMKCoordinate:seed]];
+                            NSTimeInterval seedUnix = [[NSDate date] timeIntervalSince1970];
+                            if (waypoint.tst) {
+                                seedUnix = [waypoint.tst timeIntervalSince1970];
+                            }
+                            self.liveTrackPointUnixByTopic[friend.topic] =
+                                [NSMutableArray arrayWithObject:@(seedUnix)];
                         }
                     }
                 }
@@ -1297,7 +1808,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
                     [self.liveTrackPolylines removeObjectForKey:friend.topic];
                 }
                 [self.liveTrackPoints removeObjectForKey:friend.topic];
+                [self.liveTrackPointUnixByTopic removeObjectForKey:friend.topic];
                 [self.routeFetchedTopics removeObject:friend.topic];
+                [self.routeFetchMQTTBaselineByTopic removeObjectForKey:friend.topic];
                 [self.friendAnimators[friend.topic] cancel];
                 [self.friendAnimators removeObjectForKey:friend.topic];
                 if (self.followFriend == friend) {
@@ -1308,13 +1821,45 @@ calloutAccessoryControlTapped:(UIControl *)control {
             }
 
             case NSFetchedResultsChangeUpdate:
-            case NSFetchedResultsChangeMove:
+            case NSFetchedResultsChangeMove: {
+                BOOL hadWaypoint = waypoint && (waypoint.lat).doubleValue != 0.0 && (waypoint.lon).doubleValue != 0.0;
+                BOOL onMap = [self.mapView.annotations containsObject:friend];
+                Friend *followed = self.followFriend;
+                BOOL isFollowed = (followed != nil && friend == followed);
+
                 [self.mapView removeOverlay:friend];
-                [self.mapView removeAnnotation:friend];
-                if (waypoint && (waypoint.lat).doubleValue != 0.0 && (waypoint.lon).doubleValue != 0.0) {
-                    [self.mapView addAnnotation:friend];
+                if (hadWaypoint) {
+                    if (onMap) {
+                        if (isFollowed) {
+                            if (![self liveTrackPolylineSupersedesBreadcrumbForTopic:friend.topic]) {
+                                [self.mapView addOverlay:friend];
+                                DDLogInfo(@"[RouteDebug] FRC Friend update: refresh breadcrumb topic=%@", friend.topic);
+                            } else {
+                                DDLogVerbose(@"[RouteDebug] FRC Friend update: skip breadcrumb refresh; liveTrack polyline topic=%@",
+                                             friend.topic);
+                            }
+                        } else {
+                            DDLogInfo(@"[RouteDebug] FRC Friend update: strip breadcrumb (not followed) topic=%@",
+                                      friend.topic);
+                        }
+                        [self refreshFriendAnnotationViewForFriend:friend];
+                    } else {
+                        [self.mapView addAnnotation:friend];
+                        if (isFollowed && ![self liveTrackPolylineSupersedesBreadcrumbForTopic:friend.topic]) {
+                            [self.mapView addOverlay:friend];
+                            DDLogInfo(@"[RouteDebug] FRC Friend update: add pin+breadcrumb topic=%@", friend.topic);
+                        } else if (isFollowed) {
+                            DDLogVerbose(@"[RouteDebug] FRC Friend update: skip add breadcrumb; liveTrack polyline topic=%@",
+                                         friend.topic);
+                        }
+                    }
+                } else {
+                    if (onMap) {
+                        [self.mapView removeAnnotation:friend];
+                    }
                 }
                 break;
+            }
         }
 
     } else if ([anObject isKindOfClass:[Region class]]) {
@@ -1354,7 +1899,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
             case NSFetchedResultsChangeMove:
                 [self.mapView removeAnnotation:waypoint];
                 [self.mapView addAnnotation:waypoint];
-
+                {
+                    Friend *owner = waypoint.belongsTo;
+                    if (owner && self.followFriend == owner) {
+                        [self syncFollowedFriendBreadcrumbOverlay:owner];
+                    }
+                }
                 break;
         }
     }

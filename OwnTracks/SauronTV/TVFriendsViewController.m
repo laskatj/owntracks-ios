@@ -7,6 +7,7 @@
 //
 
 #import "TVFriendsViewController.h"
+#import "TVAppDelegate.h"
 #import "TVFriendStore.h"
 #import "TVMapViewController.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
@@ -109,6 +110,12 @@ static const CGFloat    kPhotoSize  = 60.0;
     DDLogInfo(@"[TVFriendsViewController] viewDidLoad");
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    TVAppDelegate *app = (TVAppDelegate *)UIApplication.sharedApplication.delegate;
+    [app refreshLocationAllowlistPresentingSignInFrom:self completion:nil];
+}
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
@@ -117,7 +124,8 @@ static const CGFloat    kPhotoSize  = 60.0;
     NSString *change = note.userInfo[@"change"];
     NSString *topic  = note.userInfo[@"topic"];
 
-    if ([change isEqualToString:@"new"] || [change isEqualToString:@"card"]) {
+    if ([change isEqualToString:@"new"] || [change isEqualToString:@"card"]
+        || [change isEqualToString:@"allowlist"]) {
         // Full reload: new friend changes row count; card may change label and sort order.
         [self.tableView reloadData];
     } else {

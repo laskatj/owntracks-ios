@@ -272,8 +272,10 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"tst" ascending:FALSE]];
         request.fetchLimit = MAXIMUM_TRACK_POINTS;
         NSError *error;
-        NSArray <Waypoint *>*result = [request execute:&error];
-        NSLog(@"error:%@ result:%@", error, result);
+        NSArray<Waypoint *> *result = [self.managedObjectContext executeFetchRequest:request error:&error];
+        if (error) {
+            DDLogError(@"Friend polyLine waypoint fetch failed: %@", error.localizedDescription);
+        }
         if (result && result.count > 0) {
             CLLocationCoordinate2D *coordinates = malloc(result.count * sizeof(CLLocationCoordinate2D));
             if (coordinates) {
@@ -460,9 +462,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         request.predicate = [NSPredicate predicateWithFormat:@"belongsTo = %@", self];
         request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"tst" ascending:TRUE]];
         NSError *error;
-        NSArray <Waypoint *>*result = [request execute:&error];
-        NSLog(@"error:%@ result:%@", error, result);
-        for (Waypoint *waypoint in result) {
+        NSArray<Waypoint *> *result = [self.managedObjectContext executeFetchRequest:request error:&error];
+        if (error) {
+            DDLogError(@"Friend trackToGPX waypoint fetch failed: %@", error.localizedDescription);
+        }
+        for (Waypoint *waypoint in result ?: @[]) {
             NSString *xml = [NSString stringWithFormat:@"\n<trkpt lat=\"%.6f\" lon=\"%.6f\"><ele>%.2f</ele><time>%@</time></trkpt>",
                    waypoint.lat.doubleValue,
                    waypoint.lon.doubleValue,

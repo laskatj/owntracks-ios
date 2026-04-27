@@ -13,4 +13,8 @@
 
 @property (strong, nonatomic) UIWindow *window;
 
+/// GET /api/location, update TVFriendStore allowlist, resubscribe MQTT if connected.
+- (void)refreshLocationAllowlistPresentingSignInFrom:(UIViewController *)pvc
+                                          completion:(void (^ _Nullable)(BOOL success))completion;
+
 @end

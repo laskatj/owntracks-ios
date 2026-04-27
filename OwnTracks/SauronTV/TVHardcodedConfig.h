@@ -49,9 +49,9 @@ static NSString * const kTVOAuthDiscoveryURL =
 // OAuth2 public client id from Authentik application (must allow device authorization grant).
 static NSString * const kTVOAuthClientId = @"d8ntY1AOtH6UaYE9QGRfy1AXKmKVH9wmwcl0bSJJ";
 
-// If the Authentik provider is "confidential", set the client secret here so token/device
-// requests match the app. Public clients must leave this @"" (invalid_grant often means
-// the server expected a client_secret and did not get one).
+// Authentik provider "Client type": Confidential → paste the client secret here (sent on
+// device + token POSTs). Public → keep @"". Mismatch (secret required but empty, or wrong
+// client_id vs the Authentik application) typically yields invalid_grant on /application/o/token/.
 static NSString * const kTVOAuthClientSecret = @"";
 
 // Space-separated scopes; include offline_access for refresh_token when provider allows.

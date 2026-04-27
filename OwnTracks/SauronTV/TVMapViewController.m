@@ -32,10 +32,10 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 // MKMapView subclass.
 //
 // Zoom routing on tvOS:
-//   Siri Remote touchpad swipes arrive as UIFocusSystem heading events, not UIPress
-//   events. Up swipes were intercepted by UITabBarController before reaching us.
-//   Fix: hide the tab bar when tracking starts (removes its gesture recognizers entirely),
-//   and install UISwipeGestureRecognizers on this view for Up/Down.
+//   Siri Remote touchpad swipes often arrive as UIFocusSystem heading events, not only UIPress.
+//   UITabBarController still shows the tab bar (so Menu can return focus to tabs); competing
+//   window/layout gesture recognizers are wired in viewDidAppear: to require swipeUpGR to fail
+//   first. UISwipeGestureRecognizers on this view handle Up/Down when interceptUpDown is YES.
 //   Down swipes also arrive via shouldUpdateFocusInContext: as a belt-and-suspenders path.
 @interface TVInteractiveMapView : MKMapView <UIGestureRecognizerDelegate>
 @property (nonatomic) BOOL interceptUpDown;
@@ -452,6 +452,9 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
 - (void)liveFriendLocationUpdated:(NSNotification *)note {
     NSString *topic = note.userInfo[@"topic"];
+    if (![[TVFriendStore shared] isBaseTopicAllowed:topic]) {
+        return;
+    }
     double lat = [note.userInfo[@"lat"] doubleValue];
     double lon = [note.userInfo[@"lon"] doubleValue];
     CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
@@ -677,6 +680,55 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
     TVFriendStore *store = [TVFriendStore shared];
 
+    if ([change isEqualToString:@"allowlist"]) {
+        for (NSString *t in [self.annotations copy]) {
+            if (![store.friendTopics containsObject:t]) {
+                TVFriendAnnotation *gone = self.annotations[t];
+                if (gone) {
+                    [self.mapView removeAnnotation:gone];
+                }
+                [self.annotations removeObjectForKey:t];
+                [self.animators removeObjectForKey:t];
+                [self removeVisibleRouteAndPendingForTopic:t];
+                [self.liveTrackPoints removeObjectForKey:t];
+                MKPolyline *pl = self.liveTrackPolylines[t];
+                if (pl) {
+                    [self.mapView removeOverlay:pl];
+                }
+                [self.liveTrackPolylines removeObjectForKey:t];
+                [self.routeFetchedTopics removeObject:t];
+            }
+        }
+        for (NSString *t in store.friendTopics) {
+            CLLocationCoordinate2D coord = [self coordForTopic:t store:store];
+            if (!CLLocationCoordinate2DIsValid(coord) || (coord.latitude == 0.0 && coord.longitude == 0.0)) {
+                continue;
+            }
+            TVFriendAnnotation *ann = self.annotations[t];
+            if (!ann) {
+                ann = [[TVFriendAnnotation alloc] init];
+                ann.topic      = t;
+                ann.coordinate = coord;
+                ann.title      = store.friendLabels[t] ?: [t lastPathComponent];
+                ann.subtitle   = store.friendTimes[t];
+                self.annotations[t] = ann;
+                [self.mapView addAnnotation:ann];
+                DDLogInfo(@"[TVMapViewController] allowlist pin: %@", t);
+            } else {
+                ann.coordinate = coord;
+                ann.title      = store.friendLabels[t] ?: [t lastPathComponent];
+                ann.subtitle   = store.friendTimes[t];
+            }
+        }
+        if (self.selectedTopic.length && ![store.friendTopics containsObject:self.selectedTopic]) {
+            [self selectFriendByTopic:nil];
+        }
+        if (!self.selectedTopic) {
+            [self zoomToFitAllAnnotations];
+        }
+        return;
+    }
+
     if ([change isEqualToString:@"new"]) {
         CLLocationCoordinate2D coord = [self coordForTopic:topic store:store];
         TVFriendAnnotation *ann = [[TVFriendAnnotation alloc] init];
@@ -690,9 +742,21 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         if (!self.selectedTopic) [self zoomToFitAllAnnotations];
 
     } else if ([change isEqualToString:@"location"]) {
+        CLLocationCoordinate2D coord = [self coordForTopic:topic store:store];
         TVFriendAnnotation *ann = self.annotations[topic];
-        if (ann) {
-            CLLocationCoordinate2D coord = [self coordForTopic:topic store:store];
+        if (!ann && CLLocationCoordinate2DIsValid(coord) && !(coord.latitude == 0.0 && coord.longitude == 0.0)) {
+            ann = [[TVFriendAnnotation alloc] init];
+            ann.topic      = topic;
+            ann.coordinate = coord;
+            ann.title      = store.friendLabels[topic] ?: [topic lastPathComponent];
+            ann.subtitle   = store.friendTimes[topic];
+            self.annotations[topic] = ann;
+            [self.mapView addAnnotation:ann];
+            DDLogInfo(@"[TVMapViewController] first pin from MQTT location: %@", topic);
+            if (!self.selectedTopic) {
+                [self zoomToFitAllAnnotations];
+            }
+        } else if (ann) {
             SmoothMarkerAnimator *animator = self.animators[topic];
             if (!animator) {
                 animator = [[SmoothMarkerAnimator alloc] initWithAnnotation:ann];
@@ -740,7 +804,6 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         self.selectedTopic = topic;
         self.mapView.interceptUpDown = YES;
         self.trackingStartTime = CACurrentMediaTime();
-        self.tabBarController.tabBar.hidden = YES;
         [self showTrackingHUDForTopic:topic];
         [self zoomToFriend:topic];
 
@@ -757,7 +820,6 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         }
         self.selectedTopic = nil;
         self.mapView.interceptUpDown = NO;
-        self.tabBarController.tabBar.hidden = NO;
         [self hideTrackingHUD];
         [self stopFollowLink];
         [self zoomToFitAllAnnotations];

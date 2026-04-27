@@ -4,16 +4,24 @@
 //
 
 #import "TVFriendStore.h"
+#import "TVLocationDevicesFetcher.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 NSString * const TVFriendStoreDidUpdateNotification = @"TVFriendStoreDidUpdate";
 
-static const CGFloat kImageSize        = 60.0;
-static NSString * const kCacheSubdir   = @"OTCards";
 static NSString * const kLocationNote  = @"OTLiveFriendLocation";
 static NSString * const kCardNote      = @"OTFriendCard";
+
+static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
+    static NSSet *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        s = [NSSet setWithObjects:@"info", @"event", @"waypoints", @"waypoint", @"status", @"cmd", nil];
+    });
+    return s;
+}
 
 @interface TVFriendStore ()
 @property (strong, nonatomic) NSMutableArray<NSString *>                   *mTopics;
@@ -22,6 +30,8 @@ static NSString * const kCardNote      = @"OTFriendCard";
 @property (strong, nonatomic) NSMutableDictionary<NSString *, UIImage *>   *mImages;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *>   *mCoords;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mRawTimestamps;
+@property (strong, nonatomic) NSMutableSet<NSString *>                     *mAllowedTopics;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mAPIDeviceNames;
 @end
 
 @implementation TVFriendStore
@@ -41,6 +51,8 @@ static NSString * const kCardNote      = @"OTFriendCard";
         _mImages         = [NSMutableDictionary dictionary];
         _mCoords         = [NSMutableDictionary dictionary];
         _mRawTimestamps  = [NSMutableDictionary dictionary];
+        _mAllowedTopics  = [NSMutableSet set];
+        _mAPIDeviceNames = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -61,10 +73,31 @@ static NSString * const kCardNote      = @"OTFriendCard";
 #pragma mark - Public readonly accessors
 
 - (NSArray<NSString *> *)friendTopics  { return [self.mTopics copy]; }
-- (NSDictionary<NSString *, NSString *> *)friendLabels { return [self.mLabels copy]; }
+
+- (NSDictionary<NSString *, NSString *> *)friendLabels {
+    NSMutableDictionary *out = [NSMutableDictionary dictionary];
+    for (NSString *topic in self.mTopics) {
+        NSString *api = self.mAPIDeviceNames[topic];
+        if ([api isKindOfClass:[NSString class]] && api.length) {
+            out[topic] = api;
+        } else {
+            NSString *l = self.mLabels[topic];
+            if (l.length) {
+                out[topic] = l;
+            }
+        }
+    }
+    return [out copy];
+}
+
 - (NSDictionary<NSString *, NSString *> *)friendTimes  { return [self.mTimes  copy]; }
 - (NSDictionary<NSString *, UIImage *>  *)friendImages { return [self.mImages copy]; }
 - (NSDictionary<NSString *, NSValue *>  *)friendCoords { return [self.mCoords copy]; }
+
+- (NSArray<NSString *> *)allowedBaseMQTTTopics {
+    NSArray *arr = [self.mAllowedTopics allObjects];
+    return [arr sortedArrayUsingSelector:@selector(compare:)];
+}
 
 - (NSTimeInterval)rawTimestampForTopic:(NSString *)topic {
     return [self.mRawTimestamps[topic] doubleValue];
@@ -72,9 +105,98 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
 - (UIImage *)imageForTopic:(NSString *)topic {
     UIImage *img = self.mImages[topic];
-    if (img) return img;
-    NSString *label = self.mLabels[topic] ?: [topic lastPathComponent];
+    if (img) {
+        return img;
+    }
+    NSString *label = self.mAPIDeviceNames[topic] ?: self.mLabels[topic] ?: [topic lastPathComponent];
     return [self placeholderImageForLabel:label];
+}
+
++ (NSString *)baseMQTTTopicFromMessageTopic:(NSString *)topic {
+    if (!topic.length) {
+        return topic;
+    }
+    NSString *last = [topic lastPathComponent];
+    if ([TVFriendStoreMQTTSubtopicLeafs() containsObject:last]) {
+        return [topic stringByDeletingLastPathComponent];
+    }
+    return topic;
+}
+
+- (BOOL)isBaseTopicAllowed:(NSString *)baseTopic {
+    if (!baseTopic.length) {
+        return NO;
+    }
+    return [self.mAllowedTopics containsObject:baseTopic];
+}
+
+- (void)applyLocationAPIDevices:(NSArray<TVLocationAPIDevice *> *)devices {
+    NSMutableSet<NSString *> *newAllowed = [NSMutableSet set];
+    NSMutableDictionary<NSString *, NSString *> *newNames = [NSMutableDictionary dictionary];
+
+    for (TVLocationAPIDevice *d in devices) {
+        if (!d.mqttTopic.length) {
+            continue;
+        }
+        [newAllowed addObject:d.mqttTopic];
+        if (d.deviceName.length) {
+            newNames[d.mqttTopic] = d.deviceName;
+        }
+    }
+
+    [self.mAllowedTopics setSet:newAllowed];
+    [self.mAPIDeviceNames removeAllObjects];
+    [self.mAPIDeviceNames addEntriesFromDictionary:newNames];
+
+    for (NSString *topic in [self.mTopics copy]) {
+        if (![newAllowed containsObject:topic]) {
+            [self removeAllStateForTopic:topic];
+        }
+    }
+
+    for (TVLocationAPIDevice *d in devices) {
+        if (!d.mqttTopic.length) {
+            continue;
+        }
+        NSString *topic = d.mqttTopic;
+        if (![self.mTopics containsObject:topic]) {
+            [self.mTopics addObject:topic];
+        }
+        if (d.deviceName.length) {
+            self.mLabels[topic] = d.deviceName;
+        } else if (!self.mLabels[topic]) {
+            self.mLabels[topic] = [topic lastPathComponent];
+        }
+
+        if (d.hasValidCoordinate && d.timestamp > 0) {
+            CLLocationCoordinate2D coord = d.coordinate;
+            self.mCoords[topic] = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
+            self.mRawTimestamps[topic] = @(d.timestamp);
+            self.mTimes[topic] = [self timestampStringFromTimestamp:d.timestamp];
+        }
+    }
+
+    [self sortTopics];
+
+    DDLogInfo(@"[TVFriendStore] applyLocationAPIDevices count=%lu allowed=%lu",
+              (unsigned long)devices.count, (unsigned long)newAllowed.count);
+
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:TVFriendStoreDidUpdateNotification
+                      object:nil
+                    userInfo:@{@"change": @"allowlist"}];
+}
+
+- (void)removeAllStateForTopic:(NSString *)topic {
+    [self.mTopics removeObject:topic];
+    [self.mLabels removeObjectForKey:topic];
+    [self.mTimes removeObjectForKey:topic];
+    [self.mImages removeObjectForKey:topic];
+    [self.mCoords removeObjectForKey:topic];
+    [self.mRawTimestamps removeObjectForKey:topic];
+    [self.mAPIDeviceNames removeObjectForKey:topic];
+    NSURL *file = [[self cacheDirectory] URLByAppendingPathComponent:[self cacheFilenameForTopic:topic]];
+    [[NSFileManager defaultManager] removeItemAtURL:file error:nil];
 }
 
 #pragma mark - OTLiveFriendLocation
@@ -82,17 +204,26 @@ static NSString * const kCardNote      = @"OTFriendCard";
 - (void)locationUpdated:(NSNotification *)note {
     NSDictionary *info = note.userInfo;
     NSString *topic = info[@"topic"];
-    if (!topic.length) return;
+    if (!topic.length) {
+        return;
+    }
+    if (![self isBaseTopicAllowed:topic]) {
+        return;
+    }
 
     double lat = [info[@"lat"] doubleValue];
     double lon = [info[@"lon"] doubleValue];
     CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
 
     NSString *label = info[@"label"] ?: [topic lastPathComponent];
-    self.mLabels[topic] = label;
-    self.mTimes[topic]          = [self timestampStringFromInfo:info];
-    self.mCoords[topic]         = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
-    self.mRawTimestamps[topic]  = @([info[@"tst"] doubleValue]);
+    NSString *apiName = self.mAPIDeviceNames[topic];
+    if (!apiName.length) {
+        self.mLabels[topic] = label;
+    }
+
+    self.mTimes[topic]         = [self timestampStringFromInfo:info];
+    self.mCoords[topic]        = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
+    self.mRawTimestamps[topic] = @([info[@"tst"] doubleValue]);
 
     BOOL isNew = ![self.mTopics containsObject:topic];
     NSString *change;
@@ -117,20 +248,23 @@ static NSString * const kCardNote      = @"OTFriendCard";
     NSString *topic     = note.userInfo[@"topic"];
     NSData   *imageData = note.userInfo[@"imageData"];
     NSString *name      = note.userInfo[@"name"];
-    if (!topic.length) return;
+    if (!topic.length) {
+        return;
+    }
+    if (![self isBaseTopicAllowed:topic]) {
+        return;
+    }
 
     BOOL changed = NO;
 
-    // Apply the display name if provided — overrides the tid-derived label.
-    if (name.length) {
+    BOOL hasAPIName = [(NSString *)self.mAPIDeviceNames[topic] length] > 0;
+    if (name.length && !hasAPIName) {
         self.mLabels[topic] = name;
-        // Propagate name to the map annotation title too.
         [self sortTopics];
         changed = YES;
         DDLogInfo(@"[TVFriendStore] card name updated for %@: %@", topic, name);
     }
 
-    // Apply the face image if provided.
     if (imageData.length) {
         UIImage *circular = [self circularImageFromData:imageData];
         if (circular) {
@@ -143,9 +277,10 @@ static NSString * const kCardNote      = @"OTFriendCard";
         }
     }
 
-    if (!changed) return;
+    if (!changed) {
+        return;
+    }
 
-    // Use @"card" so consumers know both label and image may have changed.
     [[NSNotificationCenter defaultCenter]
         postNotificationName:TVFriendStoreDidUpdateNotification
                       object:nil
@@ -156,9 +291,9 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
 - (void)sortTopics {
     [self.mTopics sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
-        NSString *la = self.mLabels[a] ?: [a lastPathComponent];
-        NSString *lb = self.mLabels[b] ?: [b lastPathComponent];
-        return [la localizedCaseInsensitiveCompare:lb]; // A → Z
+        NSString *la = self.mAPIDeviceNames[a] ?: self.mLabels[a] ?: [a lastPathComponent];
+        NSString *lb = self.mAPIDeviceNames[b] ?: self.mLabels[b] ?: [b lastPathComponent];
+        return [la localizedCaseInsensitiveCompare:lb];
     }];
 }
 
@@ -166,8 +301,10 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
 - (UIImage *)circularImageFromData:(NSData *)data {
     UIImage *src = [UIImage imageWithData:data];
-    if (!src) return nil;
-    CGFloat size = kImageSize;
+    if (!src) {
+        return nil;
+    }
+    CGFloat size = 60.0;
     CGRect rect = CGRectMake(0, 0, size, size);
     UIGraphicsBeginImageContextWithOptions(rect.size, NO, 0);
     [[UIBezierPath bezierPathWithOvalInRect:rect] addClip];
@@ -178,7 +315,7 @@ static NSString * const kCardNote      = @"OTFriendCard";
 }
 
 - (UIImage *)placeholderImageForLabel:(NSString *)label {
-    CGFloat size = kImageSize;
+    CGFloat size = 60.0;
     CGRect rect = CGRectMake(0, 0, size, size);
     UIGraphicsBeginImageContextWithOptions(rect.size, NO, 0);
     [[UIColor systemBlueColor] setFill];
@@ -200,8 +337,14 @@ static NSString * const kCardNote      = @"OTFriendCard";
 
 - (NSString *)timestampStringFromInfo:(NSDictionary *)info {
     NSNumber *tst = info[@"tst"];
-    if (!tst || tst.doubleValue == 0) return nil;
-    NSDate *date = [NSDate dateWithTimeIntervalSince1970:tst.doubleValue];
+    if (!tst || tst.doubleValue == 0) {
+        return nil;
+    }
+    return [self timestampStringFromTimestamp:tst.doubleValue];
+}
+
+- (NSString *)timestampStringFromTimestamp:(NSTimeInterval)tst {
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:tst];
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateStyle = NSDateFormatterNoStyle;
     fmt.timeStyle = NSDateFormatterShortStyle;
@@ -213,7 +356,7 @@ static NSString * const kCardNote      = @"OTFriendCard";
 - (NSURL *)cacheDirectory {
     NSURL *caches = [[[NSFileManager defaultManager]
         URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask] firstObject];
-    return [caches URLByAppendingPathComponent:kCacheSubdir isDirectory:YES];
+    return [caches URLByAppendingPathComponent:@"OTCards" isDirectory:YES];
 }
 
 - (NSString *)cacheFilenameForTopic:(NSString *)topic {
@@ -229,17 +372,26 @@ static NSString * const kCardNote      = @"OTFriendCard";
       includingPropertiesForKeys:nil
                          options:NSDirectoryEnumerationSkipsHiddenFiles
                            error:nil];
-    if (!files) return;
+    if (!files) {
+        return;
+    }
 
     NSUInteger count = 0;
     for (NSURL *file in files) {
         NSData *data = [NSData dataWithContentsOfURL:file];
-        if (!data) continue;
+        if (!data) {
+            continue;
+        }
         NSString *encoded = [file.lastPathComponent stringByDeletingPathExtension];
         NSString *topic   = [encoded stringByRemovingPercentEncoding];
-        if (!topic.length) continue;
+        if (!topic.length) {
+            continue;
+        }
         UIImage *img = [self circularImageFromData:data];
-        if (img) { self.mImages[topic] = img; count++; }
+        if (img) {
+            self.mImages[topic] = img;
+            count++;
+        }
     }
     DDLogInfo(@"[TVFriendStore] loaded %lu cached card images", (unsigned long)count);
 }
@@ -251,8 +403,10 @@ static NSString * const kCardNote      = @"OTFriendCard";
     NSURL *file = [dir URLByAppendingPathComponent:[self cacheFilenameForTopic:topic]];
     NSError *err = nil;
     [data writeToURL:file options:NSDataWritingAtomic error:&err];
-    if (err) DDLogInfo(@"[TVFriendStore] cache write failed for %@: %@",
-                       topic, err.localizedDescription);
+    if (err) {
+        DDLogInfo(@"[TVFriendStore] cache write failed for %@: %@",
+                  topic, err.localizedDescription);
+    }
 }
 
 @end
