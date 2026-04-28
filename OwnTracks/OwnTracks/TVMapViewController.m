@@ -8,6 +8,7 @@
 //
 
 #import "TVMapViewController.h"
+#import "OTMapFollowHeading.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
@@ -19,6 +20,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 @property (strong, nonatomic) MKMapView *mapView;
 // topic (NSString) → MKPointAnnotation
 @property (strong, nonatomic) NSMutableDictionary<NSString *, MKPointAnnotation *> *annotations;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *> *followMapPrevCoordByTopic;
 @end
 
 @implementation TVMapViewController
@@ -35,6 +37,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.annotations = [NSMutableDictionary dictionary];
+    self.followMapPrevCoordByTopic = [NSMutableDictionary dictionary];
 
     [[NSNotificationCenter defaultCenter]
         addObserver:self
@@ -75,7 +78,13 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         self.annotations[topic] = ann;
         [self.mapView addAnnotation:ann];
         DDLogInfo(@"[TVMapViewController] new friend pin: %@ at %.5f,%.5f", topic, lat, lon);
+        if (self.annotations.count > 1) {
+            [self.followMapPrevCoordByTopic removeAllObjects];
+        }
         [self zoomToFitAllAnnotations];
+    }
+    if (self.annotations.count == 1) {
+        [self applyCourseUpCameraWithUserInfo:info topic:topic coordinate:coord];
     }
 }
 
@@ -101,6 +110,31 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
     UIEdgeInsets padding = UIEdgeInsetsMake(80, 80, 80, 80);
     [self.mapView setVisibleMapRect:rect edgePadding:padding animated:YES];
+    MKMapCamera *cam = [self.mapView.camera copy];
+    cam.heading = 0.0;
+    cam.pitch = 0.0;
+    [self.mapView setCamera:cam animated:YES];
+}
+
+- (void)applyCourseUpCameraWithUserInfo:(NSDictionary *)info
+                                  topic:(NSString *)topic
+                             coordinate:(CLLocationCoordinate2D)coord {
+    if (self.annotations.count != 1 || !topic.length) {
+        return;
+    }
+    NSValue *prevBox = self.followMapPrevCoordByTopic[topic];
+    CLLocationCoordinate2D prev = kCLLocationCoordinate2DInvalid;
+    if (prevBox) {
+        prev = [prevBox MKCoordinateValue];
+    }
+    double h = OTEffectiveFollowMapHeading(info, coord, &prev);
+    [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
+
+    MKMapCamera *cam = [self.mapView.camera copy];
+    cam.centerCoordinate = coord;
+    cam.pitch = OTMaxFollowMapCameraPitch();
+    cam.heading = (h != h) ? 0.0 : h;
+    [self.mapView setCamera:cam animated:YES];
 }
 
 #pragma mark - MKMapViewDelegate

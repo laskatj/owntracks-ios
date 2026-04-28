@@ -10,6 +10,7 @@
 #import "FriendMarkerAnimator.h"
 #import "StatusTVC.h"
 #import "FriendAnnotationV.h"
+#import "FriendCalloutSpeedView.h"
 #import "PhotoAnnotationV.h"
 #import "FriendsTVC.h"
 #import "RegionsTVC.h"
@@ -23,6 +24,7 @@
 #import "LocationAPISyncService.h"
 #import "WebAppURLResolver.h"
 #import "Settings.h"
+#import "OTMapFollowHeading.h"
 
 #import "OwnTracksChangeMonitoringIntent.h"
 
@@ -95,6 +97,45 @@ static NSString *RouteDebugPSTOrUnknown(id unixObj) {
 
 #define OSM TRUE
 
+/// Pinch-zoom should not pause course-up follow; other gestures (pan, rotate) still do.
+static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
+    UIView *content = mapView.subviews.firstObject;
+    if (!content) {
+        return NO;
+    }
+    BOOL anyActive = NO;
+    for (UIGestureRecognizer *gr in content.gestureRecognizers) {
+        if (gr.state != UIGestureRecognizerStateBegan && gr.state != UIGestureRecognizerStateChanged) {
+            continue;
+        }
+        anyActive = YES;
+        if (![gr isKindOfClass:[UIPinchGestureRecognizer class]]) {
+            return NO;
+        }
+    }
+    return anyActive;
+}
+
+static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNumber *_Nullable liveVelKmH) {
+    UIView *detail = fv.detailCalloutAccessoryView;
+    if (![detail isKindOfClass:[FriendCalloutSpeedView class]]) {
+        return;
+    }
+    double kmh = -1.0;
+    if ([liveVelKmH isKindOfClass:[NSNumber class]] && isfinite(liveVelKmH.doubleValue)) {
+        kmh = liveVelKmH.doubleValue;
+    } else {
+        Waypoint *wp = friend.newestWaypoint;
+        if (wp.vel != nil) {
+            double v = wp.vel.doubleValue;
+            if (isfinite(v) && v >= 0.0) {
+                kmh = v;
+            }
+        }
+    }
+    [(FriendCalloutSpeedView *)detail updateSpeedKmH:kmh];
+}
+
 @interface ViewController ()
 @property (weak, nonatomic) IBOutlet MKMapView *mapView;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *accuracyButton;
@@ -140,6 +181,10 @@ static NSString *RouteDebugPSTOrUnknown(id unixObj) {
 @property (nonatomic, strong) UIButton *routeHistoryToggleButton;
 /// One-shot debug payload for the next `rebuildLiveTrackForTopic:` after a route GET merges (REST window vs API tst).
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *routeLastFetchDebugByTopic;
+/// Previous coordinate per MQTT topic for course-up / bearing fallback (`OTMapFollowHeading`).
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSValue *> *followMapPrevCoordByTopic;
+/// User panned/rotated the map; skip heading lock until the next explicit follow selection.
+@property (nonatomic, assign) BOOL followHeadingLockPausedByUserGesture;
 @end
 
 
@@ -158,6 +203,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     self.liveTrackPolylines = [NSMutableDictionary dictionary];
     self.friendAnimators = [NSMutableDictionary dictionary];
     self.routeLastFetchDebugByTopic = [NSMutableDictionary dictionary];
+    self.followMapPrevCoordByTopic = [NSMutableDictionary dictionary];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(liveFriendLocationUpdate:)
                                                  name:@"OTLiveFriendLocation"
@@ -497,6 +543,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     friendAnnotationV.course = (waypoint.cog).doubleValue;
     friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
     [friendAnnotationV setNeedsDisplay];
+    VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil);
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -969,6 +1016,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         FriendAnnotationV *friendAnnotationV;
         if (annotationView) {
             friendAnnotationV = (FriendAnnotationV *)annotationView;
+            friendAnnotationV.annotation = friend;
         } else {
             friendAnnotationV = [[FriendAnnotationV alloc] initWithAnnotation:friend reuseIdentifier:REUSE_ID_PICTURE];
         }
@@ -986,6 +1034,17 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
         [friendAnnotationV setNeedsDisplay];
 
+        FriendCalloutSpeedView *speedCallout = [[FriendCalloutSpeedView alloc] initWithFrame:CGRectZero];
+        double velKmh = -1.0;
+        if (waypoint.vel != nil) {
+            double v = waypoint.vel.doubleValue;
+            if (isfinite(v) && v >= 0.0) {
+                velKmh = v;
+            }
+        }
+        [speedCallout updateSpeedKmH:velKmh];
+        friendAnnotationV.detailCalloutAccessoryView = speedCallout;
+
         return friendAnnotationV;
 
     } else if ([annotation isKindOfClass:[Waypoint class]]) {
@@ -998,6 +1057,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
                 pAV = [[PhotoAnnotationV alloc] initWithAnnotation:waypoint reuseIdentifier:REUSE_ID_IMAGE];
             } else {
                 pAV = (PhotoAnnotationV *)annotationView;
+                pAV.annotation = waypoint;
             }
             pAV.displayPriority = MKFeatureDisplayPriorityRequired;
             pAV.poiImage = [UIImage imageWithData:waypoint.image];
@@ -1011,6 +1071,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
                 mAV = [[MKMarkerAnnotationView alloc] initWithAnnotation:waypoint reuseIdentifier:REUSE_ID_POI];
             } else {
                 mAV = (MKMarkerAnnotationView *)annotationView;
+                mAV.annotation = waypoint;
             }
             mAV.displayPriority = MKFeatureDisplayPriorityRequired;
             mAV.canShowCallout = YES;
@@ -1028,6 +1089,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
                 mAV = [[MKMarkerAnnotationView alloc] initWithAnnotation:region reuseIdentifier:REUSE_ID_BEACON];
             } else {
                 mAV = (MKMarkerAnnotationView *)annotationView;
+                mAV.annotation = region;
             }
             mAV.displayPriority = MKFeatureDisplayPriorityRequired;
             if ([[LocationManager sharedInstance] insideBeaconRegion:region.name]) {
@@ -1054,6 +1116,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
                 mAV = [[MKMarkerAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:REUSE_ID_OTHER];
             } else {
                 mAV = (MKMarkerAnnotationView *)annotationView;
+                mAV.annotation = annotation;
             }
             mAV.displayPriority = MKFeatureDisplayPriorityRequired;
             mAV.markerTintColor = [UIColor colorNamed:@"pinColor"];
@@ -1126,19 +1189,35 @@ calloutAccessoryControlTapped:(UIControl *)control {
         Friend *friend = (Friend *)view.annotation;
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
+        self.followHeadingLockPausedByUserGesture = NO;
         [self applyFollowSelectionForMapFriend:friend mapView:mapView];
+        if ([view isKindOfClass:[FriendAnnotationV class]]) {
+            VCSyncFriendCalloutSpeed((FriendAnnotationV *)view, friend, nil);
+        }
     }
 }
 
 - (void)mapView:(MKMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
     // Pan/zoom must NOT clear the selected friend or their route — selection is tied to the
     // annotation (see didDeselectAnnotationView). Only stop optional camera-follow CADisplayLink.
+    if (OTViewControllerRegionChangeIsPinchZoomOnly(mapView)) {
+        DDLogInfo(@"[Follow] pinch zoom — keep course-up follow (selection + route unchanged)");
+        [self stopFollowLink];
+        return;
+    }
     UIView *mapContentView = mapView.subviews.firstObject;
     for (UIGestureRecognizer *gr in mapContentView.gestureRecognizers) {
         if (gr.state == UIGestureRecognizerStateBegan ||
             gr.state == UIGestureRecognizerStateChanged) {
-            DDLogInfo(@"[Follow] map pan/zoom — stopFollowLink only (keep selection + route)");
+            DDLogInfo(@"[Follow] map pan/rotate — stopFollowLink; pause course-up (keep selection + route)");
             [self stopFollowLink];
+            if (self.followFriend) {
+                self.followHeadingLockPausedByUserGesture = YES;
+                MKMapCamera *cam = [self.mapView.camera copy];
+                cam.heading = 0.0;
+                cam.pitch = OTMaxFollowMapCameraPitch();
+                [self.mapView setCamera:cam animated:YES];
+            }
             return;
         }
     }
@@ -1150,6 +1229,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
         DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
         [self stopFollowLink];
         self.followFriend = nil;
+        self.followHeadingLockPausedByUserGesture = NO;
+        [self.followMapPrevCoordByTopic removeAllObjects];
+        MKMapCamera *northCam = [self.mapView.camera copy];
+        northCam.heading = 0.0;
+        northCam.pitch = 0.0;
+        [self.mapView setCamera:northCam animated:YES];
         [mapView removeOverlay:friend];
         // Hide the live track while deselected; keep liveTrackPoints cached for instant re-show.
         MKPolyline *liveTrack = self.liveTrackPolylines[friend.topic];
@@ -1189,9 +1274,23 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
 - (void)applyFollowSelectionForMapFriend:(Friend *)friend mapView:(MKMapView *)mapView {
     self.followFriend = friend;
+    self.followHeadingLockPausedByUserGesture = NO;
+    if (friend.topic.length) {
+        [self.followMapPrevCoordByTopic removeObjectForKey:friend.topic];
+    }
     [self removeFriendLiveTrackOverlaysExceptTopic:friend.topic];
     [self syncFollowedFriendBreadcrumbOverlay:friend];
-    [self setCenter:friend];
+    if (self.noMap > 0) {
+        self.mapView.userTrackingMode = MKUserTrackingModeNone;
+    }
+    Waypoint *wpHeading = friend.newestWaypoint;
+    double initialHeading = NAN;
+    if (wpHeading.cog && OTHeadingDegreesValid(wpHeading.cog.doubleValue)) {
+        initialHeading = OTNormalizeHeadingDegrees(wpHeading.cog.doubleValue);
+    }
+    [self applyFollow3DCameraToCoordinate:friend.coordinate
+                                  heading:initialHeading
+                       preserveUserAltitude:NO];
     if ([self.routeFetchedTopics containsObject:friend.topic]
             && self.liveTrackPoints[friend.topic].count >= 2) {
         [self rebuildLiveTrackForTopic:friend.topic];
@@ -1615,6 +1714,37 @@ calloutAccessoryControlTapped:(UIControl *)control {
     [self updateRouteHistoryToggleVisibility];
 }
 
+/// Default camera altitude (m) when starting follow — street-level; user can pinch after.
+static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
+
+/// Course-up / north-up + maximum pitch while `followFriend` is set.
+/// `preserveUserAltitude:YES` keeps `centerCoordinateDistance` after pinch-zoom (live updates).
+/// `NO` resets to `kFollowDefaultCameraDistanceM` when the user first selects a device.
+- (void)applyFollow3DCameraToCoordinate:(CLLocationCoordinate2D)coord
+                                heading:(double)headingOrNAN
+                     preserveUserAltitude:(BOOL)preserveUserAltitude {
+    if (!self.followFriend || !CLLocationCoordinate2DIsValid(coord)) {
+        return;
+    }
+    MKMapCamera *cam = [self.mapView.camera copy];
+    cam.centerCoordinate = coord;
+    cam.pitch = OTMaxFollowMapCameraPitch();
+    if (preserveUserAltitude) {
+        double d = cam.centerCoordinateDistance;
+        if (!isfinite(d) || d < 80.0 || d > 1.5e6) {
+            cam.centerCoordinateDistance = kFollowDefaultCameraDistanceM;
+        }
+    } else {
+        cam.centerCoordinateDistance = kFollowDefaultCameraDistanceM;
+    }
+    if (self.followHeadingLockPausedByUserGesture || headingOrNAN != headingOrNAN) {
+        cam.heading = 0.0;
+    } else {
+        cam.heading = OTNormalizeHeadingDegrees(headingOrNAN);
+    }
+    [self.mapView setCamera:cam animated:YES];
+}
+
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
     NSString *topic = note.userInfo[@"topic"];
     double lat = [note.userInfo[@"lat"] doubleValue];
@@ -1634,6 +1764,22 @@ calloutAccessoryControlTapped:(UIControl *)control {
                     self.friendAnimators[topic] = animator;
                 }
                 [animator startOrUpdateWithLatitude:lat longitude:lon timestamp:tst];
+                MKAnnotationView *pinView = [self.mapView viewForAnnotation:friend];
+                if ([pinView isKindOfClass:[FriendAnnotationV class]]) {
+                    FriendAnnotationV *fv = (FriendAnnotationV *)pinView;
+                    id c = note.userInfo[@"cog"];
+                    if ([c isKindOfClass:[NSNumber class]] && OTHeadingDegreesValid([(NSNumber *)c doubleValue])) {
+                        fv.course = [(NSNumber *)c doubleValue];
+                    }
+                    id v = note.userInfo[@"vel"];
+                    NSNumber *velNum = nil;
+                    if ([v isKindOfClass:[NSNumber class]]) {
+                        velNum = (NSNumber *)v;
+                        fv.speed = velNum.doubleValue;
+                    }
+                    [fv setNeedsDisplay];
+                    VCSyncFriendCalloutSpeed(fv, friend, velNum);
+                }
                 break;
             }
         }
@@ -1664,9 +1810,19 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
     [self rebuildLiveTrackForTopic:topic];
-    // Pan map to keep the followed friend centered when a real location update arrives.
+    // Center map on the followed friend; rotate course-up when moving (unless user panned).
     if (CLLocationCoordinate2DIsValid(coord)) {
-        [self.mapView setCenterCoordinate:coord animated:YES];
+        NSValue *prevBox = self.followMapPrevCoordByTopic[topic];
+        CLLocationCoordinate2D prev = kCLLocationCoordinate2DInvalid;
+        if (prevBox) {
+            prev = [prevBox MKCoordinateValue];
+        }
+        double heading = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
+        [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
+
+        [self applyFollow3DCameraToCoordinate:coord
+                                      heading:heading
+                           preserveUserAltitude:YES];
     }
     [self updateRouteHistoryToggleVisibility];
 }

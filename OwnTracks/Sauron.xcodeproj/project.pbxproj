@@ -110,6 +110,9 @@
 		F0A100332F9100010053280B /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 849B3C0F242F9EFC0052EE6D /* CoreLocation.framework */; };
 		F0A100342F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
+		A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
+		A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
+		B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */ = {isa = PBXBuildFile; fileRef = B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -439,6 +442,10 @@
 		F0A100252F9100010053280B /* SauronWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SauronWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendMarkerAnimator.h; sourceTree = "<group>"; };
 		FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendMarkerAnimator.m; sourceTree = "<group>"; };
+		A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTMapFollowHeading.h; sourceTree = "<group>"; };
+		A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTMapFollowHeading.m; sourceTree = "<group>"; };
+		B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendCalloutSpeedView.h; sourceTree = "<group>"; };
+		B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendCalloutSpeedView.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -783,6 +790,10 @@
 				8411B901189FEC070019D2D6 /* FriendAnnotationV.m */,
 				FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */,
 				FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */,
+				A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */,
+				A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */,
+				B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */,
+				B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */,
 			);
 			name = Friends;
 			sourceTree = "<group>";
@@ -1200,6 +1211,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1229,6 +1241,8 @@
 				84E8A1891BB94782002518AA /* Setting+CoreDataProperties.m in Sources */,
 				8411B90D189FEC070019D2D6 /* FriendAnnotationV.m in Sources */,
 				FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */,
+				A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */,
+				B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */,
 				8474443A1DA4BC9600975BE4 /* ConnType.m in Sources */,
 				8411B90E189FEC070019D2D6 /* FriendsTVC.m in Sources */,
 				842E6ED620BEF031001928FA /* Queue+CoreDataClass.m in Sources */,
@@ -1456,6 +1470,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1502,6 +1517,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
 				PRODUCT_NAME = "$(TARGET_NAME)";

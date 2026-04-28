@@ -13,6 +13,7 @@
 #import "TVRecorderOAuthClient.h"
 #import "TVRecorderTokenStore.h"
 #import "SmoothMarkerAnimator.h"
+#import "OTMapFollowHeading.h"
 #import <CoreLocation/CoreLocation.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -185,6 +186,10 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 @property (strong, nonatomic) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
 @property (strong, nonatomic) NSMutableSet<NSString *> *routeFetchedTopics;
 @property (strong, nonatomic) NSMutableSet<NSString *> *pendingRouteTopics;
+/// Previous coordinate per topic for `OTMapFollowHeading`.
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *> *followMapPrevCoordByTopic;
+/// When non-nil, map heading (degrees clockwise from north) for course-up follow; nil = north-up.
+@property (strong, nonatomic, nullable) NSNumber *followHeadingDegreesNumber;
 @end
 
 @implementation TVMapViewController
@@ -219,6 +224,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     self.liveTrackPolylines = [NSMutableDictionary dictionary];
     self.routeFetchedTopics = [NSMutableSet set];
     self.pendingRouteTopics = [NSMutableSet set];
+    self.followMapPrevCoordByTopic = [NSMutableDictionary dictionary];
 
     [[NSNotificationCenter defaultCenter]
         addObserver:self
@@ -393,20 +399,21 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     const CFTimeInterval kFollowPanMinInterval = 0.2;
     if (now - self.lastFollowPanTime < kFollowPanMinInterval) return;
 
-    CLLocation *mapCtr = [[CLLocation alloc] initWithLatitude:self.mapView.region.center.latitude
-                                                    longitude:self.mapView.region.center.longitude];
+    CLLocationCoordinate2D camCenter = self.mapView.camera.centerCoordinate;
+    CLLocation *mapCtr = [[CLLocation alloc] initWithLatitude:camCenter.latitude longitude:camCenter.longitude];
     CLLocation *pinLoc = [[CLLocation alloc] initWithLatitude:target.latitude longitude:target.longitude];
     CLLocationDistance driftM = [mapCtr distanceFromLocation:pinLoc];
     const CLLocationDistance kFollowPanMinDriftM = 5.0;
-    if (driftM < kFollowPanMinDriftM) {
-        self.lastFollowPanTime = now;
-        return;
-    }
 
     self.lastFollowPanTime = now;
-    MKCoordinateRegion region = self.mapView.region;
-    region.center = target;
-    [self.mapView setRegion:region animated:NO];
+    MKMapCamera *cam = [self.mapView.camera copy];
+    if (driftM >= kFollowPanMinDriftM) {
+        cam.centerCoordinate = target;
+    }
+    cam.pitch = OTMaxFollowMapCameraPitch();
+    double heading = self.followHeadingDegreesNumber.doubleValue;
+    cam.heading = (self.followHeadingDegreesNumber && isfinite(heading)) ? heading : 0.0;
+    [self.mapView setCamera:cam animated:NO];
 }
 
 #pragma mark - Live route (iOS ViewController pattern)
@@ -467,6 +474,14 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
     if (self.selectedTopic.length && [self.selectedTopic isEqualToString:topic]) {
         [self rebuildLiveTrackForTopic:topic];
+        NSValue *prevBox = self.followMapPrevCoordByTopic[topic];
+        CLLocationCoordinate2D prev = kCLLocationCoordinate2DInvalid;
+        if (prevBox) {
+            prev = [prevBox MKCoordinateValue];
+        }
+        double h = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
+        [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
+        self.followHeadingDegreesNumber = (h != h) ? nil : @(h);
     }
 }
 
@@ -804,6 +819,8 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         self.selectedTopic = topic;
         self.mapView.interceptUpDown = YES;
         self.trackingStartTime = CACurrentMediaTime();
+        [self.followMapPrevCoordByTopic removeObjectForKey:topic];
+        self.followHeadingDegreesNumber = nil;
         [self showTrackingHUDForTopic:topic];
         [self zoomToFriend:topic];
 
@@ -820,6 +837,8 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         }
         self.selectedTopic = nil;
         self.mapView.interceptUpDown = NO;
+        self.followHeadingDegreesNumber = nil;
+        [self.followMapPrevCoordByTopic removeAllObjects];
         [self hideTrackingHUD];
         [self stopFollowLink];
         [self zoomToFitAllAnnotations];
@@ -832,8 +851,14 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 - (void)zoomToFriend:(NSString *)topic {
     TVFriendAnnotation *ann = self.annotations[topic];
     if (!ann) return;
-    MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(ann.coordinate, 500, 500);
-    [self.mapView setRegion:region animated:NO];
+    MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:ann.coordinate
+                                                       fromDistance:900
+                                                              pitch:OTMaxFollowMapCameraPitch()
+                                                            heading:(self.followHeadingDegreesNumber
+                                                                     && isfinite(self.followHeadingDegreesNumber.doubleValue))
+                                                                    ? self.followHeadingDegreesNumber.doubleValue
+                                                                    : 0.0];
+    [self.mapView setCamera:cam animated:NO];
 }
 
 - (void)zoomToFitAllAnnotations {
@@ -847,9 +872,25 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     [self.mapView setVisibleMapRect:rect
                         edgePadding:UIEdgeInsetsMake(80, 80, 80, 80)
                            animated:YES];
+    MKMapCamera *cam = [self.mapView.camera copy];
+    cam.heading = 0.0;
+    cam.pitch = 0.0;
+    [self.mapView setCamera:cam animated:YES];
 }
 
 - (void)adjustZoom:(BOOL)zoomIn {
+    if (self.selectedTopic.length) {
+        MKMapCamera *cam = [self.mapView.camera copy];
+        double d = cam.centerCoordinateDistance;
+        double factor = zoomIn ? 0.5 : 2.0;
+        d = MAX(120.0, MIN(d * factor, 4000000.0));
+        cam.centerCoordinateDistance = d;
+        cam.pitch = OTMaxFollowMapCameraPitch();
+        double heading = self.followHeadingDegreesNumber.doubleValue;
+        cam.heading = (self.followHeadingDegreesNumber && isfinite(heading)) ? heading : 0.0;
+        [self.mapView setCamera:cam animated:YES];
+        return;
+    }
     MKCoordinateRegion region = self.mapView.region;
     double factor = zoomIn ? 0.5 : 2.0;
     region.span.latitudeDelta  = MAX(0.001, MIN(region.span.latitudeDelta  * factor, 90.0));

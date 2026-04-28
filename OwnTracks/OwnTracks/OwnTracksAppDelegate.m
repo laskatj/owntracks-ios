@@ -1238,12 +1238,20 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                   [dictionary[@"lon"] isKindOfClass:[NSNumber class]]);
 
         if (isFriendLocation) {
-            NSDictionary *userInfo = @{
+            NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithDictionary:@{
                 @"topic": device,
                 @"lat":   dictionary[@"lat"],
                 @"lon":   dictionary[@"lon"],
                 @"tst":   dictionary[@"tst"] ?: @(0),
-            };
+            }];
+            id lcog = dictionary[@"cog"];
+            if ([lcog isKindOfClass:[NSNumber class]]) {
+                userInfo[@"cog"] = lcog;
+            }
+            id lvel = dictionary[@"vel"];
+            if ([lvel isKindOfClass:[NSNumber class]]) {
+                userInfo[@"vel"] = lvel;
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter]
                     postNotificationName:@"OTLiveFriendLocation"
@@ -1263,12 +1271,20 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 [dictionary[@"lon"] isKindOfClass:[NSNumber class]]) {
                 NSString *genTopic = [Settings theGeneralTopicInMOC:CoreData.sharedInstance.queuedMOC];
                 if (genTopic.length) {
-                    NSDictionary *liveUserInfo = @{
+                    NSMutableDictionary *liveUserInfo = [NSMutableDictionary dictionaryWithDictionary:@{
                         @"topic": genTopic,
                         @"lat": dictionary[@"lat"],
                         @"lon": dictionary[@"lon"],
                         @"tst": dictionary[@"tst"] ?: @(0),
-                    };
+                    }];
+                    id lcog = dictionary[@"cog"];
+                    if ([lcog isKindOfClass:[NSNumber class]]) {
+                        liveUserInfo[@"cog"] = lcog;
+                    }
+                    id lvel = dictionary[@"vel"];
+                    if ([lvel isKindOfClass:[NSNumber class]]) {
+                        liveUserInfo[@"vel"] = lvel;
+                    }
                     dispatch_async(dispatch_get_main_queue(), ^{
                         [[NSNotificationCenter defaultCenter]
                             postNotificationName:@"OTLiveFriendLocation"

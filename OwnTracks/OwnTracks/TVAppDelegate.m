@@ -152,13 +152,21 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     NSString *tid = dict[@"tid"];
     NSString *label = (tid && tid.length) ? tid : [topic lastPathComponent];
 
-    NSDictionary *info = @{
+    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithDictionary:@{
         @"topic": topic,
         @"lat":   lat,
         @"lon":   lon,
         @"tst":   dict[@"tst"] ?: @(0),
         @"label": label,
-    };
+    }];
+    id lcog = dict[@"cog"];
+    if ([lcog isKindOfClass:[NSNumber class]]) {
+        info[@"cog"] = lcog;
+    }
+    id lvel = dict[@"vel"];
+    if ([lvel isKindOfClass:[NSNumber class]]) {
+        info[@"vel"] = lvel;
+    }
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter]
