@@ -152,6 +152,7 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (strong, nonatomic) UISegmentedControl *mapMode;
 @property (strong, nonatomic) MKUserTrackingButton *trackingButton;
 @property (strong, nonatomic) MKScaleView *scaleView;
+@property (strong, nonatomic) MKCompassButton *compassButton;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *askForMapButton;
 @property (nonatomic) BOOL warning;
 #if OSM
@@ -175,10 +176,16 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, strong) NSMutableDictionary<NSString *, FriendMarkerAnimator *> *friendAnimators;
 /// CADisplayLink that re-centers the map on the selected friend every frame.
 @property (nonatomic, strong, nullable) CADisplayLink *followLink;
+/// Direct reference to the friend currently selected on the map/list.
+@property (nonatomic, weak, nullable) Friend *selectedFriend;
 /// Direct reference to the friend currently being followed (weak — Friend is owned by Core Data).
 @property (nonatomic, weak, nullable) Friend *followFriend;
+/// Camera follow mode for selected friend.
+@property (nonatomic, assign) BOOL followEnabled;
 /// Toggles Recorder route history window between 6h and 12h (top-trailing on map).
 @property (nonatomic, strong) UIButton *routeHistoryToggleButton;
+/// Toggle for follow mode (`Follow: On` / `Follow: Off`).
+@property (nonatomic, strong) UIButton *followToggleButton;
 /// One-shot debug payload for the next `rebuildLiveTrackForTopic:` after a route GET merges (REST window vs API tst).
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *routeLastFetchDebugByTopic;
 /// Previous coordinate per MQTT topic for course-up / bearing fallback (`OTMapFollowHeading`).
@@ -223,6 +230,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self updateMoveButton];
     [self setupMapMode];
     [self setupScaleView];
+    [self setupCompassButton];
     
     [[LocationManager sharedInstance] addObserver:self
                                        forKeyPath:@"monitoring"
@@ -250,6 +258,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     
     [self noMap];
     [self setupRouteHistoryToggle];
+    [self setupFollowToggle];
+    self.followEnabled = YES;
+    [self updateFollowToggleTitle];
 }
 
 - (void)setupModes {
@@ -353,6 +364,20 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [NSLayoutConstraint activateConstraints:@[bottomScale, leadingScale]];
 }
 
+- (void)setupCompassButton {
+    self.mapView.showsCompass = NO;
+    MKCompassButton *compass = [MKCompassButton compassButtonWithMapView:self.mapView];
+    compass.translatesAutoresizingMaskIntoConstraints = NO;
+    compass.compassVisibility = MKFeatureVisibilityAdaptive;
+    [self.view addSubview:compass];
+    self.compassButton = compass;
+    [NSLayoutConstraint activateConstraints:@[
+        [compass.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
+        [compass.topAnchor constraintEqualToAnchor:self.mapView.topAnchor constant:12],
+    ]];
+    [self.view bringSubviewToFront:compass];
+}
+
 #pragma mark - Route history (Recorder window + UI)
 
 - (NSInteger)routeHistoryHours {
@@ -379,12 +404,52 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     btn.hidden = YES;
     // Pin to the map (not the VC top safe area) so the control stays visible above the map tiles; keep above siblings.
     [NSLayoutConstraint activateConstraints:@[
-        [btn.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
-        [btn.topAnchor constraintEqualToAnchor:self.mapView.topAnchor constant:52],
+        [btn.trailingAnchor constraintEqualToAnchor:self.compassButton.trailingAnchor],
+        [btn.topAnchor constraintEqualToAnchor:self.compassButton.bottomAnchor constant:8],
         [btn.widthAnchor constraintGreaterThanOrEqualToConstant:56],
         [btn.heightAnchor constraintGreaterThanOrEqualToConstant:36],
     ]];
     [self.view bringSubviewToFront:btn];
+}
+
+- (void)setupFollowToggle {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    btn.backgroundColor = [[UIColor secondarySystemBackgroundColor] colorWithAlphaComponent:0.92];
+    btn.layer.cornerRadius = 10;
+    btn.clipsToBounds = YES;
+    [btn addTarget:self action:@selector(followToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
+    self.followToggleButton = btn;
+    [self.view addSubview:btn];
+    btn.hidden = YES;
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.trailingAnchor constraintEqualToAnchor:self.compassButton.trailingAnchor],
+        [btn.topAnchor constraintEqualToAnchor:self.routeHistoryToggleButton.bottomAnchor constant:8],
+        [btn.widthAnchor constraintGreaterThanOrEqualToConstant:104],
+        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:36],
+    ]];
+    [self updateFollowToggleTitle];
+    [self.view bringSubviewToFront:btn];
+}
+
+- (void)updateFollowToggleTitle {
+    if (!self.followToggleButton) return;
+    NSString *title = self.followEnabled
+        ? NSLocalizedString(@"Follow: On", @"Map follow mode enabled")
+        : NSLocalizedString(@"Follow: Off", @"Map follow mode disabled");
+    [self.followToggleButton setTitle:title forState:UIControlStateNormal];
+}
+
+- (void)updateFollowToggleVisibility {
+    if (!self.followToggleButton) return;
+    self.followToggleButton.hidden = (self.selectedFriend == nil);
+    if (!self.followToggleButton.hidden) {
+        [self.view bringSubviewToFront:self.followToggleButton];
+    }
+    if (self.compassButton) {
+        [self.view bringSubviewToFront:self.compassButton];
+    }
 }
 
 - (void)updateRouteHistoryToggleTitle {
@@ -399,7 +464,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (!self.routeHistoryToggleButton) {
         return;
     }
-    Friend *f = self.followFriend;
+    Friend *f = self.selectedFriend;
     if (!f) {
         self.routeHistoryToggleButton.hidden = YES;
         return;
@@ -412,6 +477,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     if (show) {
         [self.view bringSubviewToFront:self.routeHistoryToggleButton];
     }
+    if (self.compassButton) {
+        [self.view bringSubviewToFront:self.compassButton];
+    }
 }
 
 - (void)routeHistoryToggleTapped:(UIButton *)sender {
@@ -419,7 +487,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self setRouteHistoryHours:next];
     [self updateRouteHistoryToggleTitle];
 
-    Friend *f = self.followFriend;
+    Friend *f = self.selectedFriend;
     if (f) {
         NSString *t = f.topic;
         MKPolyline *pl = self.liveTrackPolylines[t];
@@ -445,6 +513,29 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         [self fetchRouteForFriend:f mapView:self.mapView historyHours:next];
     }
     [self updateRouteHistoryToggleVisibility];
+}
+
+- (void)followToggleTapped:(UIButton *)sender {
+    self.followEnabled = !self.followEnabled;
+    [self updateFollowToggleTitle];
+    Friend *f = self.selectedFriend;
+    if (!f) {
+        return;
+    }
+    if (!self.followEnabled) {
+        self.followFriend = nil;
+        return;
+    }
+    self.followFriend = f;
+    self.followHeadingLockPausedByUserGesture = NO;
+    Waypoint *wpHeading = f.newestWaypoint;
+    double initialHeading = NAN;
+    if (wpHeading.cog && OTHeadingDegreesValid(wpHeading.cog.doubleValue)) {
+        initialHeading = OTNormalizeHeadingDegrees(wpHeading.cog.doubleValue);
+    }
+    [self applyFollow3DCameraToCoordinate:f.coordinate
+                                  heading:initialHeading
+                       preserveUserAltitude:YES];
 }
 
 /// Removes live-track `MKPolyline` overlays for all topics except `topic` (nil = remove all).
@@ -663,6 +754,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         self.mapView.scrollEnabled = TRUE;
         self.mapView.pitchEnabled = TRUE;
         self.mapView.rotateEnabled = TRUE;
+        self.compassButton.hidden = NO;
 
         if (!self.trackingButton) {
             self.trackingButton = [MKUserTrackingButton userTrackingButtonWithMapView:self.mapView];
@@ -694,6 +786,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         self.mapView.scrollEnabled = FALSE;
         self.mapView.pitchEnabled = FALSE;
         self.mapView.rotateEnabled = FALSE;
+        self.compassButton.hidden = YES;
 
         if (self.trackingButton) {
             [self.trackingButton removeFromSuperview];
@@ -807,13 +900,19 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
 
     // Only one Friend may show the Core Data waypoint breadcrumb; clear leftovers when not following.
-    if (!self.followFriend) {
+    if (!self.selectedFriend) {
         [self removeFriendBreadcrumbOverlaysExceptFriend:nil];
     } else {
-        [self syncFollowedFriendBreadcrumbOverlay:self.followFriend];
+        [self syncFollowedFriendBreadcrumbOverlay:self.selectedFriend];
     }
     if (self.routeHistoryToggleButton) {
         [self.view bringSubviewToFront:self.routeHistoryToggleButton];
+    }
+    if (self.followToggleButton) {
+        [self.view bringSubviewToFront:self.followToggleButton];
+    }
+    if (self.compassButton) {
+        [self.view bringSubviewToFront:self.compassButton];
     }
 }
 
@@ -1211,7 +1310,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
             gr.state == UIGestureRecognizerStateChanged) {
             DDLogInfo(@"[Follow] map pan/rotate — stopFollowLink; pause course-up (keep selection + route)");
             [self stopFollowLink];
-            if (self.followFriend) {
+            if (self.followEnabled && self.followFriend) {
                 self.followHeadingLockPausedByUserGesture = YES;
                 MKMapCamera *cam = [self.mapView.camera copy];
                 cam.heading = 0.0;
@@ -1228,7 +1327,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
         Friend *friend = (Friend *)view.annotation;
         DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
         [self stopFollowLink];
+        self.selectedFriend = nil;
         self.followFriend = nil;
+        self.followEnabled = YES;
+        [self updateFollowToggleTitle];
+        [self updateFollowToggleVisibility];
         self.followHeadingLockPausedByUserGesture = NO;
         [self.followMapPrevCoordByTopic removeAllObjects];
         MKMapCamera *northCam = [self.mapView.camera copy];
@@ -1273,7 +1376,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
 }
 
 - (void)applyFollowSelectionForMapFriend:(Friend *)friend mapView:(MKMapView *)mapView {
+    self.selectedFriend = friend;
+    self.followEnabled = YES;
     self.followFriend = friend;
+    [self updateFollowToggleTitle];
+    [self updateFollowToggleVisibility];
     self.followHeadingLockPausedByUserGesture = NO;
     if (friend.topic.length) {
         [self.followMapPrevCoordByTopic removeObjectForKey:friend.topic];
@@ -1288,9 +1395,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (wpHeading.cog && OTHeadingDegreesValid(wpHeading.cog.doubleValue)) {
         initialHeading = OTNormalizeHeadingDegrees(wpHeading.cog.doubleValue);
     }
-    [self applyFollow3DCameraToCoordinate:friend.coordinate
-                                  heading:initialHeading
-                       preserveUserAltitude:NO];
+    if (self.followEnabled) {
+        [self applyFollow3DCameraToCoordinate:friend.coordinate
+                                      heading:initialHeading
+                           preserveUserAltitude:NO];
+    }
     if ([self.routeFetchedTopics containsObject:friend.topic]
             && self.liveTrackPoints[friend.topic].count >= 2) {
         [self rebuildLiveTrackForTopic:friend.topic];
@@ -1352,7 +1461,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
 }
 
 - (void)followTick:(CADisplayLink *)link {
-    Friend *f = self.followFriend;
+    Friend *f = self.followEnabled ? self.followFriend : nil;
     if (!f) { [self stopFollowLink]; return; }
     CLLocationCoordinate2D coord = f.coordinate;
     // Log every ~60 frames (≈1 s) so the console stays readable.
@@ -1707,7 +1816,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (fetchDbg) {
         [self.routeLastFetchDebugByTopic removeObjectForKey:topic];
     }
-    Friend *followed = self.followFriend;
+    Friend *followed = self.selectedFriend;
     if (followed && [followed.topic isEqualToString:topic]) {
         [self syncFollowedFriendBreadcrumbOverlay:followed];
     }
@@ -1723,7 +1832,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
 - (void)applyFollow3DCameraToCoordinate:(CLLocationCoordinate2D)coord
                                 heading:(double)headingOrNAN
                      preserveUserAltitude:(BOOL)preserveUserAltitude {
-    if (!self.followFriend || !CLLocationCoordinate2DIsValid(coord)) {
+    if (!self.followEnabled || !self.followFriend || !CLLocationCoordinate2DIsValid(coord)) {
         return;
     }
     MKMapCamera *cam = [self.mapView.camera copy];
@@ -1805,8 +1914,8 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
     DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)self.liveTrackPoints[topic].count);
 
     // Only update the visible overlay for the currently selected/followed friend.
-    Friend *followed = self.followFriend;
-    if (!followed || ![followed.topic isEqualToString:topic]) {
+    Friend *selected = self.selectedFriend;
+    if (!selected || ![selected.topic isEqualToString:topic]) {
         return;
     }
     [self rebuildLiveTrackForTopic:topic];
@@ -1820,9 +1929,11 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
         double heading = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
         [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
 
-        [self applyFollow3DCameraToCoordinate:coord
-                                      heading:heading
-                           preserveUserAltitude:YES];
+        if (self.followEnabled) {
+            [self applyFollow3DCameraToCoordinate:coord
+                                          heading:heading
+                               preserveUserAltitude:YES];
+        }
     }
     [self updateRouteHistoryToggleVisibility];
 }
@@ -1969,9 +2080,13 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
                 [self.routeFetchMQTTBaselineByTopic removeObjectForKey:friend.topic];
                 [self.friendAnimators[friend.topic] cancel];
                 [self.friendAnimators removeObjectForKey:friend.topic];
-                if (self.followFriend == friend) {
+                if (self.selectedFriend == friend || self.followFriend == friend) {
                     [self stopFollowLink];
+                    self.selectedFriend = nil;
                     self.followFriend = nil;
+                    self.followEnabled = YES;
+                    [self updateFollowToggleTitle];
+                    [self updateFollowToggleVisibility];
                 }
                 break;
             }
@@ -1980,7 +2095,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
             case NSFetchedResultsChangeMove: {
                 BOOL hadWaypoint = waypoint && (waypoint.lat).doubleValue != 0.0 && (waypoint.lon).doubleValue != 0.0;
                 BOOL onMap = [self.mapView.annotations containsObject:friend];
-                Friend *followed = self.followFriend;
+                Friend *followed = self.selectedFriend;
                 BOOL isFollowed = (followed != nil && friend == followed);
 
                 [self.mapView removeOverlay:friend];
@@ -2057,7 +2172,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
                 [self.mapView addAnnotation:waypoint];
                 {
                     Friend *owner = waypoint.belongsTo;
-                    if (owner && self.followFriend == owner) {
+                    if (owner && self.selectedFriend == owner) {
                         [self syncFollowedFriendBreadcrumbOverlay:owner];
                     }
                 }

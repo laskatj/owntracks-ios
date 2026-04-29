@@ -183,7 +183,10 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
 /// Live route cache (same pattern as iOS ViewController).
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
+/// Core route stroke (drawn above halo).
 @property (strong, nonatomic) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
+/// Wider underlay so the track reads on dark Standard maps at TV distance.
+@property (strong, nonatomic) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackHaloPolylines;
 @property (strong, nonatomic) NSMutableSet<NSString *> *routeFetchedTopics;
 @property (strong, nonatomic) NSMutableSet<NSString *> *pendingRouteTopics;
 /// Previous coordinate per topic for `OTMapFollowHeading`.
@@ -220,8 +223,9 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     [super viewDidLoad];
     self.annotations = [NSMutableDictionary dictionary];
     self.animators   = [NSMutableDictionary dictionary];
-    self.liveTrackPoints    = [NSMutableDictionary dictionary];
-    self.liveTrackPolylines = [NSMutableDictionary dictionary];
+    self.liveTrackPoints         = [NSMutableDictionary dictionary];
+    self.liveTrackPolylines      = [NSMutableDictionary dictionary];
+    self.liveTrackHaloPolylines  = [NSMutableDictionary dictionary];
     self.routeFetchedTopics = [NSMutableSet set];
     self.pendingRouteTopics = [NSMutableSet set];
     self.followMapPrevCoordByTopic = [NSMutableDictionary dictionary];
@@ -419,6 +423,11 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 #pragma mark - Live route (iOS ViewController pattern)
 
 - (void)removeVisibleRouteAndPendingForTopic:(NSString *)topic {
+    MKPolyline *halo = self.liveTrackHaloPolylines[topic];
+    if (halo) {
+        [self.mapView removeOverlay:halo];
+        [self.liveTrackHaloPolylines removeObjectForKey:topic];
+    }
     MKPolyline *liveTrack = self.liveTrackPolylines[topic];
     if (liveTrack) {
         [self.mapView removeOverlay:liveTrack];
@@ -449,12 +458,17 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     for (NSUInteger i = 0; i < points.count; i++) {
         coords[i] = [points[i] MKCoordinateValue];
     }
+    MKPolyline *oldHalo = self.liveTrackHaloPolylines[topic];
     MKPolyline *old = self.liveTrackPolylines[topic];
+    if (oldHalo) [self.mapView removeOverlay:oldHalo];
     if (old) [self.mapView removeOverlay:old];
-    MKPolyline *updated = [MKPolyline polylineWithCoordinates:coords count:points.count];
+    MKPolyline *haloLine = [MKPolyline polylineWithCoordinates:coords count:points.count];
+    MKPolyline *coreLine = [MKPolyline polylineWithCoordinates:coords count:points.count];
     free(coords);
-    self.liveTrackPolylines[topic] = updated;
-    [self.mapView addOverlay:updated];
+    self.liveTrackHaloPolylines[topic] = haloLine;
+    self.liveTrackPolylines[topic] = coreLine;
+    [self.mapView addOverlay:haloLine level:MKOverlayLevelAboveRoads];
+    [self.mapView addOverlay:coreLine level:MKOverlayLevelAboveLabels];
 }
 
 - (void)liveFriendLocationUpdated:(NSNotification *)note {
@@ -706,11 +720,6 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
                 [self.animators removeObjectForKey:t];
                 [self removeVisibleRouteAndPendingForTopic:t];
                 [self.liveTrackPoints removeObjectForKey:t];
-                MKPolyline *pl = self.liveTrackPolylines[t];
-                if (pl) {
-                    [self.mapView removeOverlay:pl];
-                }
-                [self.liveTrackPolylines removeObjectForKey:t];
                 [self.routeFetchedTopics removeObject:t];
             }
         }
@@ -928,9 +937,24 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     if (![overlay isKindOfClass:[MKPolyline class]]) {
         return nil;
     }
+    BOOL isHalo = NO;
+    for (NSString *t in self.liveTrackHaloPolylines) {
+        if (self.liveTrackHaloPolylines[t] == overlay) {
+            isHalo = YES;
+            break;
+        }
+    }
     MKPolylineRenderer *renderer = [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
-    renderer.lineWidth   = 3;
-    renderer.strokeColor = [UIColor colorNamed:@"trackColor"];
+    renderer.lineJoin = kCGLineJoinRound;
+    renderer.lineCap = kCGLineCapRound;
+    if (isHalo) {
+        // TV viewing distance: wide soft underlay so the path does not disappear on dark roads.
+        renderer.lineWidth = 36.0;
+        renderer.strokeColor = [UIColor colorWithRed:1.0 green:0.22 blue:0.12 alpha:0.55];
+    } else {
+        renderer.lineWidth = 18.0;
+        renderer.strokeColor = [UIColor colorWithRed:1.0 green:0.08 blue:0.06 alpha:1.0];
+    }
     return renderer;
 }
 

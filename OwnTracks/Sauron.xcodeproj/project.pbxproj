@@ -104,15 +104,15 @@
 		84E8A18D1BB94782002518AA /* Region+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 84E8A1871BB94782002518AA /* Region+CoreDataProperties.m */; };
 		84FAEA7225F01DA100DCD479 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 84FAEA7125F01DA100DCD479 /* Launch Screen.storyboard */; };
 		84FD93072353950100CCEC3B /* OwnTracksEditTVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 84FD93062353950100CCEC3B /* OwnTracksEditTVC.m */; };
+		A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
+		A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
+		B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */ = {isa = PBXBuildFile; fileRef = B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */; };
 		F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F0A100212F9100010053280B /* OwnTracksWatchBridge.m */; };
 		F0A100242F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		F0A100282F9100010053280B /* SauronWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F0A100252F9100010053280B /* SauronWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F0A100332F9100010053280B /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 849B3C0F242F9EFC0052EE6D /* CoreLocation.framework */; };
 		F0A100342F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
-		A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
-		A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
-		B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */ = {isa = PBXBuildFile; fileRef = B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -274,7 +274,6 @@
 		847444391DA4BC9600975BE4 /* ConnType.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ConnType.m; sourceTree = "<group>"; };
 		8474B15319A8CB7D00427427 /* Model 7.3.1.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 7.3.1.xcdatamodel"; sourceTree = "<group>"; };
 		847667AA2DF9B488001AD950 /* Model 18.4.3.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.4.3.xcdatamodel"; sourceTree = "<group>"; };
-		84AA00132E2000010053280B /* Model 18.5.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.5.0.xcdatamodel"; sourceTree = "<group>"; };
 		847667B12DF9B8C7001AD950 /* Waypoint+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Waypoint+CoreDataProperties.h"; sourceTree = "<group>"; };
 		847667B22DF9B8C7001AD950 /* Waypoint+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Waypoint+CoreDataProperties.m"; sourceTree = "<group>"; };
 		847D5C7626121F4200B6DCD5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -325,6 +324,7 @@
 		84A1B2032025000100D2E3F4 /* WebAppViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WebAppViewController.m; sourceTree = "<group>"; };
 		84A2C1002E2F000100D2E3F4 /* WebAppAuthHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebAppAuthHelper.h; sourceTree = "<group>"; };
 		84A2C1012E2F000100D2E3F4 /* WebAppAuthHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebAppAuthHelper.m; sourceTree = "<group>"; };
+		84AA00132E2000010053280B /* Model 18.5.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.5.0.xcdatamodel"; sourceTree = "<group>"; };
 		84AE8ADB25C165D600C0B0EE /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.1.sdk/System/iOSSupport/System/Library/Frameworks/MapKit.framework; sourceTree = DEVELOPER_DIR; };
 		84AF468F1AB9571800E954E3 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		84AFD40A2434486200F1E922 /* OwnTracking.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OwnTracking.m; sourceTree = "<group>"; };
@@ -425,12 +425,16 @@
 		84FD93062353950100CCEC3B /* OwnTracksEditTVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksEditTVC.m; sourceTree = "<group>"; };
 		96DD60728B6E7C01CD032AF5 /* Pods-OwnTracksWrist WatchKit App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit App.release.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit App/Pods-OwnTracksWrist WatchKit App.release.xcconfig"; sourceTree = "<group>"; };
 		9DBE9F76099A512C36F126BC /* Pods-OwnTracks.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracks.release.xcconfig"; path = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.release.xcconfig"; sourceTree = "<group>"; };
+		A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTMapFollowHeading.h; sourceTree = "<group>"; };
+		A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTMapFollowHeading.m; sourceTree = "<group>"; };
 		A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sauron.debug.xcconfig"; path = "Target Support Files/Pods-Sauron/Pods-Sauron.debug.xcconfig"; sourceTree = "<group>"; };
 		B1AC89F92E2FDF3400E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Storyboard.strings"; sourceTree = "<group>"; };
 		B1AC89FA2E2FDF3500E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Intents.strings"; sourceTree = "<group>"; };
 		B1AC89FB2E2FDF3700E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B1AC89FD2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		B1AC89FE2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendCalloutSpeedView.h; sourceTree = "<group>"; };
+		B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendCalloutSpeedView.m; sourceTree = "<group>"; };
 		B23BF478C2DF040EB8AA1F21 /* Pods-SauronTV.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SauronTV.release.xcconfig"; path = "Target Support Files/Pods-SauronTV/Pods-SauronTV.release.xcconfig"; sourceTree = "<group>"; };
 		B8A7BDCE89FD144BB55060A0 /* Pods_SauronTV.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SauronTV.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA827F68D1E69AEA6BCC7251 /* Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit Extension/Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; sourceTree = "<group>"; };
@@ -442,10 +446,6 @@
 		F0A100252F9100010053280B /* SauronWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SauronWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendMarkerAnimator.h; sourceTree = "<group>"; };
 		FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendMarkerAnimator.m; sourceTree = "<group>"; };
-		A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTMapFollowHeading.h; sourceTree = "<group>"; };
-		A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTMapFollowHeading.m; sourceTree = "<group>"; };
-		B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendCalloutSpeedView.h; sourceTree = "<group>"; };
-		B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendCalloutSpeedView.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -1468,9 +1468,8 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1480,6 +1479,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 3;
 				TVOS_DEPLOYMENT_TARGET = 26.4;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 			};
 			name = Debug;
 		};
@@ -1515,9 +1515,8 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1526,6 +1525,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 3;
 				TVOS_DEPLOYMENT_TARGET = 26.4;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks";
 			};
 			name = Release;
 		};
@@ -1676,7 +1676,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.2.9;
+				MARKETING_VERSION = 19.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1733,7 +1733,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.2.9;
+				MARKETING_VERSION = 19.3.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
