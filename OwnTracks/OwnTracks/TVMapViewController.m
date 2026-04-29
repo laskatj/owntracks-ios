@@ -133,7 +133,9 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     MKMapCamera *cam = [self.mapView.camera copy];
     cam.centerCoordinate = coord;
     cam.pitch = OTMaxFollowMapCameraPitch();
-    cam.heading = (h != h) ? 0.0 : h;
+    if (h == h) {
+        cam.heading = h;
+    }
     [self.mapView setCamera:cam animated:YES];
 }
 

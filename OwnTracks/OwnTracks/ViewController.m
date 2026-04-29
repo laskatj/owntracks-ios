@@ -116,6 +116,46 @@ static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
     return anyActive;
 }
 
+/// Template clock: minute hand at 12; hour at 12 when `hours == 12`, at 6 when `hours == 6`.
+static UIImage *OTRouteHistoryWindowClockImage(CGFloat side, NSInteger hours) {
+    CGSize sz = CGSizeMake(side, side);
+    UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat defaultFormat];
+    fmt.scale = [UIScreen mainScreen].scale;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:sz format:fmt];
+    UIImage *raw = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        CGPoint ctr = CGPointMake(side * 0.5, side * 0.5);
+        CGFloat faceR = side * 0.42;
+        [[UIColor blackColor] setStroke];
+        UIBezierPath *circle = [UIBezierPath bezierPathWithArcCenter:ctr
+                                                                radius:faceR
+                                                            startAngle:0
+                                                              endAngle:(CGFloat)(M_PI * 2.0)
+                                                             clockwise:YES];
+        circle.lineWidth = MAX(1.5, side * 0.08);
+        [circle stroke];
+
+        double minuteAngle = -M_PI_2;
+        double hourAngle = (hours == 6) ? M_PI_2 : -M_PI_2;
+        CGFloat minLen = faceR * 0.36;
+        CGFloat hourLen = faceR * 0.52;
+
+        CGContextRef c = ctx.CGContext;
+        CGContextSetStrokeColorWithColor(c, [UIColor blackColor].CGColor);
+        CGContextSetLineCap(c, kCGLineCapRound);
+
+        CGContextSetLineWidth(c, MAX(1.0, side * 0.055));
+        CGContextMoveToPoint(c, ctr.x, ctr.y);
+        CGContextAddLineToPoint(c, ctr.x + cos(minuteAngle) * minLen, ctr.y + sin(minuteAngle) * minLen);
+        CGContextStrokePath(c);
+
+        CGContextSetLineWidth(c, MAX(1.5, side * 0.075));
+        CGContextMoveToPoint(c, ctr.x, ctr.y);
+        CGContextAddLineToPoint(c, ctr.x + cos(hourAngle) * hourLen, ctr.y + sin(hourAngle) * hourLen);
+        CGContextStrokePath(c);
+    }];
+    return [raw imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
+
 static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNumber *_Nullable liveVelKmH) {
     UIView *detail = fv.detailCalloutAccessoryView;
     if (![detail isKindOfClass:[FriendCalloutSpeedView class]]) {
@@ -182,10 +222,14 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, weak, nullable) Friend *followFriend;
 /// Camera follow mode for selected friend.
 @property (nonatomic, assign) BOOL followEnabled;
-/// Toggles Recorder route history window between 6h and 12h (top-trailing on map).
+/// Toggles Recorder route history window between 6h and 12h (icon row beside user tracking).
 @property (nonatomic, strong) UIButton *routeHistoryToggleButton;
-/// Toggle for follow mode (`Follow: On` / `Follow: Off`).
+/// Toggle for follow mode (bullseye icon beside route window control).
 @property (nonatomic, strong) UIButton *followToggleButton;
+/// Horizontal stack: route window clock, follow bullseye (to the right of `MKUserTrackingButton` when present).
+@property (nonatomic, strong) UIStackView *mapRouteFollowStack;
+/// Active positional constraints for `mapRouteFollowStack` (rebuilt when `trackingButton` appears or is removed).
+@property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *mapRouteFollowStackLayoutConstraints;
 /// One-shot debug payload for the next `rebuildLiveTrackForTopic:` after a route GET merges (REST window vs API tst).
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *routeLastFetchDebugByTopic;
 /// Previous coordinate per MQTT topic for course-up / bearing fallback (`OTMapFollowHeading`).
@@ -257,10 +301,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
      }];
     
     [self noMap];
-    [self setupRouteHistoryToggle];
-    [self setupFollowToggle];
+    [self setupMapRouteFollowControlsRow];
     self.followEnabled = YES;
-    [self updateFollowToggleTitle];
+    [self updateFollowToggleAppearance];
 }
 
 - (void)setupModes {
@@ -380,6 +423,21 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 #pragma mark - Route history (Recorder window + UI)
 
+/// Matches `MKUserTrackingButton` / `MKMapView` tint (falls back to system blue).
+- (UIColor *)OT_mapControlActiveTint {
+    if (self.trackingButton.tintColor) {
+        return self.trackingButton.tintColor;
+    }
+    if (self.mapView.tintColor) {
+        return self.mapView.tintColor;
+    }
+    return [UIColor systemBlueColor];
+}
+
+- (UIColor *)OT_mapControlInactiveTint {
+    return [UIColor secondaryLabelColor];
+}
+
 - (NSInteger)routeHistoryHours {
     NSInteger h = [[NSUserDefaults standardUserDefaults] integerForKey:kMapRouteHistoryHoursKey];
     return (h == 6) ? 6 : 12;
@@ -390,74 +448,121 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [[NSUserDefaults standardUserDefaults] setInteger:h forKey:kMapRouteHistoryHoursKey];
 }
 
-- (void)setupRouteHistoryToggle {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    btn.backgroundColor = [[UIColor secondarySystemBackgroundColor] colorWithAlphaComponent:0.92];
-    btn.layer.cornerRadius = 10;
-    btn.clipsToBounds = YES;
-    [btn addTarget:self action:@selector(routeHistoryToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
-    self.routeHistoryToggleButton = btn;
-    [self updateRouteHistoryToggleTitle];
-    [self.view addSubview:btn];
-    btn.hidden = YES;
-    // Pin to the map (not the VC top safe area) so the control stays visible above the map tiles; keep above siblings.
+- (void)setupMapRouteFollowControlsRow {
+    const CGFloat kHit = 44.0;
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 10.0;
+    self.mapRouteFollowStack = stack;
+    self.mapRouteFollowStackLayoutConstraints = [NSMutableArray array];
+
+    UIButton *routeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    routeBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    routeBtn.hidden = YES;
+    [routeBtn addTarget:self action:@selector(routeHistoryToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
+    self.routeHistoryToggleButton = routeBtn;
+
+    UIButton *followBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    followBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    followBtn.hidden = YES;
+    [followBtn addTarget:self action:@selector(followToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
+    self.followToggleButton = followBtn;
+
+    [stack addArrangedSubview:routeBtn];
+    [stack addArrangedSubview:followBtn];
+    [self.view addSubview:stack];
+
     [NSLayoutConstraint activateConstraints:@[
-        [btn.trailingAnchor constraintEqualToAnchor:self.compassButton.trailingAnchor],
-        [btn.topAnchor constraintEqualToAnchor:self.compassButton.bottomAnchor constant:8],
-        [btn.widthAnchor constraintGreaterThanOrEqualToConstant:56],
-        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:36],
+        [routeBtn.widthAnchor constraintEqualToConstant:kHit],
+        [routeBtn.heightAnchor constraintEqualToConstant:kHit],
+        [followBtn.widthAnchor constraintEqualToConstant:kHit],
+        [followBtn.heightAnchor constraintEqualToConstant:kHit],
     ]];
-    [self.view bringSubviewToFront:btn];
+
+    [self updateRouteHistoryToggleAppearance];
+    [self updateFollowToggleAppearance];
+    [self updateMapRouteFollowStackLayoutConstraints];
+    [self.view bringSubviewToFront:stack];
 }
 
-- (void)setupFollowToggle {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    btn.backgroundColor = [[UIColor secondarySystemBackgroundColor] colorWithAlphaComponent:0.92];
-    btn.layer.cornerRadius = 10;
-    btn.clipsToBounds = YES;
-    [btn addTarget:self action:@selector(followToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
-    self.followToggleButton = btn;
-    [self.view addSubview:btn];
-    btn.hidden = YES;
-    [NSLayoutConstraint activateConstraints:@[
-        [btn.trailingAnchor constraintEqualToAnchor:self.compassButton.trailingAnchor],
-        [btn.topAnchor constraintEqualToAnchor:self.routeHistoryToggleButton.bottomAnchor constant:8],
-        [btn.widthAnchor constraintGreaterThanOrEqualToConstant:104],
-        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:36],
-    ]];
-    [self updateFollowToggleTitle];
-    [self.view bringSubviewToFront:btn];
+/// Positions `mapRouteFollowStack` to the right of `MKUserTrackingButton`, or under `modes` when tracking is absent.
+- (void)updateMapRouteFollowStackLayoutConstraints {
+    if (!self.mapRouteFollowStack) {
+        return;
+    }
+    [NSLayoutConstraint deactivateConstraints:self.mapRouteFollowStackLayoutConstraints];
+    [self.mapRouteFollowStackLayoutConstraints removeAllObjects];
+
+    if (self.trackingButton) {
+        [self.mapRouteFollowStackLayoutConstraints addObjectsFromArray:@[
+            [self.mapRouteFollowStack.leadingAnchor constraintEqualToAnchor:self.trackingButton.trailingAnchor constant:12.0],
+            [self.mapRouteFollowStack.centerYAnchor constraintEqualToAnchor:self.trackingButton.centerYAnchor],
+        ]];
+    } else {
+        [self.mapRouteFollowStackLayoutConstraints addObjectsFromArray:@[
+            [self.mapRouteFollowStack.leadingAnchor constraintEqualToAnchor:self.mapView.leadingAnchor constant:10.0],
+            [self.mapRouteFollowStack.topAnchor constraintEqualToAnchor:self.modes.bottomAnchor constant:8.0],
+        ]];
+    }
+    [NSLayoutConstraint activateConstraints:self.mapRouteFollowStackLayoutConstraints];
 }
 
-- (void)updateFollowToggleTitle {
-    if (!self.followToggleButton) return;
-    NSString *title = self.followEnabled
-        ? NSLocalizedString(@"Follow: On", @"Map follow mode enabled")
-        : NSLocalizedString(@"Follow: Off", @"Map follow mode disabled");
-    [self.followToggleButton setTitle:title forState:UIControlStateNormal];
+- (void)updateFollowToggleAppearance {
+    if (!self.followToggleButton) {
+        return;
+    }
+    UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
+    cfg.background.backgroundColor = [UIColor clearColor];
+    UIImage *sym = [UIImage systemImageNamed:@"dot.scope"];
+    cfg.image = sym;
+    cfg.preferredSymbolConfigurationForImage =
+        [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightSemibold];
+    cfg.baseForegroundColor = self.followEnabled ? [self OT_mapControlActiveTint] : [self OT_mapControlInactiveTint];
+    self.followToggleButton.configuration = cfg;
+
+    self.followToggleButton.accessibilityLabel = NSLocalizedString(@"Follow camera", @"Accessibility: follow map camera");
+    self.followToggleButton.accessibilityValue = self.followEnabled
+        ? NSLocalizedString(@"On", @"Accessibility: toggle on")
+        : NSLocalizedString(@"Off", @"Accessibility: toggle off");
+    self.followToggleButton.accessibilityHint =
+        NSLocalizedString(@"Double tap to turn map camera follow on or off.", @"Accessibility: follow toggle hint");
 }
 
 - (void)updateFollowToggleVisibility {
-    if (!self.followToggleButton) return;
+    if (!self.followToggleButton) {
+        return;
+    }
     self.followToggleButton.hidden = (self.selectedFriend == nil);
     if (!self.followToggleButton.hidden) {
-        [self.view bringSubviewToFront:self.followToggleButton];
+        [self.view bringSubviewToFront:self.mapRouteFollowStack];
     }
     if (self.compassButton) {
         [self.view bringSubviewToFront:self.compassButton];
     }
 }
 
-- (void)updateRouteHistoryToggleTitle {
+- (void)updateRouteHistoryToggleAppearance {
+    if (!self.routeHistoryToggleButton) {
+        return;
+    }
     NSInteger h = [self routeHistoryHours];
-    NSString *title = (h == 12)
-        ? NSLocalizedString(@"12h", @"Route history window 12 hours")
-        : NSLocalizedString(@"6h", @"Route history window 6 hours");
-    [self.routeHistoryToggleButton setTitle:title forState:UIControlStateNormal];
+    UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
+    cfg.background.backgroundColor = [UIColor clearColor];
+    cfg.image = OTRouteHistoryWindowClockImage(20.0, h);
+    cfg.baseForegroundColor = [self OT_mapControlActiveTint];
+    self.routeHistoryToggleButton.configuration = cfg;
+
+    NSString *windowLabel = (h == 12)
+        ? NSLocalizedString(@"12 hours", @"Accessibility: route history 12 hour window")
+        : NSLocalizedString(@"6 hours", @"Accessibility: route history 6 hour window");
+    self.routeHistoryToggleButton.accessibilityLabel =
+        NSLocalizedString(@"Route history window", @"Accessibility: route history window control");
+    self.routeHistoryToggleButton.accessibilityValue = windowLabel;
+    self.routeHistoryToggleButton.accessibilityHint =
+        NSLocalizedString(@"Double tap to switch between 6 and 12 hours of route history.", @"Accessibility: route window hint");
 }
 
 - (void)updateRouteHistoryToggleVisibility {
@@ -475,7 +580,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         || (self.liveTrackPoints[t].count >= 2);
     self.routeHistoryToggleButton.hidden = !show;
     if (show) {
-        [self.view bringSubviewToFront:self.routeHistoryToggleButton];
+        [self updateRouteHistoryToggleAppearance];
+        [self.view bringSubviewToFront:self.mapRouteFollowStack];
     }
     if (self.compassButton) {
         [self.view bringSubviewToFront:self.compassButton];
@@ -485,7 +591,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 - (void)routeHistoryToggleTapped:(UIButton *)sender {
     NSInteger next = ([self routeHistoryHours] == 12) ? 6 : 12;
     [self setRouteHistoryHours:next];
-    [self updateRouteHistoryToggleTitle];
+    [self updateRouteHistoryToggleAppearance];
 
     Friend *f = self.selectedFriend;
     if (f) {
@@ -517,7 +623,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 - (void)followToggleTapped:(UIButton *)sender {
     self.followEnabled = !self.followEnabled;
-    [self updateFollowToggleTitle];
+    [self updateFollowToggleAppearance];
     Friend *f = self.selectedFriend;
     if (!f) {
         return;
@@ -794,6 +900,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         }
     }
 
+    [self updateMapRouteFollowStackLayoutConstraints];
+    [self updateFollowToggleAppearance];
+    if (self.routeHistoryToggleButton && !self.routeHistoryToggleButton.hidden) {
+        [self updateRouteHistoryToggleAppearance];
+    }
 
     return noMap;
 }
@@ -905,11 +1016,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     } else {
         [self syncFollowedFriendBreadcrumbOverlay:self.selectedFriend];
     }
-    if (self.routeHistoryToggleButton) {
-        [self.view bringSubviewToFront:self.routeHistoryToggleButton];
+    if (self.mapRouteFollowStack) {
+        [self.view bringSubviewToFront:self.mapRouteFollowStack];
     }
-    if (self.followToggleButton) {
-        [self.view bringSubviewToFront:self.followToggleButton];
+    if (self.trackingButton) {
+        [self.view bringSubviewToFront:self.trackingButton];
     }
     if (self.compassButton) {
         [self.view bringSubviewToFront:self.compassButton];
@@ -1331,7 +1442,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         self.selectedFriend = nil;
         self.followFriend = nil;
         self.followEnabled = YES;
-        [self updateFollowToggleTitle];
+        [self updateFollowToggleAppearance];
         [self updateFollowToggleVisibility];
         self.followHeadingLockPausedByUserGesture = NO;
         [self.followMapPrevCoordByTopic removeAllObjects];
@@ -1382,7 +1493,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     self.selectedFriend = friend;
     self.followEnabled = YES;
     self.followFriend = friend;
-    [self updateFollowToggleTitle];
+    [self updateFollowToggleAppearance];
     [self updateFollowToggleVisibility];
     self.followHeadingLockPausedByUserGesture = NO;
     if (friend.topic.length) {
@@ -1849,11 +1960,12 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
     } else {
         cam.centerCoordinateDistance = kFollowDefaultCameraDistanceM;
     }
-    if (self.followHeadingLockPausedByUserGesture || headingOrNAN != headingOrNAN) {
+    if (self.followHeadingLockPausedByUserGesture) {
         cam.heading = 0.0;
-    } else {
+    } else if (headingOrNAN == headingOrNAN) {
         cam.heading = OTNormalizeHeadingDegrees(headingOrNAN);
     }
+    // else: NAN (stationary / no new heading) — keep `cam.heading` from the camera copy.
     [self.mapView setCamera:cam animated:YES];
 }
 
@@ -2091,7 +2203,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
                     self.selectedFriend = nil;
                     self.followFriend = nil;
                     self.followEnabled = YES;
-                    [self updateFollowToggleTitle];
+                    [self updateFollowToggleAppearance];
                     [self updateFollowToggleVisibility];
                 }
                 break;

@@ -31,7 +31,9 @@ double OTBearingDegreesBetween(CLLocationCoordinate2D from, CLLocationCoordinate
  Returns normalized heading in [0, 360) when the device is considered **moving** and a
  heading can be determined (from `cog` or bearing from previous fix).
 
- Returns NAN when stationary / unknown — caller should use north-up (heading 0).
+ Returns NAN when stationary / unknown — there is no new heading for this update. Callers
+ that want course-up follow to continue while stopped should **keep** the previous map or
+ camera heading; callers that want north-up when idle may set heading to 0 instead.
  */
 double OTEffectiveFollowMapHeading(NSDictionary *liveUserInfo,
                                    CLLocationCoordinate2D coord,

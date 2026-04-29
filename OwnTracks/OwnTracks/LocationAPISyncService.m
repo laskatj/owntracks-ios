@@ -19,6 +19,19 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
+static NSURLSession *LocationAPISyncURLSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
+        cfg.timeoutIntervalForRequest = 30.0;
+        cfg.timeoutIntervalForResource = 90.0;
+        cfg.waitsForConnectivity = YES;
+        session = [NSURLSession sessionWithConfiguration:cfg];
+    });
+    return session;
+}
+
 /// One interactive OAuth prompt per app process when the location API has no refresh token (same idea as WebAppViewController `startFullNativeAuth`).
 static BOOL gLocationAPIOAuthPromptScheduledThisSession;
 
@@ -70,6 +83,16 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                     clientIdsOrdered:(NSArray *)discoveryThenPrefsThenNil
                             idsIndex:(NSUInteger)idsIdx
                             completion:(void (^)(NSString * _Nullable token))completion;
+- (void)performGET:(NSURL *)apiURL
+      accessToken:(NSString *)accessToken
+ allowRetryOn401:(BOOL)allowRetryOn401
+ transientAttempt:(NSUInteger)transientAttempt;
+- (BOOL)isTransientLocationAPIURLSessionError:(NSError *)error;
+- (BOOL)isTransientLocationAPIHTTPStatus:(NSInteger)status;
+- (void)scheduleLocationAPIGETRetry:(NSURL *)apiURL
+                      accessToken:(NSString *)accessToken
+                  allowRetryOn401:(BOOL)allowRetryOn401
+                 transientAttempt:(NSUInteger)nextAttempt;
 @end
 
 @implementation LocationAPISyncService
@@ -415,16 +438,67 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 }
 
 - (void)performGET:(NSURL *)apiURL accessToken:(NSString *)accessToken allowRetryOn401:(BOOL)allowRetryOn401 {
+    [self performGET:apiURL accessToken:accessToken allowRetryOn401:allowRetryOn401 transientAttempt:0];
+}
+
+- (BOOL)isTransientLocationAPIURLSessionError:(NSError *)error {
+    if (!error) {
+        return NO;
+    }
+    if (![error.domain isEqualToString:NSURLErrorDomain]) {
+        return NO;
+    }
+    switch (error.code) {
+        case NSURLErrorTimedOut:
+        case NSURLErrorCannotFindHost:
+        case NSURLErrorCannotConnectToHost:
+        case NSURLErrorNetworkConnectionLost:
+        case NSURLErrorNotConnectedToInternet:
+        case NSURLErrorDNSLookupFailed:
+        case NSURLErrorInternationalRoamingOff:
+        case NSURLErrorCallIsActive:
+        case NSURLErrorDataNotAllowed:
+            return YES;
+        default:
+            return NO;
+    }
+}
+
+- (BOOL)isTransientLocationAPIHTTPStatus:(NSInteger)status {
+    return status == 408 || status == 429 || status == 502 || status == 503 || status == 504;
+}
+
+- (void)scheduleLocationAPIGETRetry:(NSURL *)apiURL
+                      accessToken:(NSString *)accessToken
+                  allowRetryOn401:(BOOL)allowRetryOn401
+                   transientAttempt:(NSUInteger)nextAttempt {
+    NSTimeInterval delay = MIN(pow(2.0, (double)nextAttempt), 32.0);
+    DDLogInfo(@"[LocationAPISyncService] GET retry in %.0fs (attempt %lu)", delay, (unsigned long)nextAttempt);
+    __weak typeof(self) wself = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            return;
+        }
+        [sself performGET:apiURL accessToken:accessToken allowRetryOn401:allowRetryOn401 transientAttempt:nextAttempt];
+    });
+}
+
+- (void)performGET:(NSURL *)apiURL
+      accessToken:(NSString *)accessToken
+ allowRetryOn401:(BOOL)allowRetryOn401
+ transientAttempt:(NSUInteger)transientAttempt {
     self.cachedAccessToken = accessToken;
     NSDictionary *atClaims = [WebAppAuthHelper jwtPayloadClaimsFromToken:accessToken];
     self.cachedAccessTokenExpiry = [atClaims[@"exp"] doubleValue]; // 0 if opaque/missing
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:apiURL];
     request.HTTPMethod = @"GET";
+    request.timeoutInterval = 30.0;
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:[NSString stringWithFormat:@"Bearer %@", accessToken] forHTTPHeaderField:@"Authorization"];
 
     __weak typeof(self) wself = self;
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
+    NSURLSessionDataTask *task = [LocationAPISyncURLSession() dataTaskWithRequest:request
                                                                  completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
         __strong typeof(wself) sself = wself;
         if (!sself) {
@@ -432,7 +506,11 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
         }
         if (error) {
             DDLogWarn(@"[LocationAPISyncService] GET failed: %@", error.localizedDescription);
-            sself.fetchInFlight = NO;
+            if (transientAttempt < 3 && [sself isTransientLocationAPIURLSessionError:error]) {
+                [sself scheduleLocationAPIGETRetry:apiURL accessToken:accessToken allowRetryOn401:allowRetryOn401 transientAttempt:transientAttempt + 1];
+            } else {
+                sself.fetchInFlight = NO;
+            }
             return;
         }
         NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
@@ -450,13 +528,17 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                     sself2.fetchInFlight = NO;
                     return;
                 }
-                [sself2 performGET:apiURL accessToken:newToken allowRetryOn401:NO];
+                [sself2 performGET:apiURL accessToken:newToken allowRetryOn401:NO transientAttempt:0];
             }];
             return;
         }
         if (status != 200) {
             DDLogWarn(@"[LocationAPISyncService] GET status %ld", (long)status);
-            sself.fetchInFlight = NO;
+            if (transientAttempt < 3 && [sself isTransientLocationAPIHTTPStatus:status]) {
+                [sself scheduleLocationAPIGETRetry:apiURL accessToken:accessToken allowRetryOn401:allowRetryOn401 transientAttempt:transientAttempt + 1];
+            } else {
+                sself.fetchInFlight = NO;
+            }
             return;
         }
         [sself applyLocationJSONData:data];
@@ -483,6 +565,7 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
     NSURL *originSnapshot = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC2];
     NSManagedObjectContext *queuedMOC = CoreData.sharedInstance.queuedMOC;
     [queuedMOC performBlock:^{
+        NSMutableSet<NSString *> *allowedTopics = [NSMutableSet set];
         for (NSString *userKey in root) {
             id entry = root[userKey];
             if (![entry isKindOfClass:[NSDictionary class]]) {
@@ -498,23 +581,20 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                     continue;
                 }
                 NSDictionary *device = (NSDictionary *)dev;
+                NSString *topic = [LocationAPISyncService mqttTopicForLocationAPIDevice:device userKey:userKey];
+                if (topic.length) {
+                    [allowedTopics addObject:topic];
+                }
+
                 NSDictionary *payload = [self.class ownTracksLocationDictionaryFromAPIDevice:device];
                 if (!payload) {
                     continue;
                 }
-                // Prefer the MQTT topic for the Friend identifier; fall back to a stable
-                // synthetic key for REST-only (HTTP POST) devices that have no MQTT topic.
-                NSString *topic = nil;
-                id topicObj = device[@"mqttTopic"];
-                if ([topicObj isKindOfClass:[NSString class]] && [(NSString *)topicObj length] > 0) {
-                    topic = (NSString *)topicObj;
-                } else {
-                    id trackerIdObj = device[@"trackerId"];
-                    if (![trackerIdObj isKindOfClass:[NSString class]] || [(NSString *)trackerIdObj length] == 0) {
-                        DDLogVerbose(@"[LocationAPISyncService] device missing mqttTopic and trackerId, skipping");
-                        continue;
-                    }
-                    topic = [NSString stringWithFormat:@"api/%@/%@", userKey, (NSString *)trackerIdObj];
+                if (!topic.length) {
+                    DDLogWarn(@"[LocationAPISyncService] location payload without resolvable MQTT topic, skipping apply");
+                    continue;
+                }
+                if ([topic hasPrefix:@"api/"]) {
                     DDLogInfo(@"[LocationAPISyncService] REST-only device, using synthetic topic %@", topic);
                 }
 
@@ -545,9 +625,45 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                 }
             }
         }
+
+        NSString *ownTopic = [Settings theGeneralTopicInMOC:queuedMOC];
+        NSUInteger pruned = 0;
+        NSArray *friendsSnapshot = [Friend allFriendsInManagedObjectContext:queuedMOC];
+        for (Friend *friend in friendsSnapshot) {
+            NSString *t = friend.topic;
+            if (!t.length) {
+                continue;
+            }
+            if (ownTopic.length && [t isEqualToString:ownTopic]) {
+                continue;
+            }
+            if ([allowedTopics containsObject:t]) {
+                continue;
+            }
+            [queuedMOC deleteObject:friend];
+            pruned++;
+        }
+
         [CoreData.sharedInstance sync:queuedMOC];
-        DDLogInfo(@"[LocationAPISyncService] applied location API payload");
+        DDLogInfo(@"[LocationAPISyncService] applied location API payload (allowedTopics=%lu prunedFriends=%lu)",
+                  (unsigned long)allowedTopics.count, (unsigned long)pruned);
     }];
+}
+
++ (nullable NSString *)mqttTopicForLocationAPIDevice:(NSDictionary *)device userKey:(NSString *)userKey {
+    id topicObj = device[@"mqttTopic"];
+    if ([topicObj isKindOfClass:[NSString class]] && [(NSString *)topicObj length] > 0) {
+        return (NSString *)topicObj;
+    }
+    id trackerIdObj = device[@"trackerId"];
+    if (![trackerIdObj isKindOfClass:[NSString class]] || [(NSString *)trackerIdObj length] == 0) {
+        DDLogVerbose(@"[LocationAPISyncService] device missing mqttTopic and trackerId, skipping");
+        return nil;
+    }
+    if (!userKey.length) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"api/%@/%@", userKey, (NSString *)trackerIdObj];
 }
 
 + (nullable NSDictionary *)ownTracksLocationDictionaryFromAPIDevice:(NSDictionary *)device {
@@ -636,62 +752,70 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             return;
         }
         DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: token OK, sending GET %@", url);
-        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-        request.HTTPMethod = @"GET";
-        [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-        [request setValue:[NSString stringWithFormat:@"Bearer %@", accessToken] forHTTPHeaderField:@"Authorization"];
 
-        [[[NSURLSession sharedSession] dataTaskWithRequest:request
-                                        completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-            if (error) {
-                DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET network error: %@", error.localizedDescription);
-                completion(nil, error);
+        __block void (^runGET)(NSString *token, NSUInteger transientAttempt);
+        runGET = ^(NSString *token, NSUInteger transientAttempt) {
+            __strong typeof(wself) sselfInner = wself;
+            if (!sselfInner) {
+                completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:0 userInfo:nil]);
                 return;
             }
-            NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
-            DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: HTTP %ld (%lu bytes) for %@",
-                      (long)status, (unsigned long)data.length, url);
-            if (status == 401) {
-                DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: 401 — refreshing token and retrying %@", url);
+            NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+            request.HTTPMethod = @"GET";
+            request.timeoutInterval = 30.0;
+            [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+            [request setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+
+            [[LocationAPISyncURLSession() dataTaskWithRequest:request
+                                            completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
                 __strong typeof(wself) sself2 = wself;
                 if (!sself2) {
-                    completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
+                    completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:0 userInfo:nil]);
                     return;
                 }
-                [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
-                    if (!newToken.length) {
-                        DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: 401 retry — could not refresh token for %@", url);
-                        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
-                        return;
+                if (error) {
+                    DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET network error: %@", error.localizedDescription);
+                    if (transientAttempt < 3 && [sself2 isTransientLocationAPIURLSessionError:error]) {
+                        NSTimeInterval delay = MIN(pow(2.0, (double)(transientAttempt + 1)), 32.0);
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            runGET(token, transientAttempt + 1);
+                        });
+                    } else {
+                        completion(nil, error);
                     }
-                    DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: retrying GET %@", url);
-                    NSMutableURLRequest *retry = [NSMutableURLRequest requestWithURL:url];
-                    retry.HTTPMethod = @"GET";
-                    [retry setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-                    [retry setValue:[NSString stringWithFormat:@"Bearer %@", newToken] forHTTPHeaderField:@"Authorization"];
-                    [[[NSURLSession sharedSession] dataTaskWithRequest:retry
-                                                    completionHandler:^(NSData * _Nullable d2, NSURLResponse * _Nullable r2, NSError * _Nullable e2) {
-                        NSInteger s2 = [r2 isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)r2 statusCode] : 0;
-                        DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: retry HTTP %ld (%lu bytes) for %@",
-                                  (long)s2, (unsigned long)d2.length, url);
-                        if (e2 || s2 != 200) {
-                            DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: retry failed HTTP %ld error %@ for %@",
-                                      (long)s2, e2.localizedDescription, url);
-                            completion(nil, e2 ?: [NSError errorWithDomain:@"LocationAPISyncService" code:s2 userInfo:nil]);
-                        } else {
-                            completion(d2, nil);
+                    return;
+                }
+                NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+                DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: HTTP %ld (%lu bytes) for %@",
+                          (long)status, (unsigned long)data.length, url);
+                if (status == 401) {
+                    DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: 401 — refreshing token and retrying %@", url);
+                    [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
+                        if (!newToken.length) {
+                            DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET: 401 retry — could not refresh token for %@", url);
+                            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:401 userInfo:nil]);
+                            return;
                         }
-                    }] resume];
-                }];
-                return;
-            }
-            if (status != 200) {
-                DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET HTTP %ld for %@", (long)status, url);
-                completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:status userInfo:nil]);
-                return;
-            }
-            completion(data, nil);
-        }] resume];
+                        runGET(newToken, 0);
+                    }];
+                    return;
+                }
+                if (status != 200) {
+                    DDLogWarn(@"[LocationAPISyncService] performAuthenticatedGET HTTP %ld for %@", (long)status, url);
+                    if (transientAttempt < 3 && [sself2 isTransientLocationAPIHTTPStatus:status]) {
+                        NSTimeInterval delay = MIN(pow(2.0, (double)(transientAttempt + 1)), 32.0);
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            runGET(token, transientAttempt + 1);
+                        });
+                    } else {
+                        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:status userInfo:nil]);
+                    }
+                    return;
+                }
+                completion(data, nil);
+            }] resume];
+        };
+        runGET(accessToken, 0);
     }];
 }
 
@@ -711,10 +835,11 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
     }
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:imageURL];
     req.HTTPMethod = @"GET";
+    req.timeoutInterval = 30.0;
     [req setValue:[NSString stringWithFormat:@"Bearer %@", accessToken] forHTTPHeaderField:@"Authorization"];
 
     __weak typeof(self) wself = self;
-    [[[NSURLSession sharedSession] dataTaskWithRequest:req
+    [[LocationAPISyncURLSession() dataTaskWithRequest:req
                                     completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
         if (error || !data.length) {
             DDLogVerbose(@"[LocationAPISyncService] Device image fetch failed for %@: %@", topic, error.localizedDescription);

@@ -23,6 +23,15 @@ static NSString * const kPinId = @"FriendPin";
 /// Same notification name as iOS OwnTracksAppDelegate / TVAppDelegate.
 static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocation";
 
+static double OTSignedHeadingDeltaDegrees(double fromDeg, double toDeg) {
+    double delta = fmod((toDeg - fromDeg + 540.0), 360.0) - 180.0;
+    return delta;
+}
+
+static double OTClampDouble(double value, double minValue, double maxValue) {
+    return MIN(MAX(value, minValue), maxValue);
+}
+
 // Carries the MQTT topic on the annotation so viewForAnnotation: can look up the image.
 @interface TVFriendAnnotation : MKPointAnnotation
 @property (copy, nonatomic) NSString *topic;
@@ -175,8 +184,14 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 @property (assign, nonatomic) CFTimeInterval trackingStartTime;
 @property (strong, nonatomic, nullable) CADisplayLink *followLink;
 @property (assign, nonatomic) NSUInteger followTickCount;
-/// Throttles follow pans: 60Hz setRegion + per-frame SmoothMarkerAnimator updates stress MapKit Metal.
+/// Throttles camera applies: per-frame updates stress MapKit/Metal on tvOS.
 @property (assign, nonatomic) CFAbsoluteTime lastFollowPanTime;
+@property (assign, nonatomic) CFAbsoluteTime lastFollowTickTime;
+@property (assign, nonatomic) CLLocationCoordinate2D followTargetCenterCoord;
+@property (assign, nonatomic) CLLocationCoordinate2D followRenderCenterCoord;
+@property (assign, nonatomic) double followTargetHeadingDeg;
+@property (assign, nonatomic) double followRenderHeadingDeg;
+@property (assign, nonatomic) BOOL hasFollowCameraState;
 @property (strong, nonatomic) UIView      *trackingHUD;
 @property (strong, nonatomic) UIImageView *hudPhotoView;
 @property (strong, nonatomic) UILabel     *hudNameLabel;
@@ -376,10 +391,20 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 
 #pragma mark - Smooth map following (CADisplayLink)
 
+- (void)resetFollowCameraState {
+    self.lastFollowPanTime = 0;
+    self.lastFollowTickTime = 0;
+    self.followTargetCenterCoord = kCLLocationCoordinate2DInvalid;
+    self.followRenderCenterCoord = kCLLocationCoordinate2DInvalid;
+    self.followTargetHeadingDeg = 0.0;
+    self.followRenderHeadingDeg = 0.0;
+    self.hasFollowCameraState = NO;
+}
+
 - (void)startFollowLink {
     [self stopFollowLink];
     self.followTickCount = 0;
-    self.lastFollowPanTime = 0;
+    [self resetFollowCameraState];
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:self
                                                       selector:@selector(followTick:)];
     [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
@@ -389,6 +414,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 - (void)stopFollowLink {
     [self.followLink invalidate];
     self.followLink = nil;
+    [self resetFollowCameraState];
 }
 
 - (void)followTick:(CADisplayLink *)link {
@@ -399,25 +425,87 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     CLLocationCoordinate2D target = ann.coordinate;
     if (!CLLocationCoordinate2DIsValid(target)) return;
 
-    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    const CFTimeInterval kFollowPanMinInterval = 0.2;
-    if (now - self.lastFollowPanTime < kFollowPanMinInterval) return;
+    self.followTickCount += 1;
 
-    CLLocationCoordinate2D camCenter = self.mapView.camera.centerCoordinate;
-    CLLocation *mapCtr = [[CLLocation alloc] initWithLatitude:camCenter.latitude longitude:camCenter.longitude];
-    CLLocation *pinLoc = [[CLLocation alloc] initWithLatitude:target.latitude longitude:target.longitude];
-    CLLocationDistance driftM = [mapCtr distanceFromLocation:pinLoc];
-    const CLLocationDistance kFollowPanMinDriftM = 5.0;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    CFTimeInterval dt = (self.lastFollowTickTime > 0) ? (now - self.lastFollowTickTime) : 0.0;
+    self.lastFollowTickTime = now;
+    dt = OTClampDouble(dt, 1.0 / 120.0, 0.5);
+
+    const CFTimeInterval kCameraApplyMinInterval = 0.12;
+    const CLLocationDistance kCenterApplyMinDriftM = 2.0;
+    const double kHeadingApplyMinDeltaDeg = 2.0;
+    const double kCenterSmoothingTauSec = 0.30;
+    const double kHeadingSmoothingTauSec = 0.22;
+    const double kHeadingMaxStepDegPerSec = 120.0;
+
+    MKMapCamera *currentCam = self.mapView.camera;
+    if (!self.hasFollowCameraState) {
+        CLLocationCoordinate2D center = currentCam.centerCoordinate;
+        if (!CLLocationCoordinate2DIsValid(center)) {
+            center = target;
+        }
+        self.followRenderCenterCoord = center;
+        self.followTargetCenterCoord = target;
+        self.followRenderHeadingDeg = OTNormalizeHeadingDegrees(currentCam.heading);
+        self.followTargetHeadingDeg = self.followRenderHeadingDeg;
+        self.hasFollowCameraState = YES;
+    } else {
+        self.followTargetCenterCoord = target;
+    }
+
+    double desiredHeading = self.followHeadingDegreesNumber.doubleValue;
+    if (!(self.followHeadingDegreesNumber && isfinite(desiredHeading))) {
+        desiredHeading = 0.0;
+    }
+    self.followTargetHeadingDeg = OTNormalizeHeadingDegrees(desiredHeading);
+
+    double centerAlpha = 1.0 - exp(-dt / kCenterSmoothingTauSec);
+    double headingAlpha = 1.0 - exp(-dt / kHeadingSmoothingTauSec);
+    centerAlpha = OTClampDouble(centerAlpha, 0.0, 1.0);
+    headingAlpha = OTClampDouble(headingAlpha, 0.0, 1.0);
+
+    double latDelta = self.followTargetCenterCoord.latitude - self.followRenderCenterCoord.latitude;
+    double lonDelta = self.followTargetCenterCoord.longitude - self.followRenderCenterCoord.longitude;
+    self.followRenderCenterCoord = CLLocationCoordinate2DMake(
+        self.followRenderCenterCoord.latitude + (latDelta * centerAlpha),
+        self.followRenderCenterCoord.longitude + (lonDelta * centerAlpha)
+    );
+
+    double headingDelta = OTSignedHeadingDeltaDegrees(self.followRenderHeadingDeg, self.followTargetHeadingDeg);
+    double desiredHeadingStep = headingDelta * headingAlpha;
+    double maxHeadingStep = kHeadingMaxStepDegPerSec * dt;
+    desiredHeadingStep = OTClampDouble(desiredHeadingStep, -maxHeadingStep, maxHeadingStep);
+    self.followRenderHeadingDeg = OTNormalizeHeadingDegrees(self.followRenderHeadingDeg + desiredHeadingStep);
+
+    if ((now - self.lastFollowPanTime) < kCameraApplyMinInterval) {
+        return;
+    }
+
+    CLLocationCoordinate2D camCenter = currentCam.centerCoordinate;
+    CLLocationDistance centerDrift = 0.0;
+    if (CLLocationCoordinate2DIsValid(camCenter) && CLLocationCoordinate2DIsValid(self.followRenderCenterCoord)) {
+        CLLocation *from = [[CLLocation alloc] initWithLatitude:camCenter.latitude longitude:camCenter.longitude];
+        CLLocation *to = [[CLLocation alloc] initWithLatitude:self.followRenderCenterCoord.latitude
+                                                    longitude:self.followRenderCenterCoord.longitude];
+        centerDrift = [from distanceFromLocation:to];
+    }
+    double headingDrift = fabs(OTSignedHeadingDeltaDegrees(currentCam.heading, self.followRenderHeadingDeg));
+    if (centerDrift < kCenterApplyMinDriftM && headingDrift < kHeadingApplyMinDeltaDeg) {
+        return;
+    }
 
     self.lastFollowPanTime = now;
-    MKMapCamera *cam = [self.mapView.camera copy];
-    if (driftM >= kFollowPanMinDriftM) {
-        cam.centerCoordinate = target;
-    }
+    MKMapCamera *cam = [currentCam copy];
+    cam.centerCoordinate = self.followRenderCenterCoord;
     cam.pitch = OTMaxFollowMapCameraPitch();
-    double heading = self.followHeadingDegreesNumber.doubleValue;
-    cam.heading = (self.followHeadingDegreesNumber && isfinite(heading)) ? heading : 0.0;
+    cam.heading = self.followRenderHeadingDeg;
     [self.mapView setCamera:cam animated:NO];
+
+    if ((self.followTickCount % 20) == 0) {
+        DDLogInfo(@"[TVMapViewController] follow camera apply drift=%.2fm headingDelta=%.2fdeg dt=%.3fs",
+                  centerDrift, headingDrift, dt);
+    }
 }
 
 #pragma mark - Live route (iOS ViewController pattern)
@@ -495,7 +583,9 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         }
         double h = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
         [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
-        self.followHeadingDegreesNumber = (h != h) ? nil : @(h);
+        if (h == h) {
+            self.followHeadingDegreesNumber = @(h);
+        }
     }
 }
 
@@ -618,7 +708,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
                     accessToken:(NSString *)token
                      is401Retry:(BOOL)is401Retry {
     NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
-    NSInteger startTs = endTs - 1 * 24 * 60 * 60;
+    NSInteger startTs = endTs - 6 * 60 * 60;
 
     // Do not pre-encode: NSURLComponents encodes path once when building .URL; pre-encoding
     // produces %2520 for spaces (double-encoded).

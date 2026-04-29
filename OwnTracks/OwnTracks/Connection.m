@@ -64,10 +64,24 @@
 
 @property (nonatomic) BOOL intendedDisconnect;
 
+/// Last time we showed an HTTP error alert (rate limiting).
+@property (nonatomic) NSTimeInterval lastHTTPErrorAlertTime;
+
 @end
 
 #define RECONNECT_TIMER 1.0
 #define RECONNECT_TIMER_MAX 64.0
+
+/// Core Data `Queue.topic` sentinel for MQTT offline shim (never used as a real MQTT topic).
+static NSString * const kOwtMqttShimQueueTopic = @"__owt_mqtt_pending__";
+static NSString * const kOwtMqttShimJSONKey = @"_owt_mqtt_q";
+
+/// HTTP client timeouts (seconds).
+static const NSTimeInterval kOwtHTTPTimeoutForRequest = 45.0;
+static const NSTimeInterval kOwtHTTPTimeoutForResource = 120.0;
+
+/// Minimum seconds between duplicate HTTP error UI alerts (avoid alert storms).
+static const NSTimeInterval kOwtHTTPErrorAlertMinInterval = 45.0;
 
 @implementation Connection
 DDLogLevel ddLogLevel = DDLogLevelInfo;
@@ -114,6 +128,7 @@ DDLogLevel ddLogLevel = DDLogLevelInfo;
             __block NSTimeInterval runUntilDate = 1.0;
             [CoreData.sharedInstance.queuedMOC performBlockAndWait:^{
                 NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+                request.predicate = [NSPredicate predicateWithFormat:@"topic != %@", kOwtMqttShimQueueTopic];
                 request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"timestamp" ascending:YES]];
                 
                 NSError *error = nil;
@@ -330,6 +345,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 
 #if 1
     NSURLSessionConfiguration *usc = NSURLSessionConfiguration.defaultSessionConfiguration;
+    usc.timeoutIntervalForRequest = kOwtHTTPTimeoutForRequest;
+    usc.timeoutIntervalForResource = kOwtHTTPTimeoutForResource;
     self.urlSession = [NSURLSession sessionWithConfiguration:usc
                                                     delegate:self
                                                delegateQueue:nil];
@@ -343,20 +360,26 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
         topicAlias:(NSNumber *)topicAlias
                qos:(NSInteger)qos
             retain:(BOOL)retainFlag {
+    NSData *payload = data ?: [NSData data];
     DDLogInfo(@"[Connection] sendData(%ld):%@ %@ q%ld r%d",
-              data.length,
+              (long)payload.length,
               topic,
-              [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding],
+              [[NSString alloc] initWithData:payload encoding:NSUTF8StringEncoding],
               (long)qos,
               retainFlag);
+
+    if (!topic.length) {
+        DDLogWarn(@"[Connection] sendData: empty topic, dropping");
+        return 0;
+    }
 
     if (self.url) {
         [CoreData.sharedInstance.queuedMOC performBlock:^{
             Queue *queue = [NSEntityDescription insertNewObjectForEntityForName:@"Queue"
                                                          inManagedObjectContext:CoreData.sharedInstance.queuedMOC];
 
-            NSData *outgoingData = data;
-            if (outgoingData) {
+            NSData *outgoingData = payload;
+            if (outgoingData.length) {
                 NSDictionary *json = [NSJSONSerialization JSONObjectWithData:outgoingData options:0 error:nil];
                 if (json && [json isKindOfClass:[NSDictionary class]] && self.url) {
                     NSMutableDictionary *mutableJson = [json mutableCopy];
@@ -380,12 +403,19 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
         if (self.port == 0) {
             return 0;
         }
-        
-        if (self.state != state_connected) {
+
+        /* Broker not ready: persist for later delivery (covers QoS 0 which the MQTT client does not persist). */
+        if (self.state != state_connected || !self.session) {
             [self connectToLast];
+            [self enqueueMQTTShimPayload:payload
+                                   topic:topic
+                              topicAlias:topicAlias
+                                     qos:qos
+                                  retain:retainFlag];
+            return 0;
         }
 
-        NSData *outgoingData = (self.key && self.key.length) ? [self encrypt:data] : data;
+        NSData *outgoingData = (self.key && self.key.length) ? [self encrypt:payload] : payload;
 
         NSNumber *effectiveTopicAlias = nil;
 
@@ -414,6 +444,12 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 }
 
 - (void)HTTPerror:(NSString *)message {
+    NSTimeInterval now = [NSDate date].timeIntervalSinceReferenceDate;
+    if (now - self.lastHTTPErrorAlertTime < kOwtHTTPErrorAlertMinInterval) {
+        DDLogWarn(@"[Connection] HTTP error (suppressed alert, throttled): %@", message);
+        return;
+    }
+    self.lastHTTPErrorAlertTime = now;
     [NavigationController alert:@"HTTP" message:message];
 }
 
@@ -456,6 +492,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 
     request.URL = [NSURL URLWithString:self.url];
     request.HTTPMethod = @"POST";
+    request.timeoutInterval = kOwtHTTPTimeoutForRequest;
     [request setValue:postLength forHTTPHeaderField:@"Content-Length"];
     request.HTTPBody = data;
     
@@ -496,6 +533,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
                      
                      [CoreData.sharedInstance.queuedMOC performBlock:^{
                          NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+                         request.predicate = [NSPredicate predicateWithFormat:@"topic != %@", kOwtMqttShimQueueTopic];
                          request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"timestamp" ascending:YES]];
                          
                          NSArray *matches = [CoreData.sharedInstance.queuedMOC executeFetchRequest:request error:nil];
@@ -514,6 +552,12 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
                                    [[NSString alloc] initWithData:incomingData encoding:NSUTF8StringEncoding]);
                          if (self.key && self.key.length) {
                              incomingData = [self decrypt:incomingData];
+                         }
+
+                         if (incomingData.length == 0) {
+                             DDLogWarn(@"[Connection] HTTP success path: empty or undecryptable payload, skipping parse");
+                             self.state = state_starting;
+                             return;
                          }
 
                          if (incomingData) {
@@ -553,6 +597,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
                                              waitUntilDone:FALSE];
                          [CoreData.sharedInstance.queuedMOC performBlock:^{
                              NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+                             request.predicate = [NSPredicate predicateWithFormat:@"topic != %@", kOwtMqttShimQueueTopic];
                              request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"timestamp" ascending:YES]];
 
                              NSArray *matches = [CoreData.sharedInstance.queuedMOC executeFetchRequest:request error:nil];
@@ -687,6 +732,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
         }
         self.reconnectFlag = TRUE;
     }
+
+    [self drainMQTTShimQueueIfConnected];
 }
 
 - (void)handleEvent:(MQTTSession *)session event:(MQTTSessionEvent)eventCode error:(NSError *)error {
@@ -804,6 +851,11 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
 
     if (self.key && self.key.length) {
         data = [self decrypt:data];
+    }
+
+    if (!data.length) {
+        DDLogWarn(@"[Connection] newMessageWithFeedbackV5: empty payload after decrypt, ignoring");
+        return YES;
     }
 
 #define LEN2PRINT 2048
@@ -982,12 +1034,24 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
     NSData *onTheWire = [[NSData alloc] initWithBase64EncodedString:b64String
                                                             options:0];
     if (!onTheWire) {
-        return data;
+        DDLogWarn(@"[Connection] decrypt: invalid base64 in encrypted payload");
+        return nil;
     }
-    
+
+    const NSUInteger minWire = (NSUInteger)crypto_secretbox_NONCEBYTES + (NSUInteger)crypto_secretbox_MACBYTES;
+    if (onTheWire.length < minWire) {
+        DDLogWarn(@"[Connection] decrypt: ciphertext too short (%lu bytes, need >= %lu)",
+                  (unsigned long)onTheWire.length, (unsigned long)minWire);
+        return nil;
+    }
+
     NSData *nonce = [onTheWire subdataWithRange:NSMakeRange(0, crypto_secretbox_NONCEBYTES)];
     NSData *ciphertext = [onTheWire subdataWithRange:NSMakeRange(crypto_secretbox_NONCEBYTES,
                                                                  onTheWire.length - crypto_secretbox_NONCEBYTES)];
+    if (ciphertext.length < crypto_secretbox_MACBYTES) {
+        DDLogWarn(@"[Connection] decrypt: inner ciphertext too short");
+        return nil;
+    }
     
     unsigned char key[crypto_secretbox_KEYBYTES];
     memset(key, 0, sizeof(key));
@@ -1010,6 +1074,204 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)redirectResponse
     }
     
     return decrypted;
+}
+
+- (void)enqueueMQTTShimPayload:(NSData *)payload
+                         topic:(NSString *)topic
+                    topicAlias:(NSNumber *)topicAlias
+                           qos:(NSInteger)qos
+                        retain:(BOOL)retainFlag {
+    if (!topic.length) {
+        return;
+    }
+    NSInteger q = qos;
+    if (q < 0) {
+        q = 0;
+    }
+    if (q > 2) {
+        q = 2;
+    }
+    NSMutableDictionary *rec = [@{
+        kOwtMqttShimJSONKey: @YES,
+        @"topic": topic,
+        @"qos": @(q),
+        @"retain": @(retainFlag),
+        @"payloadB64": [payload base64EncodedStringWithOptions:0],
+    } mutableCopy];
+    if (topicAlias) {
+        rec[@"topicAlias"] = topicAlias;
+    }
+    NSError *encErr = nil;
+    NSData *blob = [NSJSONSerialization dataWithJSONObject:rec options:0 error:&encErr];
+    if (!blob.length || encErr) {
+        DDLogError(@"[Connection] enqueueMQTTShimPayload: JSON encode failed %@", encErr);
+        return;
+    }
+    [CoreData.sharedInstance.queuedMOC performBlock:^{
+        Queue *queue = [NSEntityDescription insertNewObjectForEntityForName:@"Queue"
+                                                     inManagedObjectContext:CoreData.sharedInstance.queuedMOC];
+        queue.timestamp = [NSDate date];
+        queue.topic = kOwtMqttShimQueueTopic;
+        queue.data = blob;
+        [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+
+        /* Cap shim growth so a long offline period cannot exhaust storage. */
+        NSFetchRequest *countReq = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+        countReq.predicate = [NSPredicate predicateWithFormat:@"topic == %@", kOwtMqttShimQueueTopic];
+        NSError *cerr = nil;
+        NSUInteger shimCount = [CoreData.sharedInstance.queuedMOC countForFetchRequest:countReq error:&cerr];
+        if (!cerr && shimCount > 8000) {
+            NSFetchRequest *trimReq = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+            trimReq.predicate = countReq.predicate;
+            trimReq.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"timestamp" ascending:YES]];
+            trimReq.fetchOffset = 0;
+            trimReq.fetchLimit = (NSUInteger)(shimCount - 6000);
+            NSArray *oldRows = [CoreData.sharedInstance.queuedMOC executeFetchRequest:trimReq error:nil];
+            for (Queue *q in oldRows) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+            }
+            [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+            DDLogWarn(@"[Connection] MQTT shim queue trimmed to ~6000 entries (was %lu)", (unsigned long)shimCount);
+        }
+    }];
+}
+
+- (void)drainMQTTShimQueueIfConnected {
+    if (self.url || self.port == 0 || self.state != state_connected || !self.session) {
+        return;
+    }
+
+    const NSUInteger kMaxDrainBatch = 48;
+    __block NSMutableArray<NSDictionary *> *batch = nil;
+
+    [CoreData.sharedInstance.queuedMOC performBlockAndWait:^{
+        NSFetchRequest *req = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+        req.predicate = [NSPredicate predicateWithFormat:@"topic == %@", kOwtMqttShimQueueTopic];
+        req.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"timestamp" ascending:YES]];
+        req.fetchLimit = kMaxDrainBatch;
+        NSArray *rows = [CoreData.sharedInstance.queuedMOC executeFetchRequest:req error:nil];
+        if (!rows.count) {
+            return;
+        }
+        batch = [NSMutableArray arrayWithCapacity:rows.count];
+        for (Queue *q in rows) {
+            if (![q isKindOfClass:[Queue class]] || !q.data.length) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            id obj = [NSJSONSerialization JSONObjectWithData:q.data options:0 error:nil];
+            if (![obj isKindOfClass:[NSDictionary class]]) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            NSDictionary *d = (NSDictionary *)obj;
+            if (![d[kOwtMqttShimJSONKey] isEqual:@YES]) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            NSString *mtopic = d[@"topic"];
+            if (![mtopic isKindOfClass:[NSString class]] || !mtopic.length) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            NSString *b64 = d[@"payloadB64"];
+            if (![b64 isKindOfClass:[NSString class]]) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            NSData *plain = [[NSData alloc] initWithBase64EncodedString:b64 options:0];
+            if (!plain) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                continue;
+            }
+            NSInteger qv = [d[@"qos"] isKindOfClass:[NSNumber class]] ? [(NSNumber *)d[@"qos"] integerValue] : 1;
+            if (qv < 0) {
+                qv = 0;
+            }
+            if (qv > 2) {
+                qv = 2;
+            }
+            BOOL ret = [d[@"retain"] isKindOfClass:[NSNumber class]] ? [(NSNumber *)d[@"retain"] boolValue] : NO;
+            NSNumber *ta = nil;
+            if ([d[@"topicAlias"] isKindOfClass:[NSNumber class]]) {
+                ta = d[@"topicAlias"];
+            }
+            NSMutableDictionary *one = [@{
+                @"objectID": q.objectID,
+                @"topic": mtopic,
+                @"payload": plain,
+                @"qos": @(qv),
+                @"retain": @(ret),
+            } mutableCopy];
+            if (ta) {
+                one[@"topicAlias"] = ta;
+            }
+            [batch addObject:one];
+        }
+        [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+    }];
+
+    if (!batch || batch.count == 0) {
+        return;
+    }
+
+    for (NSDictionary *item in batch) {
+        if (self.url || self.state != state_connected || !self.session) {
+            DDLogVerbose(@"[Connection] drainMQTTShimQueue: stopping mid-batch (connection lost)");
+            break;
+        }
+        NSString *mtopic = item[@"topic"];
+        NSData *plain = item[@"payload"];
+        NSInteger qv = [item[@"qos"] integerValue];
+        BOOL ret = [item[@"retain"] boolValue];
+        NSNumber *ta = item[@"topicAlias"];
+
+        NSData *outgoingData = (self.key && self.key.length) ? [self encrypt:plain] : plain;
+        NSNumber *effectiveTopicAlias = nil;
+        if (ta &&
+            ta.unsignedIntValue > 0 &&
+            self.session.brokerTopicAliasMaximum &&
+            self.session.brokerTopicAliasMaximum.unsignedIntValue >= ta.unsignedIntValue) {
+            effectiveTopicAlias = ta;
+        }
+
+        UInt16 mid = [self.session publishDataV5:outgoingData
+                                         onTopic:mtopic
+                                          retain:ret
+                                             qos:(MQTTQosLevel)qv
+                          payloadFormatIndicator:nil
+                           messageExpiryInterval:nil
+                                      topicAlias:effectiveTopicAlias
+                                   responseTopic:nil
+                                 correlationData:nil
+                                  userProperties:nil
+                                     contentType:nil
+                                  publishHandler:nil];
+        DDLogInfo(@"[Connection] drainMQTTShim published mid=%u topic=%@", mid, mtopic);
+
+        NSManagedObjectID *oid = item[@"objectID"];
+        if (oid) {
+            [CoreData.sharedInstance.queuedMOC performBlockAndWait:^{
+                Queue *q = (Queue *)[CoreData.sharedInstance.queuedMOC existingObjectWithID:oid error:nil];
+                if (q) {
+                    [CoreData.sharedInstance.queuedMOC deleteObject:q];
+                    [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+                }
+            }];
+        }
+    }
+
+    /* If more rows remain, schedule another drain pass on the Connection thread. */
+    __weak typeof(self) wself = self;
+    [CoreData.sharedInstance.queuedMOC performBlockAndWait:^{
+        NSFetchRequest *more = [NSFetchRequest fetchRequestWithEntityName:@"Queue"];
+        more.predicate = [NSPredicate predicateWithFormat:@"topic == %@", kOwtMqttShimQueueTopic];
+        NSUInteger n = [CoreData.sharedInstance.queuedMOC countForFetchRequest:more error:nil];
+        Connection *conn = wself;
+        if (n > 0 && conn && !conn.url && conn.state == state_connected && conn.session) {
+            [conn performSelector:@selector(drainMQTTShimQueueIfConnected) onThread:conn withObject:nil waitUntilDone:NO];
+        }
+    }];
 }
 
 
