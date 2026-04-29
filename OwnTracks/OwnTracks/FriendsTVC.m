@@ -310,7 +310,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 }
 
 - (void)controllerWillChangeContent:(NSFetchedResultsController *)controller {
-    [self performSelectorOnMainThread:@selector(beginUpdates) withObject:nil waitUntilDone:TRUE];
+    [self beginUpdates];
 }
 
 - (void)beginUpdates {
@@ -324,7 +324,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     NSDictionary *d = @{@"type": @(type),
                         @"sectionIndex": @(sectionIndex)};
     DDLogVerbose(@"[FriensTVC] didChangeSection %@", d);
-    [self performSelectorOnMainThread:@selector(didChangeSection:) withObject:d waitUntilDone:TRUE];
+    [self didChangeSection:d];
 }
 
 - (void)didChangeSection:(NSDictionary *)d {
@@ -360,7 +360,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         d[@"newIndexPath"] = newIndexPath;
     }
     DDLogVerbose(@"[FriendsTVC] didChangeObject %@", d);
-    [self performSelectorOnMainThread:@selector(didChangeObject:) withObject:d waitUntilDone:TRUE];
+    [self didChangeObject:d];
 }
 
 - (void)didChangeObject:(NSDictionary *)d {
@@ -370,31 +370,41 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     
     switch(type.intValue) {
         case NSFetchedResultsChangeInsert:
-            [self.tableView insertRowsAtIndexPaths:@[newIndexPath]
-                                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (newIndexPath) {
+                [self.tableView insertRowsAtIndexPaths:@[newIndexPath]
+                                      withRowAnimation:UITableViewRowAnimationAutomatic];
+            }
             break;
             
         case NSFetchedResultsChangeDelete:
-            [self.tableView deleteRowsAtIndexPaths:@[indexPath]
-                                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (indexPath) {
+                [self.tableView deleteRowsAtIndexPaths:@[indexPath]
+                                      withRowAnimation:UITableViewRowAnimationAutomatic];
+            }
             break;
             
         case NSFetchedResultsChangeUpdate:
-            [self.tableView reloadRowsAtIndexPaths:@[indexPath]
-                                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (indexPath) {
+                [self.tableView reloadRowsAtIndexPaths:@[indexPath]
+                                      withRowAnimation:UITableViewRowAnimationAutomatic];
+            }
             break;
             
         case NSFetchedResultsChangeMove:
-            [self.tableView deleteRowsAtIndexPaths:@[indexPath]
-                                  withRowAnimation:UITableViewRowAnimationAutomatic];
-            [self.tableView insertRowsAtIndexPaths:@[newIndexPath]
-                                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (indexPath) {
+                [self.tableView deleteRowsAtIndexPaths:@[indexPath]
+                                      withRowAnimation:UITableViewRowAnimationAutomatic];
+            }
+            if (newIndexPath) {
+                [self.tableView insertRowsAtIndexPaths:@[newIndexPath]
+                                      withRowAnimation:UITableViewRowAnimationAutomatic];
+            }
             break;
     }
 }
 
 - (void)controllerDidChangeContent:(NSFetchedResultsController *)controller {
-    [self performSelectorOnMainThread:@selector(endUpdates) withObject:nil waitUntilDone:TRUE];
+    [self endUpdates];
 }
 
 - (void)endUpdates {
