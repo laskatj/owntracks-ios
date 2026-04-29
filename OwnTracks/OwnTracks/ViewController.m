@@ -1325,6 +1325,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
     if ([view.annotation isKindOfClass:[Friend class]]) {
         Friend *friend = (Friend *)view.annotation;
+        NSString *topic = friend.topic;
         DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
         [self stopFollowLink];
         self.selectedFriend = nil;
@@ -1340,14 +1341,16 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self.mapView setCamera:northCam animated:YES];
         [mapView removeOverlay:friend];
         // Hide the live track while deselected; keep liveTrackPoints cached for instant re-show.
-        MKPolyline *liveTrack = self.liveTrackPolylines[friend.topic];
+        MKPolyline *liveTrack = topic.length ? self.liveTrackPolylines[topic] : nil;
         if (liveTrack) {
             [mapView removeOverlay:liveTrack];
-            [self.liveTrackPolylines removeObjectForKey:friend.topic];
+            [self.liveTrackPolylines removeObjectForKey:topic];
         }
-        [self.pendingRouteTopics removeObject:friend.topic];
-        [self.routeFetchMQTTBaselineByTopic removeObjectForKey:friend.topic];
-        [self.routeLastFetchDebugByTopic removeObjectForKey:friend.topic];
+        if (topic.length) {
+            [self.pendingRouteTopics removeObject:topic];
+            [self.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
+            [self.routeLastFetchDebugByTopic removeObjectForKey:topic];
+        }
         [self removeFriendLiveTrackOverlaysExceptTopic:nil];
         [self removeFriendBreadcrumbOverlaysExceptFriend:nil];
         DDLogInfo(@"[RouteDebug] didDeselectAnnotationView done topic=%@", friend.topic);
@@ -2067,19 +2070,22 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
                 break;
 
             case NSFetchedResultsChangeDelete: {
+                NSString *topic = friend.topic;
                 [self.mapView removeOverlay:friend];
                 [self.mapView removeAnnotation:friend];
-                MKPolyline *liveTrack = self.liveTrackPolylines[friend.topic];
+                MKPolyline *liveTrack = topic.length ? self.liveTrackPolylines[topic] : nil;
                 if (liveTrack) {
                     [self.mapView removeOverlay:liveTrack];
-                    [self.liveTrackPolylines removeObjectForKey:friend.topic];
+                    [self.liveTrackPolylines removeObjectForKey:topic];
                 }
-                [self.liveTrackPoints removeObjectForKey:friend.topic];
-                [self.liveTrackPointUnixByTopic removeObjectForKey:friend.topic];
-                [self.routeFetchedTopics removeObject:friend.topic];
-                [self.routeFetchMQTTBaselineByTopic removeObjectForKey:friend.topic];
-                [self.friendAnimators[friend.topic] cancel];
-                [self.friendAnimators removeObjectForKey:friend.topic];
+                if (topic.length) {
+                    [self.liveTrackPoints removeObjectForKey:topic];
+                    [self.liveTrackPointUnixByTopic removeObjectForKey:topic];
+                    [self.routeFetchedTopics removeObject:topic];
+                    [self.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
+                    [self.friendAnimators[topic] cancel];
+                    [self.friendAnimators removeObjectForKey:topic];
+                }
                 if (self.selectedFriend == friend || self.followFriend == friend) {
                     [self stopFollowLink];
                     self.selectedFriend = nil;

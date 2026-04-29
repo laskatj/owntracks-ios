@@ -262,7 +262,11 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         NSManagedObjectContext *context = (self.fetchedResultsController).managedObjectContext;
         OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
         Friend *friend = [self.fetchedResultsController objectAtIndexPath:indexPath];
-        [ad sendEmpty:friend.topic];
+        if (friend.topic.length) {
+            [ad sendEmpty:friend.topic];
+        } else {
+            DDLogWarn(@"[FriendsTVC] deleting friend without topic; skipping sendEmpty");
+        }
         [context deleteObject:friend];
         [[CoreData sharedInstance] sync:context];
     }
