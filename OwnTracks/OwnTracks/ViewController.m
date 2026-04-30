@@ -116,6 +116,30 @@ static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
     return anyActive;
 }
 
+
+/// True when the active gesture looks like user tilt/pitch (two-finger pan) rather than map drag.
+static BOOL OTViewControllerRegionChangeIsPitchGestureOnly(MKMapView *mapView) {
+    UIView *content = mapView.subviews.firstObject;
+    if (!content) {
+        return NO;
+    }
+    BOOL anyActive = NO;
+    for (UIGestureRecognizer *gr in content.gestureRecognizers) {
+        if (gr.state != UIGestureRecognizerStateBegan && gr.state != UIGestureRecognizerStateChanged) {
+            continue;
+        }
+        anyActive = YES;
+        if (![gr isKindOfClass:[UIPanGestureRecognizer class]]) {
+            return NO;
+        }
+        UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
+        if (pan.numberOfTouches < 2) {
+            return NO;
+        }
+    }
+    return anyActive;
+}
+
 /// Template clock: minute hand at 12; hour at 12 when `hours == 12`, at 6 when `hours == 6`.
 static UIImage *OTRouteHistoryWindowClockImage(CGFloat side, NSInteger hours) {
     CGSize sz = CGSizeMake(side, side);
@@ -236,6 +260,8 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSValue *> *followMapPrevCoordByTopic;
 /// User panned/rotated the map; skip heading lock until the next explicit follow selection.
 @property (nonatomic, assign) BOOL followHeadingLockPausedByUserGesture;
+/// Temporarily pause camera recenter while user pinch-zooms/pitches; resume on gesture end.
+@property (nonatomic, assign) BOOL followTemporarilySuspendedByGesture;
 @end
 
 
@@ -1400,6 +1426,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
         self.followHeadingLockPausedByUserGesture = NO;
+        self.followTemporarilySuspendedByGesture = NO;
         [self applyFollowSelectionForMapFriend:friend mapView:mapView];
         if ([view isKindOfClass:[FriendAnnotationV class]]) {
             VCSyncFriendCalloutSpeed((FriendAnnotationV *)view, friend, nil);
@@ -1410,9 +1437,10 @@ calloutAccessoryControlTapped:(UIControl *)control {
 - (void)mapView:(MKMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
     // Pan/zoom must NOT clear the selected friend or their route — selection is tied to the
     // annotation (see didDeselectAnnotationView). Only stop optional camera-follow CADisplayLink.
-    if (OTViewControllerRegionChangeIsPinchZoomOnly(mapView)) {
-        DDLogInfo(@"[Follow] pinch zoom — keep course-up follow (selection + route unchanged)");
+    if (OTViewControllerRegionChangeIsPinchZoomOnly(mapView) || OTViewControllerRegionChangeIsPitchGestureOnly(mapView)) {
+        DDLogInfo(@"[Follow] pinch/pitch gesture — temporarily suspend follow recenter; keep selection + route");
         [self stopFollowLink];
+        self.followTemporarilySuspendedByGesture = (self.followEnabled && self.followFriend);
         return;
     }
     UIView *mapContentView = mapView.subviews.firstObject;
@@ -1421,6 +1449,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
             gr.state == UIGestureRecognizerStateChanged) {
             DDLogInfo(@"[Follow] map pan/rotate — stopFollowLink; pause course-up (keep selection + route)");
             [self stopFollowLink];
+            self.followTemporarilySuspendedByGesture = NO;
             if (self.followEnabled && self.followFriend) {
                 self.followHeadingLockPausedByUserGesture = YES;
                 MKMapCamera *cam = [self.mapView.camera copy];
@@ -1431,6 +1460,21 @@ calloutAccessoryControlTapped:(UIControl *)control {
             return;
         }
     }
+}
+
+- (void)mapView:(MKMapView *)mapView regionDidChangeAnimated:(BOOL)animated {
+    if (!self.followTemporarilySuspendedByGesture || !self.followEnabled || !self.followFriend) {
+        return;
+    }
+    self.followTemporarilySuspendedByGesture = NO;
+    CLLocationCoordinate2D coord = self.followFriend.coordinate;
+    if (!CLLocationCoordinate2DIsValid(coord)) {
+        return;
+    }
+    [self applyFollow3DCameraToCoordinate:coord
+                                  heading:NAN
+                       preserveUserAltitude:YES];
+    DDLogInfo(@"[Follow] pinch/pitch ended — resumed follow using user zoom/pitch distance");
 }
 
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
