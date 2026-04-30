@@ -27,6 +27,8 @@ typedef NS_ENUM(int, ConnectionMode) {
 + (NSError * _Nullable)waypointsFromDictionary:(NSDictionary * _Nonnull)dictionary
                                          inMOC:(NSManagedObjectContext * _Nonnull)context;
 + (NSError * _Nullable)clearWaypoints:(NSManagedObjectContext * _Nonnull)context;
+/// Removes all persisted `Setting` rows so every preference reads from bundled `MQTT.plist` / `HTTP.plist` defaults. Refreshes `LocationManager` monitoring/ranging/locator limits from those defaults.
++ (void)resetStoredPreferencesToBundledDefaultsInMOC:(NSManagedObjectContext * _Nonnull)context;
 + (NSData * _Nonnull)toDataInMOC:(NSManagedObjectContext * _Nonnull)context;
 + (NSData * _Nonnull)waypointsToDataInMOC:(NSManagedObjectContext * _Nonnull)context;
 + (NSDictionary * _Nonnull)waypointsToDictionaryInMOC:(NSManagedObjectContext * _Nonnull)context;
@@ -79,6 +81,21 @@ typedef NS_ENUM(int, ConnectionMode) {
 + (void)setOSMCopyright:(NSString * _Nullable)osmCopyright inMOC:(NSManagedObjectContext * _Nonnull)context;
 
 + (BOOL)validIdsInMOC:(NSManagedObjectContext * _Nonnull)context;
+
+/// UserDefaults-backed flag: after reset / migration, embedded WebView sends `needs_provision=1` until cleared.
++ (void)setNeedsWebProvisioning:(BOOL)needs;
++ (BOOL)userDefaultsIndicatesNeedsWebProvisioning;
+/// Placeholder broker host (`host` or empty) from Core Data + plist defaults.
++ (BOOL)legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:(NSManagedObjectContext * _Nonnull)moc;
+/// YES if the UserDefaults flag is set OR legacy placeholder host applies (used for embedded URL query).
++ (BOOL)appEmbeddedWebShouldRequestProvisioningInMOC:(NSManagedObjectContext * _Nonnull)moc;
+/// One-time migration for upgrades: initialize the UserDefaults flag from legacy host semantics.
++ (void)migrateWebProvisioningFlagIfNeededInMOC:(NSManagedObjectContext * _Nonnull)moc;
+/// After `fromDictionary` succeeds, clears the flag when `dictionary` has `_type` == `configuration`.
++ (void)markWebProvisioningSatisfiedAfterApplyingConfigurationDictionary:(NSDictionary * _Nonnull)dictionary
+                                                                    error:(NSError * _Nullable)error;
+/// One-line summary for logs: UserDefaults flag, legacy placeholder host, and `theHostInMOC`.
++ (NSString * _Nonnull)webProvisioningDebugSummaryInMOC:(NSManagedObjectContext * _Nonnull)moc;
 
 + (Settings * _Nonnull)sharedInstance;
 

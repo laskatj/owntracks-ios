@@ -7,5 +7,7 @@
 
 #import <UIKit/UIKit.h>
 
+FOUNDATION_EXPORT NSString * const OwnTracksWebAppShouldReloadNotification;
+
 @interface WebAppViewController : UIViewController
 @end

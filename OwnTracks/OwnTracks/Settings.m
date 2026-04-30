@@ -21,6 +21,9 @@
 static SettingsDefaults *defaults;
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
+static NSString * const kOwnTracksNeedsWebProvisioningKey = @"owntracks_needs_web_provisioning";
+static NSString * const kOwnTracksNeedsWebProvisioningMigratedV1Key = @"owntracks_needs_web_provisioning_migrated_v1";
+
 @implementation SettingsDefaults
 + (SettingsDefaults *)theDefaults {
     if (!defaults) {
@@ -404,6 +407,91 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
     DDLogInfo(@"[Settings][clearWaypoints] clearWaypoints");
     return nil;
+}
+
++ (void)resetStoredPreferencesToBundledDefaultsInMOC:(NSManagedObjectContext *)context {
+    NSArray *stored = [Setting allSettingsInMOC:context];
+    for (Setting *setting in stored) {
+        [context deleteObject:setting];
+    }
+    [CoreData.sharedInstance sync:context];
+
+    LocationManager *lm = [LocationManager sharedInstance];
+    lm.monitoring = [Settings intForKey:@"monitoring_preference" inMOC:context];
+    lm.ranging = [Settings boolForKey:@"ranging_preference" inMOC:context];
+    lm.minDist = [Settings doubleForKey:@"mindist_preference" inMOC:context];
+    lm.minTime = [Settings doubleForKey:@"mintime_preference" inMOC:context];
+
+    DDLogInfo(@"[Settings] resetStoredPreferencesToBundledDefaults — removed %lu Setting row(s)",
+              (unsigned long)stored.count);
+}
+
+#pragma mark - Web provisioning (embedded WebView / needs_provision)
+
++ (void)setNeedsWebProvisioning:(BOOL)needs {
+    [[NSUserDefaults standardUserDefaults] setBool:needs forKey:kOwnTracksNeedsWebProvisioningKey];
+    DDLogInfo(@"[Provisioning] setNeedsWebProvisioning → %@", needs ? @"YES" : @"NO");
+}
+
++ (BOOL)userDefaultsIndicatesNeedsWebProvisioning {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kOwnTracksNeedsWebProvisioningKey];
+}
+
++ (BOOL)legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:(NSManagedObjectContext *)moc {
+    NSString *host = [self theHostInMOC:moc];
+    if (!host || host.length == 0) {
+        return YES;
+    }
+    if ([host isEqualToString:@"host"]) {
+        return YES;
+    }
+    return NO;
+}
+
++ (BOOL)appEmbeddedWebShouldRequestProvisioningInMOC:(NSManagedObjectContext *)moc {
+    return [self userDefaultsIndicatesNeedsWebProvisioning] ||
+           [self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc];
+}
+
++ (void)migrateWebProvisioningFlagIfNeededInMOC:(NSManagedObjectContext *)moc {
+    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+    if ([ud boolForKey:kOwnTracksNeedsWebProvisioningMigratedV1Key]) {
+        DDLogVerbose(@"[Provisioning] migrateWebProvisioningFlag v1 — already migrated");
+        return;
+    }
+    BOOL initial = [self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc];
+    NSString *host = [self theHostInMOC:moc] ?: @"(nil)";
+    [ud setBool:initial forKey:kOwnTracksNeedsWebProvisioningKey];
+    [ud setBool:YES forKey:kOwnTracksNeedsWebProvisioningMigratedV1Key];
+    DDLogInfo(@"[Provisioning] migrateWebProvisioningFlag v1 — needs_web_provisioning=%@ (legacyHost=%@ theHost=%@)",
+              initial ? @"YES" : @"NO",
+              [self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc] ? @"YES" : @"NO",
+              host);
+}
+
++ (void)markWebProvisioningSatisfiedAfterApplyingConfigurationDictionary:(NSDictionary *)dictionary
+                                                                    error:(NSError *)error {
+    if (error) {
+        DDLogWarn(@"[Provisioning] markWebProvisioningSatisfied — skipped (fromDictionary error: %@)", error);
+        return;
+    }
+    NSString *type = dictionary[@"_type"];
+    if (![type isKindOfClass:[NSString class]] || ![type isEqualToString:@"configuration"]) {
+        DDLogWarn(@"[Provisioning] markWebProvisioningSatisfied — skipped (_type=%@, expected configuration)",
+                  type ?: @"(nil)");
+        return;
+    }
+    [self setNeedsWebProvisioning:NO];
+}
+
++ (NSString *)webProvisioningDebugSummaryInMOC:(NSManagedObjectContext *)moc {
+    BOOL ud = [self userDefaultsIndicatesNeedsWebProvisioning];
+    BOOL leg = [self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc];
+    NSString *host = [self theHostInMOC:moc] ?: @"(nil)";
+    BOOL combined = [self appEmbeddedWebShouldRequestProvisioningInMOC:moc];
+    return [NSString stringWithFormat:
+            @"appNeedsProvision=%@ ud_flag=%@ legacy_placeholder_host=%@ theHostInMOC=%@",
+            combined ? @"YES" : @"NO", ud ? @"YES" : @"NO", leg ? @"YES" : @"NO", host];
 }
 
 + (NSArray *)waypointsToArrayInMOC:(NSManagedObjectContext *)context {

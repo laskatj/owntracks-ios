@@ -19,10 +19,11 @@ Use this prompt (or adapt it) when implementing your React web app so it is awar
 
 2. **Expose a way to send configuration to the app**
    - When the user is authenticated (e.g. after OIDC login), if `needs_provision=1` is in the URL (or the user taps “Send config to app” / “Provision device”), fetch the provisioning JSON from your backend (the same format the app expects: `_type: "configuration"`, plus `mode`, `host`, `deviceId`, `tid`, `clientId`, `subTopic`, `pubTopicBase`, `sub`, etc.).
+   - **Strict native contract:** The object you pass as `configuration` in `postMessage` is passed verbatim to iOS `Settings.fromDictionary`. That API **requires** top-level `"_type": "configuration"`. The native app does **not** add or fix `_type` for you. Omitting it surfaces a configuration error in the app. The same object (including `_type`) must be used for the redirect fallback’s `JSON.stringify(provisioningJson)` / `inline` payload. If you use a hook such as `useEmbeddedProvisioning`, ensure tests cover both the happy path and missing `_type` (should not ship).
    - Send that config to the native app in one of two ways:
      - **Preferred (in-app):**  
        `window.webkit.messageHandlers.owntracks.postMessage({ type: "config", configuration: provisioningJson })`  
-       where `provisioningJson` is the object (not a string). Only call this when `window.webkit?.messageHandlers?.owntracks` exists.
+       where `provisioningJson` is the object (not a string), and `provisioningJson._type === "configuration"`. Only call this when `window.webkit?.messageHandlers?.owntracks` exists.
      - **Fallback (redirect):**  
        `window.location = "sauron:///config?inline=" + btoa(unescape(encodeURIComponent(JSON.stringify(provisioningJson))))`  
        (Use `owntracks` instead of `sauron` if the app only registers the owntracks scheme.)

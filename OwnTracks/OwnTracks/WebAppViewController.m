@@ -21,12 +21,15 @@
 #import "StatusTVC.h"
 #import "ViewController.h"
 #import "NavigationController.h"
+#import "LocationAPISyncService.h"
 #import <WebKit/WebKit.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 static NSString * const kWebAppMessageHandlerName = @"owntracks";
+/// Posted after bundled-defaults reset or clearing web auth so embedded WebViews reload (login / provision flow).
+NSString * const OwnTracksWebAppShouldReloadNotification = @"OwnTracksWebAppShouldReload";
 static const CGFloat kMapHeaderHeight = 44.0;
 static const CGFloat kMapHeaderPadding = 6.0;
 
@@ -46,6 +49,12 @@ static const CGFloat kMapHeaderPadding = 6.0;
 @property (strong, nonatomic) UIButton *loginButton;
 @property (copy, nonatomic) NSString *pendingOIDCRedirectURI;  // React app's redirect_uri captured during passthrough
 @property (strong, nonatomic, nullable) NSDate *passthroughLastCompletedAt;  // set when passthrough delivers callback to WebView
+/// When YES, next `loadWebAppURL` performs a full load even if already on the app host (e.g. after auth cleared).
+@property (nonatomic) BOOL forceNextEmbeddedWebAppLoad;
+/// After one native `POST /api/config/provision` attempt fails, next `loadWebAppURL` skips native and loads the SPA (fallback).
+@property (nonatomic) BOOL skipNativeProvisionForThisLoadCycle;
+/// Builds the embedded WebView URL (path + `embedded`, optional `needs_provision` / `device`).
+- (NSURL *)embedWebAppURLFromPreferenceURL:(NSURL *)url;
 @end
 
 @implementation WebAppViewController
@@ -154,11 +163,24 @@ static const CGFloat kMapHeaderPadding = 6.0;
     self.placeholderLabel.textColor = [UIColor secondaryLabelColor];
     [self.view addSubview:self.placeholderLabel];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ownTracksWebAppShouldReload:)
+                                                 name:OwnTracksWebAppShouldReloadNotification
+                                               object:nil];
+
     if (self.tabBarItem.tag == 98) {
         [self setupMapHeader];
     }
     // viewWillAppear always fires immediately after viewDidLoad on first appearance,
     // so we do not call loadWebAppURL here to avoid a concurrent double-load.
+}
+
+- (void)ownTracksWebAppShouldReload:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.forceNextEmbeddedWebAppLoad = YES;
+        self.skipNativeProvisionForThisLoadCycle = NO;
+        [self loadWebAppURL];
+    });
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -191,6 +213,9 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
 - (void)dealloc {
     [self stopAccuracyTimer];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:OwnTracksWebAppShouldReloadNotification
+                                                  object:nil];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:kWebAppMessageHandlerName];
 }
 
@@ -404,36 +429,86 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
 #pragma mark - Web app URL loading
 
+- (NSURL *)embedWebAppURLFromPreferenceURL:(NSURL *)url {
+    if (!url) return nil;
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    NSString *path = components.path ?: @"";
+    if (path.length > 0 && [path hasSuffix:@"/"]) {
+        path = [path substringToIndex:path.length - 1];
+    }
+    if (self.tabBarItem.tag == 98) {
+        path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
+    }
+    if (path.length == 0) {
+        path = @"/";
+    }
+    components.path = path;
+
+    NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
+    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
+    BOOL needsProv = [self appNeedsProvisioning];
+    DDLogInfo(@"[Provisioning] embedWebAppURL%@ needs_provision=%@ — %@",
+              [self _vcLabel],
+              needsProv ? @"1" : @"0",
+              [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
+    if (needsProv) {
+        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
+        NSString *deviceName = [UIDevice currentDevice].name;
+        if (deviceName.length > 0) {
+            [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
+        }
+    }
+    components.queryItems = queryItems;
+    return components.URL;
+}
+
 - (void)loadWebAppURL {
+    if (![self appNeedsProvisioning]) {
+        self.skipNativeProvisionForThisLoadCycle = NO;
+    }
     NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
     if (urlString.length > 0) {
         NSURL *url = [NSURL URLWithString:urlString];
         if (url) {
-            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-            NSString *path = components.path ?: @"";
-            if (path.length > 0 && [path hasSuffix:@"/"]) {
-                path = [path substringToIndex:path.length - 1];
-            }
-            if (self.tabBarItem.tag == 98) {
-                path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
-            }
-            if (path.length == 0) {
-                path = @"/";
-            }
-            components.path = path;
-
-            NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
-            [queryItems addObject:[NSURLQueryItem queryItemWithName:@"embedded" value:@"1"]];
-            if ([self appNeedsProvisioning]) {
-                [queryItems addObject:[NSURLQueryItem queryItemWithName:@"needs_provision" value:@"1"]];
-                NSString *deviceName = [UIDevice currentDevice].name;
-                if (deviceName.length > 0) {
-                    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"device" value:deviceName]];
-                }
-            }
-            components.queryItems = queryItems;
-            NSURL *finalURL = components.URL;
+            NSURL *finalURL = [self embedWebAppURLFromPreferenceURL:url];
             if (finalURL) {
+                BOOL needsProv = [self appNeedsProvisioning];
+                if (needsProv && !self.skipNativeProvisionForThisLoadCycle) {
+                    __weak typeof(self) wself = self;
+                    [[LocationAPISyncService sharedInstance]
+                        provisionRemoteDeviceConfigurationIfNeededWithCompletion:^(BOOL applied, NSError * _Nullable error) {
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                __strong typeof(wself) sself = wself;
+                                if (!sself) {
+                                    return;
+                                }
+                                if (applied) {
+                                    DDLogInfo(@"[Provisioning] loadWebAppURL%@ — native provision applied, reloading", [sself _vcLabel]);
+                                    [sself loadWebAppURL];
+                                    return;
+                                }
+                                if (error && [error.domain isEqualToString:@"OTProvisionAPI"] && error.code == 998) {
+                                    return;
+                                }
+                                if (error) {
+                                    DDLogWarn(@"[Provisioning] loadWebAppURL%@ — native provision failed: %@ (falling back to embedded SPA)",
+                                              [sself _vcLabel], error.localizedDescription);
+                                    if ([error.domain isEqualToString:@"OTProvisionAPI"]) {
+                                        NSInteger c = error.code;
+                                        if (c >= 400 && c < 500 && c != 401) {
+                                            [NavigationController alert:NSLocalizedString(@"Provisioning",
+                                                                                        @"Title: native config provision failed")
+                                                                  message:error.localizedDescription];
+                                        }
+                                    }
+                                }
+                                sself.skipNativeProvisionForThisLoadCycle = YES;
+                                [sself loadWebAppURL];
+                            });
+                        }];
+                    return;
+                }
+
                 [self setWebAppOriginFromURL:url];
                 if (self.loginButton) self.loginButton.hidden = NO;
                 else [self updateLogInBarButton];
@@ -443,18 +518,30 @@ static const CGFloat kMapHeaderPadding = 6.0;
                 // Skip reload if already on the app host AND not stuck on the native-callback URL.
                 // (Prevents disrupting an authenticated session on tab switch, but always
                 //  navigates away from native-callback after token exchange.)
+                // Never skip when the device needs provisioning (`needs_provision` must reach the SPA)
+                // or when a notification asked for a forced reload (e.g. auth cleared).
                 NSString *currentHost = self.webView.URL.host;
                 NSString *currentPath = self.webView.URL.path ?: @"";
                 BOOL onAppHost = currentHost && [currentHost isEqualToString:url.host];
                 BOOL onCallbackURL = [currentPath containsString:@"native-callback"];
-                if (onAppHost && !onCallbackURL) {
+                BOOL needsProvForSkip = [self appNeedsProvisioning];
+                BOOL skipReload = onAppHost && !onCallbackURL && !needsProvForSkip && !self.forceNextEmbeddedWebAppLoad;
+                if (skipReload) {
+                    DDLogInfo(@"[Provisioning] loadWebAppURL%@ — SKIPPING reload (SPA will NOT see fresh query); summary=%@",
+                              [self _vcLabel],
+                              [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
                     NSLog(@"AUTHDEBUG%@: loadWebAppURL — skipping reload (already on app: %@)", [self _vcLabel], self.webView.URL.absoluteString);
+                    self.forceNextEmbeddedWebAppLoad = NO;
                 } else {
                     // Attempt a silent native token refresh before loading so the web app
                     // receives a session cookie via /auth/native-callback immediately, rather
                     // than relying on the React OIDC client's hidden-iframe silent renewal
                     // (which we cannot intercept and which fails silently when there is no
                     // existing Authentik session, leaving the page blank).
+                    DDLogInfo(@"[Provisioning] loadWebAppURL%@ — will load (not skipping) needs_provision path=%@ summary=%@",
+                              [self _vcLabel],
+                              needsProvForSkip ? @"YES" : @"NO",
+                              [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
                     NSLog(@"AUTHDEBUG%@: loadWebAppURL — attempting proactive native auth before load", [self _vcLabel]);
                     NSURL *webAppURL = self.webAppBaseURL ?: self.webAppOrigin;
                     NSString *clientId = [Settings stringForKey:@"oauth_client_id_preference"
@@ -468,6 +555,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
                         __strong typeof(wself) sself = wself;
                         if (!sself) return;
                         dispatch_async(dispatch_get_main_queue(), ^{
+                            sself.forceNextEmbeddedWebAppLoad = NO;
                             if (accessToken.length > 0) {
                                 NSLog(@"AUTHDEBUG%@: loadWebAppURL — proactive silent refresh OK, loading via native-callback (refresh_token=%@)", [sself _vcLabel], refreshToken.length > 0 ? @"present" : @"none");
                                 [sself loadWebViewWithAccessToken:accessToken refreshToken:refreshToken];
@@ -484,6 +572,10 @@ static const CGFloat kMapHeaderPadding = 6.0;
             }
         }
     }
+    DDLogWarn(@"[Provisioning] loadWebAppURL%@ — no webappurl_preference (WebView hidden); summary=%@",
+              [self _vcLabel],
+              [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
+    self.forceNextEmbeddedWebAppLoad = NO;
     self.webAppOrigin = nil;
     self.webAppBaseURL = nil;
     self.discoveryLoginPath = nil;
@@ -495,10 +587,7 @@ static const CGFloat kMapHeaderPadding = 6.0;
 }
 
 - (BOOL)appNeedsProvisioning {
-    NSString *host = [Settings theHostInMOC:CoreData.sharedInstance.mainMOC];
-    if (!host || host.length == 0) return YES;
-    if ([host isEqualToString:@"host"]) return YES;
-    return NO;
+    return [Settings appEmbeddedWebShouldRequestProvisioningInMOC:CoreData.sharedInstance.mainMOC];
 }
 
 #pragma mark - OIDC helpers
@@ -657,6 +746,12 @@ static const CGFloat kMapHeaderPadding = 6.0;
 
     NSDictionary *configuration = body[@"configuration"];
     if ([configuration isKindOfClass:[NSDictionary class]]) {
+        id cfgType = configuration[@"_type"];
+        NSArray *cfgKeys = [configuration.allKeys sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)];
+        DDLogInfo(@"[Provisioning] Web postMessage type=config configuration keys (%lu): %@ _type=%@",
+                  (unsigned long)configuration.count,
+                  [cfgKeys componentsJoinedByString:@","],
+                  cfgType ?: @"(nil)");
         dispatch_async(dispatch_get_main_queue(), ^{
             [appDelegate terminateSession];
             [appDelegate configFromDictionary:configuration];
@@ -798,16 +893,8 @@ static const CGFloat kMapHeaderPadding = 6.0;
         NSLog(@"AUTHDEBUG%@: forceLoadWebAppURL — no web app URL configured", [self _vcLabel]);
         return;
     }
-    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-    NSString *path = components.path ?: @"";
-    if ([path hasSuffix:@"/"]) path = [path substringToIndex:path.length - 1];
-    if (self.tabBarItem.tag == 98) {
-        path = path.length > 0 ? [path stringByAppendingPathComponent:@"map"] : @"/map";
-    }
-    if (path.length == 0) path = @"/";
-    components.path = path;
-    components.queryItems = @[ [NSURLQueryItem queryItemWithName:@"embedded" value:@"1"] ];
-    NSURL *finalURL = components.URL;
+    NSURL *finalURL = [self embedWebAppURLFromPreferenceURL:url];
+    DDLogInfo(@"[Provisioning] forceLoadWebAppURL%@ summary=%@", [self _vcLabel], [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
     NSLog(@"AUTHDEBUG%@: forceLoadWebAppURL → %@", [self _vcLabel], finalURL.absoluteString);
     if (finalURL) {
         NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:finalURL];
@@ -834,6 +921,17 @@ static const CGFloat kMapHeaderPadding = 6.0;
     // of a transparent background refresh.
     if (!navigationAction.targetFrame.isMainFrame) {
         decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+
+    // Embedded SPA fallback: window.location to owntracks:///config?inline=... does not reach
+    // application:openURL: — handle the same paths here.
+    NSString *scheme = requestURL.scheme.lowercaseString;
+    if ([scheme isEqualToString:@"owntracks"] || [scheme isEqualToString:@"sauron"]) {
+        NSLog(@"AUTHDEBUG%@: → CANCEL custom scheme — forwarding to OwnTracksAppDelegate handleOwnTracksSchemeURL", [self _vcLabel]);
+        decisionHandler(WKNavigationActionPolicyCancel);
+        OwnTracksAppDelegate *appDelegate = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+        [appDelegate handleOwnTracksSchemeURL:requestURL];
         return;
     }
 

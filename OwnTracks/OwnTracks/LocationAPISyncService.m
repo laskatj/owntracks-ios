@@ -12,6 +12,7 @@
 #import "Settings.h"
 #import "CoreData.h"
 #import "OwnTracking.h"
+#import "OwnTracksAppDelegate.h"
 #import "Friend+CoreDataClass.h"
 #import <UIKit/UIKit.h>
 #import <AuthenticationServices/AuthenticationServices.h>
@@ -31,6 +32,32 @@ static NSURLSession *LocationAPISyncURLSession(void) {
     });
     return session;
 }
+
+/// Server allows `^[a-zA-Z0-9 ]+$` for POST /api/config/provision `deviceName`.
+static NSString *OTProvisionSanitizedDeviceName(void) {
+    NSString *raw = [UIDevice currentDevice].name ?: @"";
+    NSMutableString *out = [NSMutableString stringWithCapacity:raw.length];
+    for (NSUInteger i = 0; i < raw.length; i++) {
+        unichar c = [raw characterAtIndex:i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ') {
+            [out appendFormat:@"%C", c];
+        }
+    }
+    NSString *collapsed = [out stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    while ([collapsed rangeOfString:@"  "].location != NSNotFound) {
+        collapsed = [collapsed stringByReplacingOccurrencesOfString:@"  " withString:@" "];
+    }
+    if (collapsed.length == 0) {
+        return @"Device";
+    }
+    return collapsed;
+}
+
+static NSString * const kOTProvisionAPIDomain = @"OTProvisionAPI";
+/// Returned when `provisionRemoteDeviceConfigurationIfNeededWithCompletion:` is invoked while a provision POST is already in flight.
+static const NSInteger kOTProvisionAPICodeBusy = 998;
+
+NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification = @"OwnTracksOAuthAccessTokenBecameAvailable";
 
 /// One interactive OAuth prompt per app process when the location API has no refresh token (same idea as WebAppViewController `startFullNativeAuth`).
 static BOOL gLocationAPIOAuthPromptScheduledThisSession;
@@ -70,6 +97,7 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 @interface LocationAPISyncService ()
 @property (nonatomic, strong, nullable) NSTimer *pollTimer;
 @property (nonatomic) BOOL fetchInFlight;
+@property (nonatomic) BOOL provisionInFlight;
 @property (nonatomic, strong, nullable) NSDate *lastSuccessfulLocationAPIFetchDate;
 /// Filled from `/.well-known/owntracks-app-auth` when Settings OAuth Client ID is empty; needed so Keychain lookup uses the same client_id the token was stored with.
 @property (nonatomic, copy, nullable) NSString *cachedOAuthClientIdFromDiscovery;
@@ -93,6 +121,8 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                       accessToken:(NSString *)accessToken
                   allowRetryOn401:(BOOL)allowRetryOn401
                  transientAttempt:(NSUInteger)nextAttempt;
+- (void)oauthAccessTokenBecameAvailable:(NSNotification *)notification;
+- (void)attemptNativeProvisionAfterOAuthOrForegroundIfNeeded;
 @end
 
 @implementation LocationAPISyncService
@@ -117,8 +147,16 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                                                  selector:@selector(applicationDidEnterBackground:)
                                                      name:UIApplicationDidEnterBackgroundNotification
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(oauthAccessTokenBecameAvailable:)
+                                                     name:OwnTracksOAuthAccessTokenBecameAvailableNotification
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (instancetype)init {
@@ -132,6 +170,33 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
     [self fetchAndApply];
     [self startPollTimer];
+    // Native-only UI never loads WebAppViewController; deferred provision covers cold start once LAS token path is warm.
+    __weak typeof(self) wself = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            return;
+        }
+        DDLogVerbose(@"[ProvisionAPI] deferred foreground attempt (native provision if needed)");
+        [sself attemptNativeProvisionAfterOAuthOrForegroundIfNeeded];
+    });
+}
+
+- (void)oauthAccessTokenBecameAvailable:(NSNotification *)notification {
+    DDLogInfo(@"[ProvisionAPI] OAuth access token available — attempting native provision if needed");
+    [self attemptNativeProvisionAfterOAuthOrForegroundIfNeeded];
+}
+
+- (void)attemptNativeProvisionAfterOAuthOrForegroundIfNeeded {
+    [self provisionRemoteDeviceConfigurationIfNeededWithCompletion:^(BOOL applied, NSError *err) {
+        if (applied) {
+            DDLogInfo(@"[ProvisionAPI] configuration applied (native trigger)");
+        } else if (err && [err.domain isEqualToString:kOTProvisionAPIDomain] && err.code == kOTProvisionAPICodeBusy) {
+            DDLogVerbose(@"[ProvisionAPI] native trigger skipped (provision already in flight)");
+        } else if (err) {
+            DDLogVerbose(@"[ProvisionAPI] native trigger: %@", err.localizedDescription);
+        }
+    }];
 }
 
 - (void)applicationDidEnterBackground:(NSNotification *)notification {
@@ -365,6 +430,19 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
         NSArray *chain = [LocationAPISyncService orderedKeychainClientIdChainDiscovery:cid settings:clientPref];
         [sself trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:completion];
     }];
+}
+
+- (void)invalidateOAuthCredentialCache {
+    self.cachedAccessToken = nil;
+    self.cachedAccessTokenExpiry = 0;
+    self.cachedOAuthClientIdFromDiscovery = nil;
+    self.fetchInFlight = NO;
+    self.provisionInFlight = NO;
+    DDLogInfo(@"[LocationAPISyncService] invalidateOAuthCredentialCache");
+}
+
+- (nullable NSString *)peekCachedDiscoveryOAuthClientId {
+    return self.cachedOAuthClientIdFromDiscovery;
 }
 
 /// Ordered list: discovery `client_id` (if any), settings id if different, then [NSNull null] to try WebAppAuthHelper lookup with nil (|path|_ + legacy origin).
@@ -816,6 +894,171 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             }] resume];
         };
         runGET(accessToken, 0);
+    }];
+}
+
+- (void)provisionRemoteDeviceConfigurationIfNeededWithCompletion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    if (!completion) {
+        return;
+    }
+    if (self.provisionInFlight) {
+        DDLogVerbose(@"[ProvisionAPI] provision skipped (already in flight)");
+        completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
+                                            code:kOTProvisionAPICodeBusy
+                                        userInfo:@{NSLocalizedDescriptionKey: @"Provision request already in progress"}]);
+        return;
+    }
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    if (![Settings appEmbeddedWebShouldRequestProvisioningInMOC:moc]) {
+        DDLogVerbose(@"[ProvisionAPI] provision skipped (app does not need provisioning)");
+        completion(NO, nil);
+        return;
+    }
+    NSURL *provisionURL = [WebAppURLResolver configProvisionAPIRequestURLFromPreferenceInMOC:moc];
+    if (!provisionURL) {
+        DDLogWarn(@"[ProvisionAPI] provision skipped (no web app origin / provision URL)");
+        completion(NO, nil);
+        return;
+    }
+
+    NSError *jsonErr = nil;
+    NSDictionary *bodyDict = @{ @"deviceName": OTProvisionSanitizedDeviceName() };
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:bodyDict options:0 error:&jsonErr];
+    if (!bodyData) {
+        DDLogError(@"[ProvisionAPI] could not encode provision body: %@", jsonErr);
+        completion(NO, jsonErr);
+        return;
+    }
+
+    self.provisionInFlight = YES;
+    __weak typeof(self) wself = self;
+    [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable accessToken) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:0 userInfo:nil]);
+            return;
+        }
+        if (!accessToken.length) {
+            DDLogWarn(@"[ProvisionAPI] no access token — cannot POST provision");
+            sself.provisionInFlight = NO;
+            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                code:401
+                                            userInfo:@{NSLocalizedDescriptionKey: @"No access token"}]);
+            return;
+        }
+
+        __block void (^runPOST)(NSString *token, BOOL allowRetry401);
+        runPOST = ^(NSString *token, BOOL allowRetry401) {
+            __strong typeof(wself) sselfInner = wself;
+            if (!sselfInner) {
+                completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:0 userInfo:nil]);
+                return;
+            }
+            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:provisionURL];
+            req.HTTPMethod = @"POST";
+            req.timeoutInterval = 30.0;
+            [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+            [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+            [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+            req.HTTPBody = bodyData;
+
+            [[LocationAPISyncURLSession() dataTaskWithRequest:req
+                                            completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+                __strong typeof(wself) sself2 = wself;
+                if (!sself2) {
+                    completion(NO, nil);
+                    return;
+                }
+                if (error) {
+                    DDLogWarn(@"[ProvisionAPI] POST network error: %@", error.localizedDescription);
+                    sself2.provisionInFlight = NO;
+                    completion(NO, error);
+                    return;
+                }
+                NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+                DDLogInfo(@"[ProvisionAPI] POST %@ → HTTP %ld (%lu bytes)",
+                          provisionURL.absoluteString, (long)status, (unsigned long)data.length);
+
+                if (status == 401 && allowRetry401) {
+                    sself2.cachedAccessToken = nil;
+                    sself2.cachedAccessTokenExpiry = 0;
+                    [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
+                        __strong typeof(wself) sself3 = wself;
+                        if (!sself3) {
+                            completion(NO, nil);
+                            return;
+                        }
+                        if (!newToken.length) {
+                            DDLogWarn(@"[ProvisionAPI] 401 retry — could not refresh token");
+                            sself3.provisionInFlight = NO;
+                            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                                code:401
+                                                            userInfo:@{NSLocalizedDescriptionKey: @"Unauthorized"}]);
+                            return;
+                        }
+                        runPOST(newToken, NO);
+                    }];
+                    return;
+                }
+
+                if (status == 200) {
+                    NSError *parseErr = nil;
+                    id obj = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseErr] : nil;
+                    if (parseErr || ![obj isKindOfClass:[NSDictionary class]]) {
+                        DDLogWarn(@"[ProvisionAPI] 200 but JSON parse failed: %@", parseErr.localizedDescription);
+                        sself2.provisionInFlight = NO;
+                        completion(NO, parseErr ?: [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                                     code:2
+                                                                 userInfo:@{NSLocalizedDescriptionKey: @"Invalid JSON"}]);
+                        return;
+                    }
+                    NSDictionary *payload = (NSDictionary *)obj;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        __strong typeof(wself) sself4 = wself;
+                        if (!sself4) {
+                            completion(NO, nil);
+                            return;
+                        }
+                        OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+                        if (![ad isKindOfClass:[OwnTracksAppDelegate class]]) {
+                            sself4.provisionInFlight = NO;
+                            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:3 userInfo:nil]);
+                            return;
+                        }
+                        [ad terminateSession];
+                        [ad configFromDictionary:payload];
+                        ad.configLoad = [NSDate date];
+                        [ad reconnect];
+                        sself4.provisionInFlight = NO;
+                        DDLogInfo(@"[ProvisionAPI] configuration applied from POST /api/config/provision");
+                        completion(YES, nil);
+                    });
+                    return;
+                }
+
+                NSString *serverMsg = nil;
+                if (data.length) {
+                    id errObj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+                    if ([errObj isKindOfClass:[NSDictionary class]]) {
+                        id em = errObj[@"error"];
+                        if ([em isKindOfClass:[NSString class]]) {
+                            serverMsg = (NSString *)em;
+                        }
+                    }
+                }
+                if (!serverMsg.length) {
+                    serverMsg = [NSString stringWithFormat:@"HTTP %ld", (long)status];
+                }
+                NSError *apiErr = [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                      code:status
+                                                  userInfo:@{NSLocalizedDescriptionKey: serverMsg}];
+                DDLogWarn(@"[ProvisionAPI] provision failed: %@", serverMsg);
+                sself2.provisionInFlight = NO;
+                completion(NO, apiErr);
+            }] resume];
+        };
+
+        runPOST(accessToken, YES);
     }];
 }
 

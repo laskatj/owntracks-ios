@@ -6,6 +6,10 @@
 //
 
 #import "WebAppAuthHelper.h"
+#import "CoreData.h"
+#import "LocationAPISyncService.h"
+#import "Settings.h"
+#import "WebAppURLResolver.h"
 #import <AuthenticationServices/AuthenticationServices.h>
 #import <CommonCrypto/CommonCrypto.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
@@ -493,6 +497,9 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     self.pendingClientId = nil;
     self.pendingWebAppURL = nil;
     if (comp) comp(accessToken, nil);
+    if (accessToken.length) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksOAuthAccessTokenBecameAvailableNotification object:nil];
+    }
 }
 
 - (void)finishWithError:(NSError *)error {
@@ -778,14 +785,38 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
             [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forWebAppURL:webAppURL];
             fireAll(newAccessToken, nil);
+            [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksOAuthAccessTokenBecameAvailableNotification object:nil];
         });
     }] resume];
 }
 
 - (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin {
-    [self deleteTokenForAccount:[self originKeyForURL:webAppOrigin]];
-    [self deleteTokenForAccount:[self keychainAccountForWebAppURL:webAppOrigin clientId:nil]];
-    DDLogInfo(@"[WebAppAuthHelper] Cleared stored tokens for %@", [self originKeyForURL:webAppOrigin]);
+    if (!webAppOrigin) {
+        return;
+    }
+    NSArray<NSURL *> *candidates = [WebAppURLResolver webAppKeychainURLCandidatesForUserConfiguredURL:webAppOrigin];
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    NSString *settingsCid = [Settings stringForKey:@"oauth_client_id_preference" inMOC:moc];
+    if (settingsCid.length == 0) {
+        settingsCid = nil;
+    }
+    NSString *discoveryCid = [[LocationAPISyncService sharedInstance] peekCachedDiscoveryOAuthClientId];
+    NSArray *chain = [LocationAPISyncService orderedKeychainClientIdChainDiscovery:discoveryCid settings:settingsCid];
+
+    NSMutableOrderedSet<NSString *> *accounts = [NSMutableOrderedSet orderedSet];
+    for (NSURL *candidate in candidates) {
+        for (id raw in chain) {
+            NSString *cid = (raw == [NSNull null]) ? nil : (NSString *)raw;
+            for (NSString *acc in [self tokenLookupAccountsForWebAppURL:candidate clientId:cid]) {
+                [accounts addObject:acc];
+            }
+        }
+    }
+    for (NSString *acc in accounts) {
+        [self deleteTokenForAccount:acc];
+    }
+    DDLogInfo(@"[WebAppAuthHelper] Cleared %lu Keychain account(s) for web app %@", (unsigned long)accounts.count, webAppOrigin.absoluteString);
+    [[LocationAPISyncService sharedInstance] invalidateOAuthCredentialCache];
 }
 
 #pragma mark - ASWebAuthenticationPresentationContextProviding

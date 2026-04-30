@@ -44,7 +44,22 @@
     return base.URL ?: [self webAppOriginURLFromPreferenceInMOC:moc];
 }
 
-+ (NSArray<NSURL *> *)webAppKeychainURLCandidatesFromPreferenceInMOC:(NSManagedObjectContext *)moc {
++ (nullable NSURL *)webAppKeychainBaseURLFromUserURL:(NSURL *)url {
+    if (!url) {
+        return nil;
+    }
+    NSURLComponents *base = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    base.query = nil;
+    base.fragment = nil;
+    NSString *path = (base.path.length > 0 && ![base.path isEqualToString:@"/"]) ? base.path : @"";
+    if (path.length > 0 && [path hasSuffix:@"/"]) {
+        path = [path substringToIndex:path.length - 1];
+    }
+    base.path = path.length > 0 ? path : @"/";
+    return base.URL;
+}
+
++ (NSArray<NSURL *> *)webAppKeychainURLCandidatesForUserConfiguredURL:(NSURL *)userURL {
     NSMutableOrderedSet<NSString *> *seen = [NSMutableOrderedSet orderedSet];
     NSMutableArray<NSURL *> *out = [NSMutableArray array];
     void (^add)(NSURL *) = ^(NSURL *u) {
@@ -59,9 +74,13 @@
         [out addObject:u];
     };
 
-    add([self webAppKeychainURLFromPreferenceInMOC:moc]);
+    add([self webAppKeychainBaseURLFromUserURL:userURL]);
 
-    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    NSURLComponents *originC = [NSURLComponents new];
+    originC.scheme = userURL.scheme;
+    originC.host = userURL.host;
+    originC.port = userURL.port;
+    NSURL *origin = originC.URL;
     if (!origin) {
         return out;
     }
@@ -83,6 +102,14 @@
     return out;
 }
 
++ (NSArray<NSURL *> *)webAppKeychainURLCandidatesFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *user = [self webAppUserURLFromPreferenceInMOC:moc];
+    if (!user) {
+        return @[];
+    }
+    return [self webAppKeychainURLCandidatesForUserConfiguredURL:user];
+}
+
 + (nullable NSURL *)locationAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
     NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
     if (!origin) {
@@ -91,6 +118,18 @@
     NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
     c.path = @"/api/location";
     c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"showTeslaBeacons" value:@"false"] ];
+    return c.URL;
+}
+
++ (nullable NSURL *)configProvisionAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/config/provision";
+    c.query = nil;
+    c.fragment = nil;
     return c.URL;
 }
 

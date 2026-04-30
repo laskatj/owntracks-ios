@@ -51,7 +51,7 @@ typedef void (^WebAppAuthTokenPairCompletion)(NSString * _Nullable accessToken, 
                                 clientId:(nullable NSString *)clientId
                      tokenPairCompletion:(WebAppAuthTokenPairCompletion)completion;
 
-/// Clears any Keychain-stored refresh token data for the given origin.
+/// Deletes all Keychain token rows this app may use for the given configured web app URL (all path candidates and client_id variants), then invalidates the location API OAuth cache.
 - (void)clearStoredTokensForOrigin:(NSURL *)webAppOrigin;
 
 /// Stores refresh token metadata in Keychain for a specific web app URL + client context.

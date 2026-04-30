@@ -15,6 +15,7 @@
 #import "CoreData.h"
 #import "OwnTracking.h"
 #import "WebAppAuthHelper.h"
+#import "WebAppViewController.h"
 #import "OwnTracksWatchBridge.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -81,7 +82,6 @@
 @property (weak, nonatomic) IBOutlet UIButton *createCardButton;
 @property (weak, nonatomic) IBOutlet UIButton *toursButton;
 @property (weak, nonatomic) IBOutlet UIButton *logsButton;
-@property (weak, nonatomic) IBOutlet UIButton *clearAuthTokenButton;
 
 @property (strong, nonatomic) UIDocumentInteractionController *dic;
 @property (nonatomic) BOOL warningShown;
@@ -1355,31 +1355,50 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [self updateValues];
 }
 
-- (IBAction)clearAuthTokenPressed:(UIButton *)sender {
-    NSString *urlString = [Settings stringForKey:@"webappurl_preference" inMOC:CoreData.sharedInstance.mainMOC];
-    NSURL *webAppURL = urlString.length > 0 ? [NSURL URLWithString:urlString] : nil;
+- (IBAction)resetToBundledDefaultsPressed:(UIButton *)sender {
+    NSString *title = NSLocalizedString(@"Reset Settings to Defaults",
+                                        @"Settings: alert title for reverting preferences to app bundle defaults");
+    NSString *message = NSLocalizedString(@"All stored preferences will be removed and replaced with the app’s bundled defaults. The app disconnects, clears the friends list from this device, and the Web App tab reloads so you can sign in and fetch a new configuration when needed.",
+                                          @"Settings: alert message for reset to bundled defaults");
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
 
-    if (!webAppURL) {
-        UIAlertController *noURL = [UIAlertController
-            alertControllerWithTitle:@"No Web App URL"
-            message:@"Configure a Web App URL first."
-            preferredStyle:UIAlertControllerStyleAlert];
-        [noURL addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:noURL animated:YES completion:nil];
-        return;
-    }
+    NSString *resetTitle = NSLocalizedString(@"Reset", @"Settings: confirm reset to defaults");
+    [alert addAction:[UIAlertAction actionWithTitle:resetTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+        OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+        NSString *preResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
+        NSURL *preResetWebAppURL = preResetWebAppStr.length > 0 ? [NSURL URLWithString:preResetWebAppStr] : nil;
 
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:@"Clear Auth Token"
-        message:@"This will delete the stored refresh token, requiring a full re-login on next use of the Web App tab."
-        preferredStyle:UIAlertControllerStyleAlert];
+        [ad terminateSession];
+        [Settings resetStoredPreferencesToBundledDefaultsInMOC:moc];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Clear" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-        [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:webAppURL];
-        DDLogInfo(@"[SettingsTVC] Auth token cleared by user");
+        NSString *postResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
+        NSURL *postResetWebAppURL = postResetWebAppStr.length > 0 ? [NSURL URLWithString:postResetWebAppStr] : nil;
+        if (preResetWebAppURL) {
+            [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:preResetWebAppURL];
+        }
+        if (postResetWebAppURL) {
+            [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:postResetWebAppURL];
+        }
+
+        [Settings setNeedsWebProvisioning:YES];
+
+        ad.configLoad = [NSDate date];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
+
+        [self updated];
+        [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
+        [self reconnect];
+        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksWebAppShouldReloadNotification object:nil];
+        DDLogInfo(@"[SettingsTVC] User reset preferences to bundled defaults");
+        DDLogInfo(@"[Provisioning] after reset: %@", [Settings webProvisioningDebugSummaryInMOC:moc]);
     }]];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"Cancel button")
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
 
     [self presentViewController:alert animated:YES completion:nil];
 }

@@ -24,8 +24,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// All plausible Keychain base URLs to try (preference path, `/map`, and `/`). Tokens may be stored under any of these depending on Web App URL settings and login flow.
 + (NSArray<NSURL *> *)webAppKeychainURLCandidatesFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 
+/// Same candidate list as `webAppKeychainURLCandidatesFromPreferenceInMOC:` but derived from an explicit configured URL (e.g. captured before a settings reset).
++ (NSArray<NSURL *> *)webAppKeychainURLCandidatesForUserConfiguredURL:(NSURL *)userURL;
+
 /// GET {origin}/api/location?showTeslaBeacons=false
 + (nullable NSURL *)locationAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
+
+/// POST {origin}/api/config/provision (same origin as location API).
++ (nullable NSURL *)configProvisionAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 
 @end
 

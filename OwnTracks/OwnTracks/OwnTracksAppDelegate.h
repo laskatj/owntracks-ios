@@ -56,5 +56,7 @@
 - (void)syncProcessing;
 - (void)configFromDictionary:(NSDictionary * _Nonnull)json;
 - (BOOL)processNSURL:(NSURL * _Nonnull)url;
+/// Handles `owntracks://` and `sauron://` URLs (beacon, config, auth callback). Used from `application:openURL:` and from `WebAppViewController` when WKWebView navigates to those schemes.
+- (BOOL)handleOwnTracksSchemeURL:(NSURL * _Nonnull)url;
 
 @end

@@ -141,6 +141,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
               launchOptions);
     
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
+    [Settings migrateWebProvisioningFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
     
     [self setShortcutItems];
     
@@ -355,6 +356,112 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
 }
 
+- (BOOL)handleOwnTracksSchemeURL:(NSURL *)url {
+    DDLogVerbose(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL path %@ query %@", url.path, url.query);
+
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:TRUE];
+    NSArray<NSURLQueryItem *> *items = [components queryItems];
+    NSMutableDictionary *queryStrings = [[NSMutableDictionary alloc] init];
+    for (NSURLQueryItem *item in items) {
+        queryStrings[item.name] = item.value;
+    }
+
+    if ([url.path isEqualToString:@"/beacon"]) {
+        NSString *rid = queryStrings[@"rid"];
+        NSString *name = queryStrings[@"name"];
+        NSString *uuid = queryStrings[@"uuid"];
+        int major = [queryStrings[@"major"] intValue];
+        int minor = [queryStrings[@"minor"] intValue];
+
+        if (!rid) {
+            rid = Region.newRid;
+        }
+
+        NSString *desc = [NSString stringWithFormat:@"%@:%@%@%@",
+                          name,
+                          uuid,
+                          major ? [NSString stringWithFormat:@":%d", major] : @"",
+                          minor ? [NSString stringWithFormat:@":%d", minor] : @""
+        ];
+
+        [Settings waypointsFromDictionary:
+         @{@"_type":@"waypoints",
+           @"waypoints":@[@{@"_type":@"waypoint",
+                            @"rid":rid,
+                            @"desc":desc,
+                            @"tst":@((int)round(([NSDate date].timeIntervalSince1970))),
+                            @"lat":@([LocationManager sharedInstance].location.coordinate.latitude),
+                            @"lon":@([LocationManager sharedInstance].location.coordinate.longitude),
+                            @"rad":@(-1)
+           }]
+         } inMOC:CoreData.sharedInstance.mainMOC];
+        [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
+        self.processingMessage = NSLocalizedString(@"Beacon QR successfully processed",
+                                                   @"Display after processing beacon QR code");
+        DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL ok %@", self.processingMessage);
+        return TRUE;
+    } else if ([url.path isEqualToString:@"/config"]) {
+        NSString *urlString = queryStrings[@"url"];
+        NSString *base64String = queryStrings[@"inline"];
+        if (urlString) {
+            NSURL *urlFromString = [NSURL URLWithString:urlString];
+            return [self processNSURL:urlFromString];
+        } else if (base64String) {
+            NSData *jsonData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
+            if (jsonData) {
+                NSDictionary *dict = nil;
+                id json = [[Validation sharedInstance] validateMessageData:jsonData];
+                if (json &&
+                    [json isKindOfClass:[NSDictionary class]]) {
+                    dict = json;
+                }
+                if (dict) {
+                    [self performSelectorOnMainThread:@selector(terminateSession)
+                                           withObject:nil
+                                        waitUntilDone:TRUE];
+                    [self performSelectorOnMainThread:@selector(configFromDictionary:)
+                                           withObject:dict
+                                        waitUntilDone:TRUE];
+                    self.configLoad = [NSDate date];
+                    [self performSelectorOnMainThread:@selector(reconnect)
+                                           withObject:nil
+                                        waitUntilDone:TRUE];
+
+                    self.processingMessage = NSLocalizedString(@"Inline Configuration successfully processed",
+                                                               @"Display after processing inline config");
+                    DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL ok %@", self.processingMessage);
+                    return TRUE;
+                } else {
+                    self.processingMessage = NSLocalizedString(@"Inline Configuration incorrect",
+                                                               @"Display for incorrect inline config");
+                    DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL problem %@", self.processingMessage);
+                    return FALSE;
+                }
+            } else {
+                self.processingMessage = NSLocalizedString(@"Inline Configuration incorrectly encoded",
+                                                           @"Display for incorrectly encoded inline config");
+                DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL problem %@", self.processingMessage);
+                return FALSE;
+            }
+        }
+        self.processingMessage = NSLocalizedString(@"Inline Configuration missing parameters",
+                                                   @"Display for config without parameters");
+        DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL problem %@", self.processingMessage);
+        return FALSE;
+    } else if ([url.path isEqualToString:@"/auth/callback"]) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"WebAppAuthCallbackURL"
+                                                            object:nil
+                                                          userInfo:@{ @"url": url }];
+        DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL auth/callback delivered to WebAppAuthHelper");
+        return TRUE;
+    } else {
+        self.processingMessage = NSLocalizedString(@"unknown url path",
+                                                   @"Display for unknown url path");
+        DDLogInfo(@"[OwnTracksAppDelegate] handleOwnTracksSchemeURL problem %@", self.processingMessage);
+        return FALSE;
+    }
+}
+
 -(BOOL)application:(UIApplication *)app
            openURL:(NSURL *)url
            options:(NSDictionary<NSString *,id> *)options {
@@ -364,109 +471,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
         DDLogVerbose(@"[OwnTracksAppDelegate] URL scheme %@", url.scheme);
         
         if ([url.scheme isEqualToString:@"owntracks"] || [url.scheme isEqualToString:@"sauron"]) {
-            DDLogVerbose(@"[OwnTracksAppDelegate] URL path %@ query %@", url.path, url.query);
-            
-            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:TRUE];
-            NSArray<NSURLQueryItem *> *items = [components queryItems];
-            NSMutableDictionary *queryStrings = [[NSMutableDictionary alloc] init];
-            for (NSURLQueryItem *item in items) {
-                queryStrings[item.name] = item.value;
-            }
-            
-            if ([url.path isEqualToString:@"/beacon"]) {
-                NSString *rid = queryStrings[@"rid"];
-                NSString *name = queryStrings[@"name"];
-                NSString *uuid = queryStrings[@"uuid"];
-                int major = [queryStrings[@"major"] intValue];
-                int minor = [queryStrings[@"minor"] intValue];
-                
-                if (!rid) {
-                    rid = Region.newRid;
-                }
-                
-                NSString *desc = [NSString stringWithFormat:@"%@:%@%@%@",
-                                  name,
-                                  uuid,
-                                  major ? [NSString stringWithFormat:@":%d", major] : @"",
-                                  minor ? [NSString stringWithFormat:@":%d", minor] : @""
-                ];
-                
-                [Settings waypointsFromDictionary:
-                 @{@"_type":@"waypoints",
-                   @"waypoints":@[@{@"_type":@"waypoint",
-                                    @"rid":rid,
-                                    @"desc":desc,
-                                    @"tst":@((int)round(([NSDate date].timeIntervalSince1970))),
-                                    @"lat":@([LocationManager sharedInstance].location.coordinate.latitude),
-                                    @"lon":@([LocationManager sharedInstance].location.coordinate.longitude),
-                                    @"rad":@(-1)
-                   }]
-                 } inMOC:CoreData.sharedInstance.mainMOC];
-                [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
-                self.processingMessage = NSLocalizedString(@"Beacon QR successfully processed",
-                                                           @"Display after processing beacon QR code");
-                DDLogInfo(@"[OwnTracksAppDelegate] openURL ok %@", self.processingMessage);
-                return TRUE;
-            } else if ([url.path isEqualToString:@"/config"]) {
-                NSString *urlString = queryStrings[@"url"];
-                NSString *base64String = queryStrings[@"inline"];
-                if (urlString) {
-                    NSURL *urlFromString = [NSURL URLWithString:urlString];
-                    return [self processNSURL:urlFromString];
-                } else if (base64String) {
-                    NSData *jsonData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
-                    if (jsonData) {
-                        NSDictionary *dict = nil;
-                        id json = [[Validation sharedInstance] validateMessageData:jsonData];
-                        if (json &&
-                            [json isKindOfClass:[NSDictionary class]]) {
-                            dict = json;
-                        }
-                        if (dict) {
-                            [self performSelectorOnMainThread:@selector(terminateSession)
-                                                   withObject:nil
-                                                waitUntilDone:TRUE];
-                            [self performSelectorOnMainThread:@selector(configFromDictionary:)
-                                                   withObject:dict
-                                                waitUntilDone:TRUE];
-                            self.configLoad = [NSDate date];
-                            [self performSelectorOnMainThread:@selector(reconnect)
-                                                   withObject:nil
-                                                waitUntilDone:TRUE];
-                            
-                            self.processingMessage = NSLocalizedString(@"Inline Configuration successfully processed",
-                                                                       @"Display after processing inline config");
-                            DDLogInfo(@"[OwnTracksAppDelegate] openURL ok %@", self.processingMessage);
-                            return TRUE;
-                        } else {
-                            self.processingMessage = NSLocalizedString(@"Inline Configuration incorrect",
-                                                                       @"Display for incorrect inline config");
-                            DDLogInfo(@"[OwnTracksAppDelegate] openURL problem %@", self.processingMessage);
-                            return FALSE;
-                        }
-                    } else {
-                        self.processingMessage = NSLocalizedString(@"Inline Configuration incorrectly encoded",
-                                                                   @"Display for incorrectly encoded inline config");
-                        DDLogInfo(@"[OwnTracksAppDelegate] openURL problem %@", self.processingMessage);
-                        return FALSE;
-                    }
-                }
-                self.processingMessage = NSLocalizedString(@"Inline Configuration missing parameters",
-                                                           @"Display for config without parameters");
-                DDLogInfo(@"[OwnTracksAppDelegate] openURL problem %@", self.processingMessage);
-                return FALSE;
-            } else if ([url.path isEqualToString:@"/auth/callback"]) {
-                [[NSNotificationCenter defaultCenter] postNotificationName:@"WebAppAuthCallbackURL"
-                                                                    object:nil
-                                                                  userInfo:@{ @"url": url }];
-                DDLogInfo(@"[OwnTracksAppDelegate] openURL auth/callback delivered to WebAppAuthHelper");
-                return TRUE;
-            } else {
-                self.processingMessage = NSLocalizedString(@"unknown url path",
-                                                           @"Display for unknown url path");
-                DDLogInfo(@"[OwnTracksAppDelegate] openURL problem %@", self.processingMessage);
-                return FALSE;
-            }
+            return [self handleOwnTracksSchemeURL:url];
         } else if ([url.scheme isEqualToString:@"file"]) {
             return [self processFile:url];
         } else if ([url.scheme isEqualToString:@"http"] ||
@@ -587,17 +592,44 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 }
 
 - (void)configFromDictionary:(NSDictionary *)json {
-    NSError *error = [Settings fromDictionary:json inMOC:CoreData.sharedInstance.mainMOC];
+    NSMutableDictionary *payload = json.count
+        ? [NSMutableDictionary dictionaryWithDictionary:json]
+        : [NSMutableDictionary dictionary];
+    id typeObj = payload[@"_type"];
+    NSString *typeStr = ([typeObj isKindOfClass:[NSString class]] ? (NSString *)typeObj : nil);
+    if (!typeStr.length) {
+        payload[@"_type"] = @"configuration";
+    }
+    NSArray *sortedKeys = [payload.allKeys sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)];
+    if (!typeStr.length) {
+        DDLogInfo(@"[Provisioning] configFromDictionary: had no _type — set _type=configuration (key count=%lu keys=%@)",
+                  (unsigned long)payload.count,
+                  [sortedKeys componentsJoinedByString:@","]);
+    } else {
+        DDLogInfo(@"[Provisioning] configFromDictionary: _type=%@ key count=%lu keys=%@",
+                  typeStr,
+                  (unsigned long)payload.count,
+                  [sortedKeys componentsJoinedByString:@","]);
+    }
+
+    NSError *error = [Settings fromDictionary:payload inMOC:CoreData.sharedInstance.mainMOC];
+    [Settings markWebProvisioningSatisfiedAfterApplyingConfigurationDictionary:payload error:error];
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
 
     if (error) {
+        DDLogError(@"[Provisioning] configFromDictionary: FAILED %@", error);
         [NavigationController alert:@"processNSURL"
                             message:
              [NSString stringWithFormat:@"configFromDictionary %@ %@",
               error,
-              json]
+              payload]
         ];
+    } else {
+        NSString *hostAfter = [Settings theHostInMOC:CoreData.sharedInstance.mainMOC] ?: @"(nil)";
+        DDLogInfo(@"[Provisioning] configFromDictionary: OK — theHostInMOC=%@ summary=%@",
+                  hostAfter,
+                  [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
     }
 }
 
@@ -642,6 +674,12 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
     if ([extension isEqualToString:@"otrc"] || [extension isEqualToString:@"mqtc"]) {
         [self terminateSession];
         error = [Settings fromStream:input inMOC:CoreData.sharedInstance.mainMOC];
+        if (!error) {
+            DDLogInfo(@"[Provisioning] processFile otrc/mqtc: configuration import OK — clearing needs_web_provisioning");
+            [Settings setNeedsWebProvisioning:NO];
+        } else {
+            DDLogWarn(@"[Provisioning] processFile otrc/mqtc: import error %@", error);
+        }
         [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
         self.configLoad = [NSDate date];
@@ -1544,14 +1582,25 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
 - (void)performSetConfiguration:(NSDictionary *)dictionary {
     NSDictionary *configuration = dictionary[@"configuration"];
     if (configuration && [configuration isKindOfClass:[NSDictionary class]]) {
-        NSError *error = [Settings fromDictionary:configuration
+        NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:configuration];
+        id existingType = payload[@"_type"];
+        BOOL isConfigurationType = [existingType isKindOfClass:[NSString class]] &&
+                                   [(NSString *)existingType isEqualToString:@"configuration"];
+        if (!isConfigurationType) {
+            payload[@"_type"] = @"configuration";
+        }
+        NSError *error = [Settings fromDictionary:payload
                                             inMOC:CoreData.sharedInstance.mainMOC];
+        [Settings markWebProvisioningSatisfiedAfterApplyingConfigurationDictionary:payload error:error];
 
         if (error) {
-            DDLogError(@"[OwnTracksAppDelegate performSetConfiguration] error %@", error);
+            DDLogError(@"[Provisioning] performSetConfiguration: FAILED %@", error);
+        } else {
+            DDLogInfo(@"[Provisioning] performSetConfiguration: OK summary=%@",
+                      [Settings webProvisioningDebugSummaryInMOC:CoreData.sharedInstance.mainMOC]);
         }
     } else {
-        DDLogWarn(@"[OwnTracksAppDelegate performSetConfiguration] no valid configuration");
+        DDLogWarn(@"[Provisioning] performSetConfiguration: no valid configuration dictionary");
     }
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
