@@ -97,7 +97,13 @@ static NSString *RouteDebugPSTOrUnknown(id unixObj) {
 
 #define OSM TRUE
 
-/// Pinch-zoom should not pause course-up follow; other gestures (pan, rotate) still do.
+/// Shared active-state check for MapKit gesture recognizers we inspect below.
+static BOOL OTGestureIsActive(UIGestureRecognizer *gr) {
+    return gr.state == UIGestureRecognizerStateBegan ||
+           gr.state == UIGestureRecognizerStateChanged;
+}
+
+/// Pinch-zoom temporarily suspends follow recentering; other gestures still pause course-up follow.
 static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
     UIView *content = mapView.subviews.firstObject;
     if (!content) {
@@ -105,7 +111,7 @@ static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
     }
     BOOL anyActive = NO;
     for (UIGestureRecognizer *gr in content.gestureRecognizers) {
-        if (gr.state != UIGestureRecognizerStateBegan && gr.state != UIGestureRecognizerStateChanged) {
+        if (!OTGestureIsActive(gr)) {
             continue;
         }
         anyActive = YES;
@@ -125,7 +131,7 @@ static BOOL OTViewControllerRegionChangeIsPitchGestureOnly(MKMapView *mapView) {
     }
     BOOL anyActive = NO;
     for (UIGestureRecognizer *gr in content.gestureRecognizers) {
-        if (gr.state != UIGestureRecognizerStateBegan && gr.state != UIGestureRecognizerStateChanged) {
+        if (!OTGestureIsActive(gr)) {
             continue;
         }
         anyActive = YES;
@@ -1445,8 +1451,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     }
     UIView *mapContentView = mapView.subviews.firstObject;
     for (UIGestureRecognizer *gr in mapContentView.gestureRecognizers) {
-        if (gr.state == UIGestureRecognizerStateBegan ||
-            gr.state == UIGestureRecognizerStateChanged) {
+        if (OTGestureIsActive(gr)) {
             DDLogInfo(@"[Follow] map pan/rotate — stopFollowLink; pause course-up (keep selection + route)");
             [self stopFollowLink];
             self.followTemporarilySuspendedByGesture = NO;
@@ -1455,7 +1460,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                 MKMapCamera *cam = [self.mapView.camera copy];
                 cam.heading = 0.0;
                 cam.pitch = OTMaxFollowMapCameraPitch();
-                [self.mapView setCamera:cam animated:YES];
+                [self.mapView setCamera:cam animated:NO];
             }
             return;
         }
@@ -1621,6 +1626,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
 - (void)followTick:(CADisplayLink *)link {
     Friend *f = self.followEnabled ? self.followFriend : nil;
     if (!f) { [self stopFollowLink]; return; }
+    if (self.followTemporarilySuspendedByGesture) {
+        return;
+    }
     CLLocationCoordinate2D coord = f.coordinate;
     // Log every ~60 frames (≈1 s) so the console stays readable.
     static NSUInteger sFollowTickCount = 0;
@@ -1990,7 +1998,9 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
 - (void)applyFollow3DCameraToCoordinate:(CLLocationCoordinate2D)coord
                                 heading:(double)headingOrNAN
                      preserveUserAltitude:(BOOL)preserveUserAltitude {
-    if (!self.followEnabled || !self.followFriend || !CLLocationCoordinate2DIsValid(coord)) {
+    if (!self.followEnabled || !self.followFriend ||
+        self.followTemporarilySuspendedByGesture ||
+        !CLLocationCoordinate2DIsValid(coord)) {
         return;
     }
     MKMapCamera *cam = [self.mapView.camera copy];
@@ -2010,7 +2020,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
         cam.heading = OTNormalizeHeadingDegrees(headingOrNAN);
     }
     // else: NAN (stationary / no new heading) — keep `cam.heading` from the camera copy.
-    [self.mapView setCamera:cam animated:YES];
+    [self.mapView setCamera:cam animated:NO];
 }
 
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
@@ -2088,7 +2098,7 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
         double heading = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
         [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
 
-        if (self.followEnabled) {
+        if (self.followEnabled && !self.followTemporarilySuspendedByGesture) {
             [self applyFollow3DCameraToCoordinate:coord
                                           heading:heading
                                preserveUserAltitude:YES];
