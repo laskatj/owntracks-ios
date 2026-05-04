@@ -9,6 +9,16 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
+static NSString *TVFirstNonEmptyStringForKeys(NSDictionary *dict, NSArray<NSString *> *keys) {
+    for (NSString *key in keys) {
+        id obj = dict[key];
+        if ([obj isKindOfClass:[NSString class]] && [(NSString *)obj length] > 0) {
+            return (NSString *)obj;
+        }
+    }
+    return nil;
+}
+
 @implementation TVLocationAPIDevice
 @end
 
@@ -56,6 +66,8 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     d.deviceName = ([nameObj isKindOfClass:[NSString class]] && [(NSString *)nameObj length] > 0)
         ? (NSString *)nameObj
         : nil;
+
+    d.markerImageURLString = TVFirstNonEmptyStringForKeys(device, @[@"markerImage", @"markerImageUrl", @"markerImageURL", @"imageUrl", @"imageURL", @"avatarUrl", @"faceUrl"]);
 
     id ts = device[@"timestamp"];
     NSNumber *tst = [ts isKindOfClass:[NSNumber class]] ? (NSNumber *)ts : nil;
