@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) CLLocationCoordinate2D coordinate;
 @property (nonatomic) NSTimeInterval timestamp;
 @property (copy, nonatomic, nullable) NSString *routeAPIUser;
+@property (copy, nonatomic, nullable) NSString *markerImageURLString;
 @end
 
 @interface TVLocationDevicesFetcher : NSObject

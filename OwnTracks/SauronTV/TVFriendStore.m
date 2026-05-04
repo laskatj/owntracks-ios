@@ -32,6 +32,8 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mRawTimestamps;
 @property (strong, nonatomic) NSMutableSet<NSString *>                     *mAllowedTopics;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mAPIDeviceNames;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mMarkerImageURLs;
+@property (strong, nonatomic) NSMutableSet<NSString *>                     *mInFlightMarkerImageTopics;
 @end
 
 @implementation TVFriendStore
@@ -53,6 +55,8 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
         _mRawTimestamps  = [NSMutableDictionary dictionary];
         _mAllowedTopics  = [NSMutableSet set];
         _mAPIDeviceNames = [NSMutableDictionary dictionary];
+        _mMarkerImageURLs = [NSMutableDictionary dictionary];
+        _mInFlightMarkerImageTopics = [NSMutableSet set];
     }
     return self;
 }
@@ -133,6 +137,7 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
 - (void)applyLocationAPIDevices:(NSArray<TVLocationAPIDevice *> *)devices {
     NSMutableSet<NSString *> *newAllowed = [NSMutableSet set];
     NSMutableDictionary<NSString *, NSString *> *newNames = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSString *> *newMarkerImageURLs = [NSMutableDictionary dictionary];
 
     for (TVLocationAPIDevice *d in devices) {
         if (!d.mqttTopic.length) {
@@ -142,11 +147,16 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
         if (d.deviceName.length) {
             newNames[d.mqttTopic] = d.deviceName;
         }
+        if (d.markerImageURLString.length) {
+            newMarkerImageURLs[d.mqttTopic] = d.markerImageURLString;
+        }
     }
 
     [self.mAllowedTopics setSet:newAllowed];
     [self.mAPIDeviceNames removeAllObjects];
+    [self.mMarkerImageURLs removeAllObjects];
     [self.mAPIDeviceNames addEntriesFromDictionary:newNames];
+    [self.mMarkerImageURLs addEntriesFromDictionary:newMarkerImageURLs];
 
     for (NSString *topic in [self.mTopics copy]) {
         if (![newAllowed containsObject:topic]) {
@@ -176,6 +186,8 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
         }
     }
 
+    [self fetchMissingMarkerImagesForDevices:devices];
+
     [self sortTopics];
 
     DDLogInfo(@"[TVFriendStore] applyLocationAPIDevices count=%lu allowed=%lu",
@@ -195,6 +207,8 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
     [self.mCoords removeObjectForKey:topic];
     [self.mRawTimestamps removeObjectForKey:topic];
     [self.mAPIDeviceNames removeObjectForKey:topic];
+    [self.mMarkerImageURLs removeObjectForKey:topic];
+    [self.mInFlightMarkerImageTopics removeObject:topic];
     NSURL *file = [[self cacheDirectory] URLByAppendingPathComponent:[self cacheFilenameForTopic:topic]];
     [[NSFileManager defaultManager] removeItemAtURL:file error:nil];
 }
@@ -406,6 +420,44 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
     if (err) {
         DDLogInfo(@"[TVFriendStore] cache write failed for %@: %@",
                   topic, err.localizedDescription);
+    }
+}
+
+
+- (void)fetchMissingMarkerImagesForDevices:(NSArray<TVLocationAPIDevice *> *)devices {
+    for (TVLocationAPIDevice *d in devices) {
+        NSString *topic = d.mqttTopic;
+        NSString *urlString = self.mMarkerImageURLs[topic];
+        if (!topic.length || !urlString.length || self.mImages[topic] || [self.mInFlightMarkerImageTopics containsObject:topic]) {
+            continue;
+        }
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!url) {
+            continue;
+        }
+        [self.mInFlightMarkerImageTopics addObject:topic];
+        __weak typeof(self) weakSelf = self;
+        [[[NSURLSession sharedSession] dataTaskWithURL:url
+                                     completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) self = weakSelf;
+                if (!self) return;
+                [self.mInFlightMarkerImageTopics removeObject:topic];
+                if (error || !data.length) {
+                    return;
+                }
+                UIImage *circular = [self circularImageFromData:data];
+                if (!circular) {
+                    return;
+                }
+                self.mImages[topic] = circular;
+                [self saveImageData:data forTopic:topic];
+                [[NSNotificationCenter defaultCenter]
+                    postNotificationName:TVFriendStoreDidUpdateNotification
+                                  object:nil
+                                userInfo:@{@"topic": topic, @"change": @"marker-image"}];
+            });
+        }] resume];
     }
 }
 
