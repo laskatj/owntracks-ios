@@ -38,6 +38,7 @@ typedef NS_ENUM(unsigned int, MQTTDecoderState) {
 }
 
 - (void)decodeMessage:(NSData *)data {
+    @synchronized(self) {
     NSInteger readHere = 0;
     while (self.state != MQTTDecoderStateInitializing &&
            data.length > readHere) {
@@ -120,8 +121,9 @@ typedef NS_ENUM(unsigned int, MQTTDecoderState) {
                            (unsigned long)self.dataBuffer.length,
                            [self.dataBuffer subdataWithRange:NSMakeRange(0, MIN(256, self.dataBuffer.length))]);
             }
-        }        
+        }
     }
+    } // @synchronized(self)
 }
 
 - (void)open {
