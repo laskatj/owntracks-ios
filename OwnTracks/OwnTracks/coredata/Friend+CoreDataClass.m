@@ -325,6 +325,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                        bs:(NSNumber *)bs
                  pressure:(NSNumber *)pressure
          motionActivities:(NSArray <NSString *> *)motionActivities
+                heartRate:(NSNumber *)heartRate
                  zoneName:(NSString *)zoneName
 {
     Waypoint *waypoint = [NSEntityDescription insertNewObjectForEntityForName:@"Waypoint"
@@ -371,6 +372,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     waypoint.m = m;
     waypoint.conn = conn;
     waypoint.pressure = pressure;
+    waypoint.heartRate = heartRate;
     if (motionActivities && [NSJSONSerialization isValidJSONObject:motionActivities]) {
         waypoint.motionActivities = [NSJSONSerialization dataWithJSONObject:motionActivities
                                                           options:0

@@ -150,6 +150,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>OwnTracks uses Bluetooth to connect to your heart rate sensor and include your current heart rate with location updates</string>
 	<key>NSCameraUsageDescription</key>
 	<string>OwnTracks uses your camera on request to create a Card</string>
 	<key>NSContactsUsageDescription</key>
@@ -180,6 +182,7 @@ No information of your address book will be uploaded to any server.</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>bluetooth-central</string>
 		<string>fetch</string>
 		<string>location</string>
 		<string>remote-notification</string>

@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSFetchRequest<Waypoint *> *)fetchRequest NS_SWIFT_NAME(fetchRequest());
 
 @property (nullable, nonatomic, copy) NSNumber *acc;
+@property (nullable, nonatomic, copy) NSNumber *heartRate;
 @property (nullable, nonatomic, copy) NSNumber *alt;
 @property (nullable, nonatomic, copy) NSNumber *batt;
 @property (nullable, nonatomic, copy) NSNumber *bs;
