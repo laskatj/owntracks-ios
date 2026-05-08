@@ -6,6 +6,7 @@
 #import "TVRecorderDeviceSignInViewController.h"
 #import "TVRecorderOAuthClient.h"
 #import "TVRecorderTokenStore.h"
+#import "TVHardcodedConfig.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 #import <CoreImage/CoreImage.h>
 
@@ -74,10 +75,38 @@ static UIImage *TVRecorderDeviceSignInQRImage(NSString *string, CGFloat sidePoin
     return img;
 }
 
+static NSURL *TVRecorderDeviceSignInCurrentUserURL(void) {
+    if (!kTVWebAppOriginURL.length) return nil;
+    NSURL *baseURL = [NSURL URLWithString:kTVWebAppOriginURL];
+    if (!baseURL) return nil;
+    return [NSURL URLWithString:@"api/authorization/user" relativeToURL:baseURL].absoluteURL;
+}
+
+static UIImage *TVRecorderDeviceSignInImageFromPictureDataURI(NSString *dataURI) {
+    if (![dataURI isKindOfClass:[NSString class]] || !dataURI.length) return nil;
+    NSRange comma = [dataURI rangeOfString:@","];
+    if (comma.location == NSNotFound || comma.location + 1 >= dataURI.length) return nil;
+    NSString *meta = [dataURI substringToIndex:comma.location].lowercaseString;
+    if (![meta containsString:@";base64"]) return nil;
+    NSString *encoded = [dataURI substringFromIndex:comma.location + 1];
+    NSData *imgData = [[NSData alloc] initWithBase64EncodedString:encoded options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    if (!imgData.length) return nil;
+    return [UIImage imageWithData:imgData];
+}
+
+static NSURL *TVRecorderDeviceSignInAvatarURLForPath(NSString *path) {
+    if (![path isKindOfClass:[NSString class]] || !path.length || !kTVWebAppOriginURL.length) return nil;
+    NSURL *baseURL = [NSURL URLWithString:kTVWebAppOriginURL];
+    if (!baseURL) return nil;
+    return [NSURL URLWithString:path relativeToURL:baseURL].absoluteURL;
+}
+
 @interface TVRecorderDeviceSignInViewController ()
 @property (copy, nonatomic) void (^finish)(BOOL success, NSError * _Nullable err);
 @property (strong, nonatomic) UILabel *titleLabel;
 @property (strong, nonatomic) UILabel *instructionLabel;
+@property (strong, nonatomic) UIImageView *profileImageView;
+@property (strong, nonatomic) UILabel *profileNameLabel;
 @property (strong, nonatomic) UIImageView *qrImageView;
 @property (strong, nonatomic) NSLayoutConstraint *qrHeightConstraint;
 @property (strong, nonatomic) UILabel *uriLabel;
@@ -122,6 +151,25 @@ static UIImage *TVRecorderDeviceSignInQRImage(NSString *string, CGFloat sidePoin
     _instructionLabel.numberOfLines = 0;
     _instructionLabel.text = @"Scan the QR code with your phone, or open the URL below and enter the code.";
     [self.view addSubview:_instructionLabel];
+
+    _profileImageView = [[UIImageView alloc] init];
+    _profileImageView.translatesAutoresizingMaskIntoConstraints = NO;
+    _profileImageView.contentMode = UIViewContentModeScaleAspectFill;
+    _profileImageView.clipsToBounds = YES;
+    _profileImageView.layer.cornerRadius = 52;
+    _profileImageView.layer.borderWidth = 2;
+    _profileImageView.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
+    _profileImageView.hidden = YES;
+    [self.view addSubview:_profileImageView];
+
+    _profileNameLabel = [[UILabel alloc] init];
+    _profileNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _profileNameLabel.textColor = [UIColor colorWithWhite:0.85 alpha:1];
+    _profileNameLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightSemibold];
+    _profileNameLabel.textAlignment = NSTextAlignmentCenter;
+    _profileNameLabel.numberOfLines = 1;
+    _profileNameLabel.hidden = YES;
+    [self.view addSubview:_profileNameLabel];
 
     _qrImageView = [[UIImageView alloc] init];
     _qrImageView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -168,7 +216,16 @@ static UIImage *TVRecorderDeviceSignInQRImage(NSString *string, CGFloat sidePoin
         [_instructionLabel.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
         [_instructionLabel.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
 
-        [_qrImageView.topAnchor constraintEqualToAnchor:_instructionLabel.bottomAnchor constant:24],
+        [_profileImageView.topAnchor constraintEqualToAnchor:_instructionLabel.bottomAnchor constant:20],
+        [_profileImageView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [_profileImageView.heightAnchor constraintEqualToConstant:104],
+        [_profileImageView.widthAnchor constraintEqualToConstant:104],
+
+        [_profileNameLabel.topAnchor constraintEqualToAnchor:_profileImageView.bottomAnchor constant:10],
+        [_profileNameLabel.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
+        [_profileNameLabel.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
+
+        [_qrImageView.topAnchor constraintEqualToAnchor:_profileNameLabel.bottomAnchor constant:24],
         [_qrImageView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [_qrImageView.widthAnchor constraintEqualToAnchor:_qrImageView.heightAnchor],
         [_qrImageView.widthAnchor constraintLessThanOrEqualToAnchor:g.widthAnchor multiplier:0.45],
@@ -186,6 +243,7 @@ static UIImage *TVRecorderDeviceSignInQRImage(NSString *string, CGFloat sidePoin
         [_cancelButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
     ]];
 
+    [self fetchCurrentUserProfileIfSignedIn];
     [self startDeviceFlowWithAuthorizationRetries:2];
 }
 
@@ -362,6 +420,95 @@ static UIImage *TVRecorderDeviceSignInQRImage(NSString *string, CGFloat sidePoin
     [self dismissViewControllerAnimated:YES completion:^{
         if (weak.finish) weak.finish(NO, err);
     }];
+}
+
+- (void)fetchCurrentUserProfileIfSignedIn {
+    NSString *token = [TVRecorderTokenStore accessToken];
+    if ([TVRecorderTokenStore hasUsableAccessToken] && token.length) {
+        [self fetchCurrentUserProfileUsingToken:token retryOnUnauthorized:YES];
+        return;
+    }
+    if (![TVRecorderTokenStore refreshToken].length) return;
+    __weak typeof(self) weak = self;
+    [[TVRecorderOAuthClient shared] refreshAccessTokenWithCompletion:^(NSString * _Nullable accessToken,
+                                                                       NSError * _Nullable error) {
+        if (!accessToken.length) {
+            DDLogInfo(@"[TVRecorderDeviceSignIn] profile refresh skipped: %@", error.localizedDescription ?: @"unknown");
+            return;
+        }
+        __strong typeof(weak) selfStrong = weak;
+        if (!selfStrong || selfStrong.cancelled) return;
+        [selfStrong fetchCurrentUserProfileUsingToken:accessToken retryOnUnauthorized:NO];
+    }];
+}
+
+- (void)fetchCurrentUserProfileUsingToken:(NSString *)token retryOnUnauthorized:(BOOL)allowRetry {
+    NSURL *url = TVRecorderDeviceSignInCurrentUserURL();
+    if (!url) return;
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"GET";
+    [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+    __weak typeof(self) weak = self;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req
+                                     completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+        if (err || !data.length) return;
+        NSHTTPURLResponse *http = [resp isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)resp : nil;
+        if (http.statusCode == 401 && allowRetry && [TVRecorderTokenStore refreshToken].length) {
+            [[TVRecorderOAuthClient shared] refreshAccessTokenWithCompletion:^(NSString * _Nullable freshToken,
+                                                                               NSError * _Nullable refreshErr) {
+                if (!freshToken.length) {
+                    DDLogInfo(@"[TVRecorderDeviceSignIn] profile 401 refresh failed: %@",
+                              refreshErr.localizedDescription ?: @"unknown");
+                    return;
+                }
+                __strong typeof(weak) selfStrong = weak;
+                if (!selfStrong || selfStrong.cancelled) return;
+                [selfStrong fetchCurrentUserProfileUsingToken:freshToken retryOnUnauthorized:NO];
+            }];
+            return;
+        }
+        if (http.statusCode < 200 || http.statusCode >= 300) return;
+        NSError *jsonErr = nil;
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        if (jsonErr || ![obj isKindOfClass:[NSDictionary class]]) return;
+        NSDictionary *user = (NSDictionary *)obj;
+        NSString *picture = [user[@"picture"] isKindOfClass:[NSString class]] ? user[@"picture"] : nil;
+        UIImage *avatar = TVRecorderDeviceSignInImageFromPictureDataURI(picture);
+        NSString *displayName = [user[@"displayName"] isKindOfClass:[NSString class]] ? user[@"displayName"] : nil;
+        NSString *userImagePath = [user[@"userImage"] isKindOfClass:[NSString class]] ? user[@"userImage"] : nil;
+
+        void (^applyAvatar)(UIImage *) = ^(UIImage *img) {
+            if (!img) return;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weak) selfStrong = weak;
+                if (!selfStrong || selfStrong.cancelled) return;
+                selfStrong.profileImageView.image = img;
+                selfStrong.profileImageView.hidden = NO;
+                selfStrong.profileNameLabel.text = displayName.length ? displayName : @"Signed in";
+                selfStrong.profileNameLabel.hidden = NO;
+            });
+        };
+
+        if (avatar) {
+            applyAvatar(avatar);
+            return;
+        }
+
+        NSURL *avatarURL = TVRecorderDeviceSignInAvatarURLForPath(userImagePath);
+        if (!avatarURL) return;
+        NSMutableURLRequest *imgReq = [NSMutableURLRequest requestWithURL:avatarURL];
+        imgReq.HTTPMethod = @"GET";
+        [imgReq setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+        [[[NSURLSession sharedSession] dataTaskWithRequest:imgReq
+                                         completionHandler:^(NSData *imgData, NSURLResponse *imgResp, NSError *imgErr) {
+            if (imgErr || !imgData.length) return;
+            NSHTTPURLResponse *imgHTTP = [imgResp isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)imgResp : nil;
+            if (imgHTTP.statusCode < 200 || imgHTTP.statusCode >= 300) return;
+            UIImage *remoteAvatar = [UIImage imageWithData:imgData];
+            applyAvatar(remoteAvatar);
+        }] resume];
+    }] resume];
 }
 
 @end

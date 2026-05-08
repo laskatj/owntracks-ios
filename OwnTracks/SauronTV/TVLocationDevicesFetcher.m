@@ -67,7 +67,12 @@ static NSString *TVFirstNonEmptyStringForKeys(NSDictionary *dict, NSArray<NSStri
         ? (NSString *)nameObj
         : nil;
 
-    d.markerImageURLString = TVFirstNonEmptyStringForKeys(device, @[@"markerImage", @"markerImageUrl", @"markerImageURL", @"imageUrl", @"imageURL", @"avatarUrl", @"faceUrl"]);
+    d.markerImageURLString = TVFirstNonEmptyStringForKeys(device, @[
+        @"deviceImage", @"deviceImageURL",
+        @"markerImage", @"markerImageUrl", @"markerImageURL",
+        @"imageUrl", @"imageURL",
+        @"avatarUrl", @"faceUrl"
+    ]);
 
     id ts = device[@"timestamp"];
     NSNumber *tst = [ts isKindOfClass:[NSNumber class]] ? (NSNumber *)ts : nil;

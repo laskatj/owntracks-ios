@@ -883,7 +883,9 @@ static double OTClampDouble(double value, double minValue, double maxValue) {
             ann.subtitle = store.friendTimes[topic];
         }
 
-    } else if ([change isEqualToString:@"image"] || [change isEqualToString:@"card"]) {
+    } else if ([change isEqualToString:@"image"]
+               || [change isEqualToString:@"card"]
+               || [change isEqualToString:@"marker-image"]) {
         TVFriendAnnotation *ann = self.annotations[topic];
         if (ann) {
             ann.title = [TVFriendStore shared].friendLabels[topic] ?: [topic lastPathComponent];

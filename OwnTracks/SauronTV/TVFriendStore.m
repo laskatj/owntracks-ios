@@ -5,6 +5,9 @@
 
 #import "TVFriendStore.h"
 #import "TVLocationDevicesFetcher.h"
+#import "TVHardcodedConfig.h"
+#import "TVRecorderOAuthClient.h"
+#import "TVRecorderTokenStore.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
@@ -424,41 +427,116 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
 }
 
 
+- (nullable NSURL *)resolvedMarkerImageURLFromString:(NSString *)urlString {
+    if (!urlString.length) {
+        return nil;
+    }
+    NSURL *absolute = [NSURL URLWithString:urlString];
+    if (absolute.scheme.length > 0 && absolute.host.length > 0) {
+        return absolute;
+    }
+    NSURL *origin = [NSURL URLWithString:kTVWebAppOriginURL];
+    if (!origin) {
+        return nil;
+    }
+
+    NSURLComponents *originComponents = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    NSURLComponents *relativeComponents = [NSURLComponents componentsWithString:urlString];
+    NSString *relativePath = relativeComponents.path.length ? relativeComponents.path : urlString;
+    if (![relativePath hasPrefix:@"/"]) {
+        relativePath = [@"/" stringByAppendingString:relativePath];
+    }
+    originComponents.path = relativePath;
+    originComponents.query = relativeComponents.query;
+    return originComponents.URL;
+}
+
+- (void)resolveMarkerImageAccessTokenWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    if (kTVWebAppBearerToken.length) {
+        completion(kTVWebAppBearerToken);
+        return;
+    }
+    if ([TVRecorderTokenStore hasUsableAccessToken]) {
+        completion([TVRecorderTokenStore accessToken]);
+        return;
+    }
+    if (![TVRecorderTokenStore refreshToken].length) {
+        completion(nil);
+        return;
+    }
+
+    [[TVRecorderOAuthClient shared] refreshAccessTokenWithCompletion:^(NSString * _Nullable accessToken, NSError * _Nullable error) {
+        if (error) {
+            DDLogInfo(@"[TVFriendStore] marker image token refresh failed: %@", error.localizedDescription);
+        }
+        completion(accessToken);
+    }];
+}
+
+- (void)fetchMarkerImageAtURL:(NSURL *)url topic:(NSString *)topic accessToken:(NSString * _Nullable)token {
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    request.timeoutInterval = 30.0;
+    if (token.length) {
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+    }
+
+    __weak typeof(self) weakSelf = self;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request
+                                     completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            [self.mInFlightMarkerImageTopics removeObject:topic];
+
+            NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+            if (error || status < 200 || status >= 300 || !data.length) {
+                return;
+            }
+
+            UIImage *circular = [self circularImageFromData:data];
+            if (!circular) {
+                return;
+            }
+            self.mImages[topic] = circular;
+            [self saveImageData:data forTopic:topic];
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:TVFriendStoreDidUpdateNotification
+                              object:nil
+                            userInfo:@{@"topic": topic, @"change": @"marker-image"}];
+        });
+    }] resume];
+}
+
 - (void)fetchMissingMarkerImagesForDevices:(NSArray<TVLocationAPIDevice *> *)devices {
+    NSMutableArray<NSDictionary<NSString *, id> *> *pendingFetches = [NSMutableArray array];
     for (TVLocationAPIDevice *d in devices) {
         NSString *topic = d.mqttTopic;
         NSString *urlString = self.mMarkerImageURLs[topic];
         if (!topic.length || !urlString.length || self.mImages[topic] || [self.mInFlightMarkerImageTopics containsObject:topic]) {
             continue;
         }
-        NSURL *url = [NSURL URLWithString:urlString];
+        NSURL *url = [self resolvedMarkerImageURLFromString:urlString];
         if (!url) {
             continue;
         }
         [self.mInFlightMarkerImageTopics addObject:topic];
-        __weak typeof(self) weakSelf = self;
-        [[[NSURLSession sharedSession] dataTaskWithURL:url
-                                     completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(weakSelf) self = weakSelf;
-                if (!self) return;
-                [self.mInFlightMarkerImageTopics removeObject:topic];
-                if (error || !data.length) {
-                    return;
-                }
-                UIImage *circular = [self circularImageFromData:data];
-                if (!circular) {
-                    return;
-                }
-                self.mImages[topic] = circular;
-                [self saveImageData:data forTopic:topic];
-                [[NSNotificationCenter defaultCenter]
-                    postNotificationName:TVFriendStoreDidUpdateNotification
-                                  object:nil
-                                userInfo:@{@"topic": topic, @"change": @"marker-image"}];
-            });
-        }] resume];
+        [pendingFetches addObject:@{@"topic": topic, @"url": url}];
     }
+
+    if (!pendingFetches.count) {
+        return;
+    }
+    [self resolveMarkerImageAccessTokenWithCompletion:^(NSString * _Nullable token) {
+        for (NSDictionary<NSString *, id> *entry in pendingFetches) {
+            NSString *topic = entry[@"topic"];
+            NSURL *url = entry[@"url"];
+            if (!topic.length || ![url isKindOfClass:[NSURL class]]) {
+                continue;
+            }
+            [self fetchMarkerImageAtURL:url topic:topic accessToken:token];
+        }
+    }];
 }
 
 @end
