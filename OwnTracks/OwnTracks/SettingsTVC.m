@@ -92,6 +92,50 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
++ (void)performFullResetToBundledDefaultsFromPresenter:(UIViewController *)presenter
+                                               animated:(BOOL)animated
+                                             completion:(void (^)(void))completion {
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+    NSString *preResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
+    NSURL *preResetWebAppURL = preResetWebAppStr.length > 0 ? [NSURL URLWithString:preResetWebAppStr] : nil;
+
+    [ad terminateSession];
+    [Settings resetStoredPreferencesToBundledDefaultsInMOC:moc];
+
+    NSString *postResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
+    NSURL *postResetWebAppURL = postResetWebAppStr.length > 0 ? [NSURL URLWithString:postResetWebAppStr] : nil;
+    if (preResetWebAppURL) {
+        [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:preResetWebAppURL];
+    }
+    if (postResetWebAppURL) {
+        [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:postResetWebAppURL];
+    }
+
+    [Settings setNeedsWebProvisioning:YES];
+
+    ad.configLoad = [NSDate date];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
+    [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
+
+    if ([presenter respondsToSelector:@selector(reconnect)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [presenter performSelector:@selector(reconnect)];
+#pragma clang diagnostic pop
+    } else {
+        [ad connectionOff];
+        [ad syncProcessing];
+        [ad reconnect];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksWebAppShouldReloadNotification object:nil];
+    DDLogInfo(@"[SettingsTVC] User reset preferences to bundled defaults");
+    DDLogInfo(@"[Provisioning] after reset: %@", [Settings webProvisioningDebugSummaryInMOC:moc]);
+    if (completion) {
+        completion();
+    }
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
 
@@ -1366,34 +1410,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
     NSString *resetTitle = NSLocalizedString(@"Reset", @"Settings: confirm reset to defaults");
     [alert addAction:[UIAlertAction actionWithTitle:resetTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-        NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
-        OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
-        NSString *preResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
-        NSURL *preResetWebAppURL = preResetWebAppStr.length > 0 ? [NSURL URLWithString:preResetWebAppStr] : nil;
-
-        [ad terminateSession];
-        [Settings resetStoredPreferencesToBundledDefaultsInMOC:moc];
-
-        NSString *postResetWebAppStr = [Settings stringForKey:@"webappurl_preference" inMOC:moc];
-        NSURL *postResetWebAppURL = postResetWebAppStr.length > 0 ? [NSURL URLWithString:postResetWebAppStr] : nil;
-        if (preResetWebAppURL) {
-            [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:preResetWebAppURL];
-        }
-        if (postResetWebAppURL) {
-            [[WebAppAuthHelper sharedInstance] clearStoredTokensForOrigin:postResetWebAppURL];
-        }
-
-        [Settings setNeedsWebProvisioning:YES];
-
-        ad.configLoad = [NSDate date];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
-
-        [self updated];
-        [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
-        [self reconnect];
-        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksWebAppShouldReloadNotification object:nil];
-        DDLogInfo(@"[SettingsTVC] User reset preferences to bundled defaults");
-        DDLogInfo(@"[Provisioning] after reset: %@", [Settings webProvisioningDebugSummaryInMOC:moc]);
+        [SettingsTVC performFullResetToBundledDefaultsFromPresenter:self
+                                                           animated:YES
+                                                         completion:^{
+            [self updated];
+        }];
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"Cancel button")

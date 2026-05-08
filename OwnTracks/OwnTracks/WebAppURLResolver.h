@@ -33,6 +33,28 @@ NS_ASSUME_NONNULL_BEGIN
 /// POST {origin}/api/config/provision (same origin as location API).
 + (nullable NSURL *)configProvisionAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 
+/// GET {origin}/api/geolocationcache
++ (nullable NSURL *)geolocationCacheAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
+
+/// {origin}{relativePath} for geolocation cache mutation endpoints.
++ (nullable NSURL *)geolocationCacheAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                  relativePath:(NSString *)relativePath
+                                                    queryItems:(nullable NSArray<NSURLQueryItem *> *)queryItems;
+
+/// GET {origin}/api/notifications?skip=...&take=...&includeRead=...&type=...
++ (nullable NSURL *)notificationsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                             skip:(NSInteger)skip
+                                                             take:(NSInteger)take
+                                                      includeRead:(BOOL)includeRead
+                                                             type:(nullable NSString *)type;
+
+/// GET {origin}/api/notifications/unread-count
++ (nullable NSURL *)notificationsUnreadCountAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
+
+/// {origin}{relativePath} for notification mutation endpoints.
++ (nullable NSURL *)notificationsAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                               relativePath:(NSString *)relativePath;
+
 @end
 
 NS_ASSUME_NONNULL_END

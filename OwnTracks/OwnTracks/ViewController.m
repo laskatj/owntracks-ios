@@ -23,6 +23,8 @@
 #import "OwnTracking.h"
 #import "LocationAPISyncService.h"
 #import "WebAppURLResolver.h"
+#import "WebAppViewController.h"
+#import "SettingsTVC.h"
 #import "Settings.h"
 #import "OTMapFollowHeading.h"
 
@@ -224,6 +226,14 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (strong, nonatomic) MKScaleView *scaleView;
 @property (strong, nonatomic) MKCompassButton *compassButton;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *askForMapButton;
+@property (strong, nonatomic) UIBarButtonItem *bellBarButton;
+@property (strong, nonatomic) UIBarButtonItem *avatarBarButton;
+@property (strong, nonatomic) UIBarButtonItem *rightControlsBarButton;
+@property (strong, nonatomic) UIButton *bellButton;
+@property (strong, nonatomic) UILabel *bellBadgeLabel;
+@property (strong, nonatomic) UIButton *avatarButton;
+@property (strong, nonatomic) NSArray<UIBarButtonItem *> *baseLeftBarItems;
+@property (nonatomic) BOOL profileAvatarFetchInFlight;
 @property (nonatomic) BOOL warning;
 #if OSM
 @property (strong, nonatomic) MKTileOverlayRenderer *osmRenderer;
@@ -258,6 +268,9 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, strong) UIButton *followToggleButton;
 /// Horizontal stack: route window clock, follow bullseye (to the right of `MKUserTrackingButton` when present).
 @property (nonatomic, strong) UIStackView *mapRouteFollowStack;
+/// Transient overlay/annotation for Locations tab selection.
+@property (nonatomic, strong, nullable) MKCircle *selectedLocationZoneOverlay;
+@property (nonatomic, strong, nullable) MKPointAnnotation *selectedLocationZoneAnnotation;
 /// Active positional constraints for `mapRouteFollowStack` (rebuilt when `trackingButton` appears or is removed).
 @property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *mapRouteFollowStackLayoutConstraints;
 /// One-shot debug payload for the next `rebuildLiveTrackForTopic:` after a route GET merges (REST window vs API tst).
@@ -274,8 +287,39 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @implementation ViewController
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
+static NSInteger const kInboxTabTag = 111;
+
+static UIImage *OTImageFromDataURLString(NSString *candidate) {
+    if (![candidate isKindOfClass:[NSString class]] || candidate.length == 0) {
+        return nil;
+    }
+    if (![candidate hasPrefix:@"data:image"]) {
+        return nil;
+    }
+    NSRange commaRange = [candidate rangeOfString:@","];
+    if (commaRange.location == NSNotFound || commaRange.location + 1 >= candidate.length) {
+        return nil;
+    }
+    NSString *payload = [candidate substringFromIndex:commaRange.location + 1];
+    NSData *decoded = [[NSData alloc] initWithBase64EncodedString:payload options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    if (!decoded.length) {
+        return nil;
+    }
+    return [UIImage imageWithData:decoded];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
+
+    {
+        NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+        if ([defs integerForKey:@"noMap"] == 0) {
+            [defs setInteger:1 forKey:@"noMap"];
+        }
+        if ([defs integerForKey:@"noRevgeo"] == 0) {
+            [defs setInteger:1 forKey:@"noRevgeo"];
+        }
+    }
 
     self.warning = FALSE;
     self.routeFetchedTopics = [NSMutableSet set];
@@ -333,9 +377,269 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
      }];
     
     [self noMap];
+    [self configureTopNavigationBar];
+    [self refreshBellUnreadBadge];
+    [self fetchCurrentUserProfileIfSignedIn];
     [self setupMapRouteFollowControlsRow];
     self.followEnabled = YES;
     [self updateFollowToggleAppearance];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(refreshBellUnreadBadge)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
+}
+
+- (void)configureTopNavigationBar {
+    self.navigationItem.title = @"";
+    self.navigationItem.titleView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+
+    // Keep storyboard-provided Info button (drop the Map picker - settings now ON by default), then append accuracy/share.
+    if (!self.baseLeftBarItems.count) {
+        NSMutableArray<UIBarButtonItem *> *baseLeft = [NSMutableArray array];
+        for (UIBarButtonItem *it in (self.navigationItem.leftBarButtonItems ?: @[])) {
+            if (it != self.askForMapButton) {
+                [baseLeft addObject:it];
+            }
+        }
+        self.baseLeftBarItems = baseLeft;
+    }
+    NSMutableArray<UIBarButtonItem *> *leftItems = [NSMutableArray arrayWithArray:self.baseLeftBarItems ?: @[]];
+    if (self.accuracyButton) {
+        [leftItems addObject:self.accuracyButton];
+    }
+    if (self.actionButton) {
+        [leftItems addObject:self.actionButton];
+    }
+    self.navigationItem.leftBarButtonItems = leftItems;
+
+    static const CGFloat kBellSize = 24.0;
+    static const CGFloat kAvatarSize = 30.0;
+    static const CGFloat kBellAvatarSpacing = 14.0;
+
+    UIButton *bell = [UIButton buttonWithType:UIButtonTypeCustom];
+    bell.translatesAutoresizingMaskIntoConstraints = NO;
+    [bell setImage:[UIImage systemImageNamed:@"bell"] forState:UIControlStateNormal];
+    bell.tintColor = [UIColor labelColor];
+    bell.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    bell.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+    [bell addTarget:self action:@selector(bellTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [NSLayoutConstraint activateConstraints:@[
+        [bell.widthAnchor constraintEqualToConstant:kBellSize],
+        [bell.heightAnchor constraintEqualToConstant:kBellSize],
+    ]];
+    UILabel *badge = [[UILabel alloc] initWithFrame:CGRectMake(kBellSize - 8, -4, 14, 14)];
+    badge.backgroundColor = [UIColor systemRedColor];
+    badge.textColor = UIColor.whiteColor;
+    badge.textAlignment = NSTextAlignmentCenter;
+    badge.font = [UIFont systemFontOfSize:9 weight:UIFontWeightBold];
+    badge.layer.cornerRadius = 7;
+    badge.clipsToBounds = YES;
+    badge.hidden = YES;
+    [bell addSubview:badge];
+    self.bellButton = bell;
+    self.bellBadgeLabel = badge;
+    self.bellBarButton = [[UIBarButtonItem alloc] initWithCustomView:bell];
+
+    UIButton *avatar = [UIButton buttonWithType:UIButtonTypeCustom];
+    avatar.translatesAutoresizingMaskIntoConstraints = NO;
+    avatar.layer.cornerRadius = kAvatarSize / 2.0;
+    avatar.clipsToBounds = YES;
+    avatar.layer.borderWidth = 2.5;
+    UIColor *meColor = [UIColor colorNamed:@"meColor"] ?: [UIColor systemGreenColor];
+    avatar.layer.borderColor = meColor.CGColor;
+    avatar.backgroundColor = [UIColor clearColor];
+    avatar.tintColor = [UIColor labelColor];
+    avatar.contentHorizontalAlignment = UIControlContentHorizontalAlignmentFill;
+    avatar.contentVerticalAlignment = UIControlContentVerticalAlignmentFill;
+    avatar.imageView.contentMode = UIViewContentModeScaleAspectFill;
+    avatar.imageView.clipsToBounds = YES;
+    avatar.adjustsImageWhenHighlighted = NO;
+    [avatar addTarget:self action:@selector(profileTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [NSLayoutConstraint activateConstraints:@[
+        [avatar.widthAnchor constraintEqualToConstant:kAvatarSize],
+        [avatar.heightAnchor constraintEqualToConstant:kAvatarSize],
+    ]];
+    self.avatarButton = avatar;
+    [self refreshAvatarButtonImage];
+    self.avatarBarButton = [[UIBarButtonItem alloc] initWithCustomView:avatar];
+
+    UIStackView *rightStack = [[UIStackView alloc] initWithArrangedSubviews:@[bell, avatar]];
+    rightStack.axis = UILayoutConstraintAxisHorizontal;
+    rightStack.alignment = UIStackViewAlignmentCenter;
+    rightStack.spacing = kBellAvatarSpacing;
+    rightStack.translatesAutoresizingMaskIntoConstraints = NO;
+
+    CGFloat containerWidth = kBellSize + kBellAvatarSpacing + kAvatarSize;
+    UIView *rightContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, containerWidth, kAvatarSize)];
+    [rightContainer addSubview:rightStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [rightStack.leadingAnchor constraintEqualToAnchor:rightContainer.leadingAnchor],
+        [rightStack.trailingAnchor constraintEqualToAnchor:rightContainer.trailingAnchor],
+        [rightStack.centerYAnchor constraintEqualToAnchor:rightContainer.centerYAnchor],
+    ]];
+
+    self.rightControlsBarButton = [[UIBarButtonItem alloc] initWithCustomView:rightContainer];
+    self.navigationItem.rightBarButtonItems = nil;
+    self.navigationItem.rightBarButtonItem = self.rightControlsBarButton;
+}
+
+- (void)refreshAvatarButtonImage {
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    NSString *topic = [Settings theGeneralTopicInMOC:moc];
+    Friend *me = [Friend existsFriendWithTopic:topic inManagedObjectContext:moc];
+    NSData *imageData = me.image ?: me.cardImage;
+    UIImage *avatarImage = imageData.length > 0 ? [UIImage imageWithData:imageData] : nil;
+    if (avatarImage) {
+        [self.avatarButton setBackgroundImage:avatarImage forState:UIControlStateNormal];
+        [self.avatarButton setImage:nil forState:UIControlStateNormal];
+        self.avatarButton.imageView.contentMode = UIViewContentModeScaleAspectFill;
+        self.avatarButton.backgroundColor = [UIColor clearColor];
+    } else {
+        [self.avatarButton setBackgroundImage:nil forState:UIControlStateNormal];
+        [self.avatarButton setImage:[UIImage systemImageNamed:@"person.circle.fill"] forState:UIControlStateNormal];
+        self.avatarButton.imageView.contentMode = UIViewContentModeScaleAspectFit;
+        self.avatarButton.backgroundColor = [UIColor clearColor];
+    }
+}
+
+- (void)fetchCurrentUserProfileIfSignedIn {
+    if (self.profileAvatarFetchInFlight) {
+        return;
+    }
+    NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
+    if (!origin) {
+        return;
+    }
+    NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    components.path = @"/api/authorization/user";
+    components.query = nil;
+    components.fragment = nil;
+    NSURL *userURL = components.URL;
+    if (!userURL) {
+        return;
+    }
+    self.profileAvatarFetchInFlight = YES;
+    __weak typeof(self) weakSelf = self;
+    [[LocationAPISyncService sharedInstance] performAuthenticatedGET:userURL completion:^(NSData * _Nullable data, NSError * _Nullable error) {
+        __strong typeof(weakSelf) sself = weakSelf;
+        if (!sself) {
+            return;
+        }
+        if (error || data.length == 0) {
+            sself.profileAvatarFetchInFlight = NO;
+            return;
+        }
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![obj isKindOfClass:[NSDictionary class]]) {
+            sself.profileAvatarFetchInFlight = NO;
+            return;
+        }
+        NSDictionary *user = (NSDictionary *)obj;
+        NSString *picture = [user[@"picture"] isKindOfClass:[NSString class]] ? user[@"picture"] : nil;
+        UIImage *inlinePicture = OTImageFromDataURLString(picture);
+        if (inlinePicture) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [sself.avatarButton setBackgroundImage:inlinePicture forState:UIControlStateNormal];
+                [sself.avatarButton setImage:nil forState:UIControlStateNormal];
+                sself.avatarButton.imageView.contentMode = UIViewContentModeScaleAspectFill;
+                sself.profileAvatarFetchInFlight = NO;
+            });
+            return;
+        }
+        NSString *userImagePath = nil;
+        NSArray<NSString *> *keys = @[ @"userImage", @"UserImage", @"profileImage", @"avatarUrl" ];
+        for (NSString *key in keys) {
+            id value = user[key];
+            if ([value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0) {
+                userImagePath = (NSString *)value;
+                break;
+            }
+        }
+        if (userImagePath.length == 0) {
+            sself.profileAvatarFetchInFlight = NO;
+            return;
+        }
+        NSURL *imageURL = nil;
+        if ([userImagePath hasPrefix:@"http://"] || [userImagePath hasPrefix:@"https://"]) {
+            imageURL = [NSURL URLWithString:userImagePath];
+        } else {
+            NSURLComponents *imageComponents = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+            imageComponents.path = [userImagePath hasPrefix:@"/"] ? userImagePath : [@"/" stringByAppendingString:userImagePath];
+            imageComponents.query = nil;
+            imageComponents.fragment = nil;
+            imageURL = imageComponents.URL;
+        }
+        if (!imageURL) {
+            sself.profileAvatarFetchInFlight = NO;
+            return;
+        }
+        [[LocationAPISyncService sharedInstance] performAuthenticatedGET:imageURL completion:^(NSData * _Nullable imageData, NSError * _Nullable imageError) {
+            UIImage *image = (imageData.length > 0 && !imageError) ? [UIImage imageWithData:imageData] : nil;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (image) {
+                    [sself.avatarButton setBackgroundImage:image forState:UIControlStateNormal];
+                    [sself.avatarButton setImage:nil forState:UIControlStateNormal];
+                    sself.avatarButton.imageView.contentMode = UIViewContentModeScaleAspectFill;
+                }
+                sself.profileAvatarFetchInFlight = NO;
+            });
+        }];
+    }];
+}
+
+- (void)refreshBellUnreadBadge {
+    [[LocationAPISyncService sharedInstance] fetchUnreadNotificationCountWithCompletion:^(NSInteger count, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                return;
+            }
+            if (count > 0) {
+                self.bellBadgeLabel.hidden = NO;
+                self.bellBadgeLabel.text = count > 99 ? @"99+" : [NSString stringWithFormat:@"%ld", (long)count];
+            } else {
+                self.bellBadgeLabel.hidden = YES;
+                self.bellBadgeLabel.text = @"";
+            }
+        });
+    }];
+}
+
+- (void)bellTapped:(id)sender {
+    UITabBarController *tabs = self.tabBarController;
+    for (NSUInteger i = 0; i < tabs.viewControllers.count; i++) {
+        UIViewController *vc = tabs.viewControllers[i];
+        if (vc.tabBarItem.tag == kInboxTabTag) {
+            tabs.selectedIndex = i;
+            return;
+        }
+    }
+}
+
+- (void)profileTapped:(id)sender {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Sign Out"
+                                              style:UIAlertActionStyleDestructive
+                                            handler:^(UIAlertAction * _Nonnull action) {
+        UIAlertController *confirm = [UIAlertController alertControllerWithTitle:@"Sign Out"
+                                                                         message:@"This will run the full reset flow and clear settings to defaults."
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
+        [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [confirm addAction:[UIAlertAction actionWithTitle:@"Sign Out"
+                                                    style:UIAlertActionStyleDestructive
+                                                  handler:^(UIAlertAction * _Nonnull action) {
+            [SettingsTVC performFullResetToBundledDefaultsFromPresenter:self
+                                                               animated:YES
+                                                             completion:^{
+                [self refreshBellUnreadBadge];
+                [self refreshAvatarButtonImage];
+            }];
+        }]];
+        [self presentViewController:confirm animated:YES completion:nil];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)setupModes {
@@ -1013,6 +1317,9 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    [self configureTopNavigationBar];
+    [self refreshBellUnreadBadge];
+    [self fetchCurrentUserProfileIfSignedIn];
 
     while (!self.frcFriends) {
         //
@@ -1038,9 +1345,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         ];
     }
     
-    if (self.noMap == 0) {
-        [self askForMap:nil];
-    }
+    // Map interaction and reverse geocoding are now ON by default; no prompt.
 
     // Only one Friend may show the Core Data waypoint breadcrumb; clear leftovers when not following.
     if (!self.selectedFriend) {
@@ -1404,12 +1709,56 @@ didChangeDragState:(MKAnnotationViewDragState)newState
             return nil;
         }
         
+    } else if ([overlay isKindOfClass:[MKCircle class]]) {
+        MKCircleRenderer *renderer = [[MKCircleRenderer alloc] initWithCircle:(MKCircle *)overlay];
+        renderer.fillColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.15];
+        renderer.strokeColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.9];
+        renderer.lineWidth = 2.0;
+        return renderer;
+
     } else if ([overlay isKindOfClass:[MKTileOverlay class]]) {
         return self.osmRenderer;
 
     } else {
         return nil;
     }
+}
+
+- (void)showLocationZoneWithName:(NSString *)name
+                      coordinate:(CLLocationCoordinate2D)coordinate
+                          radius:(CLLocationDistance)radius {
+    if (!CLLocationCoordinate2DIsValid(coordinate)) {
+        return;
+    }
+    CLLocationDistance effectiveRadius = radius > 0.0 ? radius : 35.0;
+
+    if (self.selectedLocationZoneOverlay) {
+        [self.mapView removeOverlay:self.selectedLocationZoneOverlay];
+        self.selectedLocationZoneOverlay = nil;
+    }
+    if (self.selectedLocationZoneAnnotation) {
+        [self.mapView removeAnnotation:self.selectedLocationZoneAnnotation];
+        self.selectedLocationZoneAnnotation = nil;
+    }
+
+    MKPointAnnotation *annotation = [[MKPointAnnotation alloc] init];
+    annotation.coordinate = coordinate;
+    annotation.title = name.length > 0 ? name : @"Location";
+    annotation.subtitle = [NSString stringWithFormat:@"Radius %.0fm", effectiveRadius];
+    [self.mapView addAnnotation:annotation];
+    self.selectedLocationZoneAnnotation = annotation;
+
+    MKCircle *zoneCircle = [MKCircle circleWithCenterCoordinate:coordinate radius:effectiveRadius];
+    [self.mapView addOverlay:zoneCircle];
+    self.selectedLocationZoneOverlay = zoneCircle;
+
+    CLLocationDistance distance = MAX(effectiveRadius * 4.0, 250.0);
+    MKMapCamera *camera = [MKMapCamera cameraLookingAtCenterCoordinate:coordinate
+                                                          fromDistance:distance
+                                                                 pitch:0
+                                                               heading:0];
+    [self.mapView setCamera:camera animated:YES];
+    [self.mapView selectAnnotation:annotation animated:YES];
 }
 
 - (void)mapView:(MKMapView *)mapView
@@ -2023,6 +2372,27 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
     [self.mapView setCamera:cam animated:NO];
 }
 
+- (BOOL)isSelectedFriendEquivalentToOwnDeviceForLiveTopic:(NSString *)topic selectedFriend:(Friend *)selected {
+    if (!selected || !topic.length) {
+        return NO;
+    }
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    NSString *generalTopic = [Settings theGeneralTopicInMOC:moc];
+    if (!generalTopic.length || ![topic isEqualToString:generalTopic]) {
+        return NO;
+    }
+    if ([selected.topic isEqualToString:generalTopic]) {
+        return YES;
+    }
+    NSString *ownTrackerId = [Settings stringForKey:@"trackerid_preference" inMOC:moc];
+    if (ownTrackerId.length && [selected.effectiveTid isEqualToString:ownTrackerId]) {
+        DDLogInfo(@"[Follow] treating selected topic=%@ as own-device alias for incoming topic=%@",
+                  selected.topic ?: @"(nil)", topic);
+        return YES;
+    }
+    return NO;
+}
+
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
     NSString *topic = note.userInfo[@"topic"];
     double lat = [note.userInfo[@"lat"] doubleValue];
@@ -2084,7 +2454,11 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
 
     // Only update the visible overlay for the currently selected/followed friend.
     Friend *selected = self.selectedFriend;
-    if (!selected || ![selected.topic isEqualToString:topic]) {
+    if (!selected) {
+        return;
+    }
+    if (![selected.topic isEqualToString:topic] &&
+        ![self isSelectedFriendEquivalentToOwnDeviceForLiveTopic:topic selectedFriend:selected]) {
         return;
     }
     [self rebuildLiveTrackForTopic:topic];

@@ -66,6 +66,38 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     return self;
 }
 
+// Mirror location payloads into map-follow live updates for both friend and own-device topics.
+- (void)postLiveFriendLocationForTopic:(NSString *)topic dictionary:(NSDictionary *)dictionary {
+    if (!topic.length || ![dictionary isKindOfClass:[NSDictionary class]]) {
+        return;
+    }
+    id lat = dictionary[@"lat"];
+    id lon = dictionary[@"lon"];
+    if (![lat isKindOfClass:[NSNumber class]] || ![lon isKindOfClass:[NSNumber class]]) {
+        return;
+    }
+    NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithDictionary:@{
+        @"topic": topic,
+        @"lat": lat,
+        @"lon": lon,
+        @"tst": dictionary[@"tst"] ?: @(0),
+    }];
+    id cog = dictionary[@"cog"];
+    if ([cog isKindOfClass:[NSNumber class]]) {
+        userInfo[@"cog"] = cog;
+    }
+    id vel = dictionary[@"vel"];
+    if ([vel isKindOfClass:[NSNumber class]]) {
+        userInfo[@"vel"] = vel;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"OTLiveFriendLocation"
+                          object:nil
+                        userInfo:userInfo];
+    });
+}
+
 - (void)syncProcessing {
     while ((self.inQueue).unsignedLongValue > 0) {
         DDLogVerbose(@"[OwnTracksAppDelegate] syncProcessing %lu", [self.inQueue unsignedLongValue]);
@@ -1276,26 +1308,7 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                   [dictionary[@"lon"] isKindOfClass:[NSNumber class]]);
 
         if (isFriendLocation) {
-            NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithDictionary:@{
-                @"topic": device,
-                @"lat":   dictionary[@"lat"],
-                @"lon":   dictionary[@"lon"],
-                @"tst":   dictionary[@"tst"] ?: @(0),
-            }];
-            id lcog = dictionary[@"cog"];
-            if ([lcog isKindOfClass:[NSNumber class]]) {
-                userInfo[@"cog"] = lcog;
-            }
-            id lvel = dictionary[@"vel"];
-            if ([lvel isKindOfClass:[NSNumber class]]) {
-                userInfo[@"vel"] = lvel;
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [[NSNotificationCenter defaultCenter]
-                    postNotificationName:@"OTLiveFriendLocation"
-                                  object:nil
-                                userInfo:userInfo];
-            });
+            [strongSelf postLiveFriendLocationForTopic:device dictionary:dictionary];
         } else {
             // All other messages (cards, own-device messages, etc.) go through the normal path.
             (void)[[OwnTracking sharedInstance] processMessage:topic
@@ -1309,26 +1322,7 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 [dictionary[@"lon"] isKindOfClass:[NSNumber class]]) {
                 NSString *genTopic = [Settings theGeneralTopicInMOC:CoreData.sharedInstance.queuedMOC];
                 if (genTopic.length) {
-                    NSMutableDictionary *liveUserInfo = [NSMutableDictionary dictionaryWithDictionary:@{
-                        @"topic": genTopic,
-                        @"lat": dictionary[@"lat"],
-                        @"lon": dictionary[@"lon"],
-                        @"tst": dictionary[@"tst"] ?: @(0),
-                    }];
-                    id lcog = dictionary[@"cog"];
-                    if ([lcog isKindOfClass:[NSNumber class]]) {
-                        liveUserInfo[@"cog"] = lcog;
-                    }
-                    id lvel = dictionary[@"vel"];
-                    if ([lvel isKindOfClass:[NSNumber class]]) {
-                        liveUserInfo[@"vel"] = lvel;
-                    }
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [[NSNotificationCenter defaultCenter]
-                            postNotificationName:@"OTLiveFriendLocation"
-                                          object:nil
-                                        userInfo:liveUserInfo];
-                    });
+                    [strongSelf postLiveFriendLocationForTopic:genTopic dictionary:dictionary];
                 }
             }
             if (ownDevice) {
@@ -1963,9 +1957,11 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
     if (waypoint) {
         NSDictionary *json = [[OwnTracking sharedInstance] waypointAsJSON:waypoint];
         if (json) {
+            NSString *genTopic = [Settings theGeneralTopicInMOC:moc];
+            [self postLiveFriendLocationForTopic:genTopic dictionary:json];
             NSData *data = [self jsonToData:json];
             [self.connection sendData:data
-                                topic:[Settings theGeneralTopicInMOC:moc]
+                                topic:genTopic
                            topicAlias:@(1)
                                   qos:[Settings intForKey:@"qos_preference"
                                                     inMOC:moc]

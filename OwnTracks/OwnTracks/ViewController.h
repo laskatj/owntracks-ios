@@ -20,4 +20,8 @@
 /// Called by FriendsTVC when a friend is selected from the list.
 /// Activates smooth map following for that friend (same as tapping the pin).
 - (void)followFriendFromList:(Friend *)friend;
+/// Called by Locations tab: centers map on a location and draws a transient zone circle.
+- (void)showLocationZoneWithName:(NSString *)name
+                      coordinate:(CLLocationCoordinate2D)coordinate
+                          radius:(CLLocationDistance)radius;
 @end

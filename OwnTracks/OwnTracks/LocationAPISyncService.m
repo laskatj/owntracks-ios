@@ -58,6 +58,9 @@ static NSString * const kOTProvisionAPIDomain = @"OTProvisionAPI";
 static const NSInteger kOTProvisionAPICodeBusy = 998;
 
 NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification = @"OwnTracksOAuthAccessTokenBecameAvailable";
+NSString * const OTLocationDeleteErrorCodeKey = @"OTLocationDeleteErrorCode";
+NSString * const OTLocationDeleteErrorReferenceCountKey = @"OTLocationDeleteErrorReferenceCount";
+NSString * const OTLocationDeleteErrorMessageKey = @"OTLocationDeleteErrorMessage";
 
 /// One interactive OAuth prompt per app process when the location API has no refresh token (same idea as WebAppViewController `startFullNativeAuth`).
 static BOOL gLocationAPIOAuthPromptScheduledThisSession;
@@ -94,6 +97,15 @@ static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 /// Minimum seconds between debounced refreshes (Friends tab, etc.) and the last successful GET /api/location apply.
 static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.0;
 
+@implementation OTWebLocationItem
+@end
+
+@implementation OTWebNotificationItem
+@end
+
+@implementation OTWebNotificationsPage
+@end
+
 @interface LocationAPISyncService ()
 @property (nonatomic, strong, nullable) NSTimer *pollTimer;
 @property (nonatomic) BOOL fetchInFlight;
@@ -123,6 +135,16 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
                  transientAttempt:(NSUInteger)nextAttempt;
 - (void)oauthAccessTokenBecameAvailable:(NSNotification *)notification;
 - (void)attemptNativeProvisionAfterOAuthOrForegroundIfNeeded;
+- (void)performAuthenticatedRequestWithURL:(NSURL *)url
+                                    method:(NSString *)method
+                                  jsonBody:(nullable NSDictionary *)jsonBody
+                                completion:(void (^)(NSData * _Nullable data,
+                                                     NSInteger statusCode,
+                                                     NSError * _Nullable error))completion;
+- (nullable OTWebLocationItem *)locationItemFromDictionary:(NSDictionary *)dict;
+- (nullable OTWebNotificationItem *)notificationItemFromDictionary:(NSDictionary *)dict;
+- (NSError *)errorForStatus:(NSInteger)status fallbackDomain:(NSString *)domain;
+- (NSError *)locationDeleteErrorFromData:(NSData * _Nullable)data statusCode:(NSInteger)statusCode;
 @end
 
 @implementation LocationAPISyncService
@@ -894,6 +916,487 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             }] resume];
         };
         runGET(accessToken, 0);
+    }];
+}
+
+- (void)performAuthenticatedRequestWithURL:(NSURL *)url
+                                    method:(NSString *)method
+                                  jsonBody:(NSDictionary *)jsonBody
+                                completion:(void (^)(NSData * _Nullable, NSInteger, NSError * _Nullable))completion {
+    if (!url) {
+        completion(nil, 0, [NSError errorWithDomain:@"LocationAPISyncService"
+                                                code:1
+                                            userInfo:@{NSLocalizedDescriptionKey: @"Missing API URL"}]);
+        return;
+    }
+    __weak typeof(self) wself = self;
+    [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable accessToken) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(nil, 0, [NSError errorWithDomain:@"LocationAPISyncService" code:0 userInfo:nil]);
+            return;
+        }
+        if (!accessToken.length) {
+            completion(nil, 401, [NSError errorWithDomain:@"LocationAPISyncService"
+                                                      code:401
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"No access token"}]);
+            return;
+        }
+
+        __block void (^runRequest)(NSString *token, BOOL allowRetryOn401, NSUInteger transientAttempt);
+        runRequest = ^(NSString *token, BOOL allowRetryOn401, NSUInteger transientAttempt) {
+            NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+            request.HTTPMethod = method;
+            request.timeoutInterval = 30.0;
+            [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+            [request setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+            if (jsonBody) {
+                NSError *jsonErr = nil;
+                NSData *bodyData = [NSJSONSerialization dataWithJSONObject:jsonBody options:0 error:&jsonErr];
+                if (!bodyData || jsonErr) {
+                    completion(nil, 0, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
+                    return;
+                }
+                [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+                request.HTTPBody = bodyData;
+            }
+
+            [[LocationAPISyncURLSession() dataTaskWithRequest:request
+                                            completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+                if (error) {
+                    if (transientAttempt < 3 && [sself isTransientLocationAPIURLSessionError:error]) {
+                        NSTimeInterval delay = MIN(pow(2.0, (double)(transientAttempt + 1)), 32.0);
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            runRequest(token, allowRetryOn401, transientAttempt + 1);
+                        });
+                        return;
+                    }
+                    completion(nil, 0, error);
+                    return;
+                }
+                NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]]
+                    ? [(NSHTTPURLResponse *)response statusCode]
+                    : 0;
+                if (status == 401 && allowRetryOn401) {
+                    [sself obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
+                        if (!newToken.length) {
+                            completion(data, status, [NSError errorWithDomain:@"LocationAPISyncService"
+                                                                          code:401
+                                                                      userInfo:@{NSLocalizedDescriptionKey: @"Unauthorized"}]);
+                            return;
+                        }
+                        runRequest(newToken, NO, 0);
+                    }];
+                    return;
+                }
+                if ([sself isTransientLocationAPIHTTPStatus:status] && transientAttempt < 3) {
+                    NSTimeInterval delay = MIN(pow(2.0, (double)(transientAttempt + 1)), 32.0);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                        runRequest(token, allowRetryOn401, transientAttempt + 1);
+                    });
+                    return;
+                }
+                completion(data, status, nil);
+            }] resume];
+        };
+        runRequest(accessToken, YES, 0);
+    }];
+}
+
+- (NSError *)errorForStatus:(NSInteger)status fallbackDomain:(NSString *)domain {
+    NSString *message = status > 0 ? [NSString stringWithFormat:@"HTTP %ld", (long)status] : @"Request failed";
+    return [NSError errorWithDomain:domain
+                               code:(status > 0 ? status : 1)
+                           userInfo:@{NSLocalizedDescriptionKey: message}];
+}
+
+- (OTWebLocationItem *)locationItemFromDictionary:(NSDictionary *)dict {
+    NSNumber *locationId = [dict[@"id"] isKindOfClass:[NSNumber class]] ? dict[@"id"] : nil;
+    if (!locationId && [dict[@"id"] isKindOfClass:[NSString class]]) {
+        locationId = @([(NSString *)dict[@"id"] integerValue]);
+    }
+    NSNumber *lat = [dict[@"latitude"] isKindOfClass:[NSNumber class]] ? dict[@"latitude"] : nil;
+    if (!lat && [dict[@"latitude"] isKindOfClass:[NSString class]]) {
+        lat = @([(NSString *)dict[@"latitude"] doubleValue]);
+    }
+    NSNumber *lon = [dict[@"longitude"] isKindOfClass:[NSNumber class]] ? dict[@"longitude"] : nil;
+    if (!lon && [dict[@"longitude"] isKindOfClass:[NSString class]]) {
+        lon = @([(NSString *)dict[@"longitude"] doubleValue]);
+    }
+    NSString *displayName = [dict[@"displayName"] isKindOfClass:[NSString class]] ? dict[@"displayName"] : nil;
+    NSString *originalDisplayName = [dict[@"originalDisplayName"] isKindOfClass:[NSString class]] ? dict[@"originalDisplayName"] : nil;
+    NSString *createdAt = [dict[@"createdAt"] isKindOfClass:[NSString class]] ? dict[@"createdAt"] : nil;
+    NSString *lastAccessed = [dict[@"lastAccessed"] isKindOfClass:[NSString class]] ? dict[@"lastAccessed"] : nil;
+    if (!locationId || !lat || !lon) {
+        return nil;
+    }
+
+    NSISO8601DateFormatter *iso = [[NSISO8601DateFormatter alloc] init];
+    iso.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDate *createdDate = createdAt.length > 0 ? [iso dateFromString:createdAt] : nil;
+    NSDate *lastAccessedDate = lastAccessed.length > 0 ? [iso dateFromString:lastAccessed] : nil;
+    if (!createdDate) {
+        NSISO8601DateFormatter *fallbackISO = [[NSISO8601DateFormatter alloc] init];
+        createdDate = createdAt.length > 0 ? [fallbackISO dateFromString:createdAt] : nil;
+    }
+    if (!lastAccessedDate) {
+        NSISO8601DateFormatter *fallbackISO = [[NSISO8601DateFormatter alloc] init];
+        lastAccessedDate = lastAccessed.length > 0 ? [fallbackISO dateFromString:lastAccessed] : nil;
+    }
+    if (!createdDate) {
+        createdDate = [NSDate date];
+    }
+    if (!lastAccessedDate) {
+        lastAccessedDate = createdDate;
+    }
+    if (displayName.length == 0) {
+        displayName = originalDisplayName.length > 0 ? originalDisplayName : [NSString stringWithFormat:@"Location %ld", (long)locationId.integerValue];
+    }
+
+    OTWebLocationItem *item = [[OTWebLocationItem alloc] init];
+    item.locationId = locationId.integerValue;
+    item.latitude = lat.doubleValue;
+    item.longitude = lon.doubleValue;
+    item.displayName = displayName;
+    item.originalDisplayName = originalDisplayName;
+    item.mapsUrl = [dict[@"mapsUrl"] isKindOfClass:[NSString class]] ? dict[@"mapsUrl"] : nil;
+    item.createdAt = createdDate;
+    item.lastAccessed = lastAccessedDate;
+    item.sourceType = [dict[@"sourceType"] isKindOfClass:[NSString class]] ? dict[@"sourceType"] : nil;
+    item.radius = [dict[@"radius"] isKindOfClass:[NSNumber class]] ? dict[@"radius"] : nil;
+    item.sourceDeviceName = [dict[@"sourceDeviceName"] isKindOfClass:[NSString class]] ? dict[@"sourceDeviceName"] : nil;
+    return item;
+}
+
+- (OTWebNotificationItem *)notificationItemFromDictionary:(NSDictionary *)dict {
+    NSNumber *nid = [dict[@"id"] isKindOfClass:[NSNumber class]] ? dict[@"id"] : nil;
+    if (!nid && [dict[@"id"] isKindOfClass:[NSString class]]) {
+        nid = @([(NSString *)dict[@"id"] integerValue]);
+    }
+    NSNumber *userId = [dict[@"userId"] isKindOfClass:[NSNumber class]] ? dict[@"userId"] : nil;
+    if (!userId && [dict[@"userId"] isKindOfClass:[NSString class]]) {
+        userId = @([(NSString *)dict[@"userId"] integerValue]);
+    }
+    NSString *type = [dict[@"type"] isKindOfClass:[NSString class]] ? dict[@"type"] : nil;
+    NSString *title = [dict[@"title"] isKindOfClass:[NSString class]] ? dict[@"title"] : @"";
+    NSString *summary = [dict[@"summary"] isKindOfClass:[NSString class]] ? dict[@"summary"] : @"";
+    NSString *notificationId = [dict[@"notificationId"] isKindOfClass:[NSString class]] ? dict[@"notificationId"] : @"";
+    NSNumber *isRead = [dict[@"isRead"] isKindOfClass:[NSNumber class]] ? dict[@"isRead"] : nil;
+    if (!isRead && [dict[@"isRead"] isKindOfClass:[NSString class]]) {
+        NSString *rawRead = [(NSString *)dict[@"isRead"] lowercaseString];
+        isRead = @([rawRead isEqualToString:@"true"] || [rawRead isEqualToString:@"1"]);
+    }
+    NSString *createdAt = [dict[@"createdAt"] isKindOfClass:[NSString class]] ? dict[@"createdAt"] : nil;
+    if (!nid || !isRead) {
+        return nil;
+    }
+
+    NSISO8601DateFormatter *iso = [[NSISO8601DateFormatter alloc] init];
+    iso.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDate *createdDate = createdAt.length > 0 ? [iso dateFromString:createdAt] : nil;
+    if (!createdDate && createdAt.length > 0) {
+        NSISO8601DateFormatter *fallbackISO = [[NSISO8601DateFormatter alloc] init];
+        createdDate = [fallbackISO dateFromString:createdAt];
+    }
+    if (!createdDate) {
+        createdDate = [NSDate date];
+    }
+    if (type.length == 0) {
+        type = @"Unknown";
+    }
+
+    OTWebNotificationItem *item = [[OTWebNotificationItem alloc] init];
+    item.notificationIdValue = nid.integerValue;
+    item.userId = userId.integerValue;
+    item.type = type;
+    item.title = title;
+    item.summary = summary;
+    item.dataString = [dict[@"data"] isKindOfClass:[NSString class]] ? dict[@"data"] : nil;
+    if (item.dataString.length > 0) {
+        NSData *data = [item.dataString dataUsingEncoding:NSUTF8StringEncoding];
+        if (data) {
+            id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if ([parsed isKindOfClass:[NSDictionary class]]) {
+                item.dataDictionary = parsed;
+            }
+        }
+    }
+    item.notificationId = notificationId.length > 0 ? notificationId : [NSString stringWithFormat:@"%ld", (long)item.notificationIdValue];
+    item.isRead = isRead.boolValue;
+    item.createdAt = createdDate;
+    NSString *readAt = [dict[@"readAt"] isKindOfClass:[NSString class]] ? dict[@"readAt"] : nil;
+    item.readAt = readAt.length > 0 ? [iso dateFromString:readAt] : nil;
+    return item;
+}
+
+- (void)fetchGeolocationCacheWithCompletion:(void (^)(NSArray<OTWebLocationItem *> * _Nullable, NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver geolocationCacheAPIRequestURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
+    if (!url) {
+        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No geolocation cache URL"}]);
+        return;
+    }
+    [self performAuthenticatedRequestWithURL:url method:@"GET" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        if (statusCode != 200) {
+            completion(nil, [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]);
+            return;
+        }
+        NSError *jsonErr = nil;
+        id obj = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
+        if (jsonErr || (![obj isKindOfClass:[NSArray class]] && ![obj isKindOfClass:[NSDictionary class]])) {
+            completion(nil, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
+            return;
+        }
+        NSArray *rawList = nil;
+        if ([obj isKindOfClass:[NSArray class]]) {
+            rawList = (NSArray *)obj;
+        } else {
+            NSDictionary *root = (NSDictionary *)obj;
+            if ([root[@"locations"] isKindOfClass:[NSArray class]]) {
+                rawList = root[@"locations"];
+            } else if ([root[@"geolocationcache"] isKindOfClass:[NSArray class]]) {
+                rawList = root[@"geolocationcache"];
+            }
+        }
+        if (!rawList) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Invalid geolocationcache payload"}]);
+            return;
+        }
+        NSMutableArray<OTWebLocationItem *> *out = [NSMutableArray array];
+        for (id entry in rawList) {
+            if (![entry isKindOfClass:[NSDictionary class]]) {
+                continue;
+            }
+            OTWebLocationItem *item = [self locationItemFromDictionary:entry];
+            if (item) {
+                [out addObject:item];
+            }
+        }
+        DDLogInfo(@"[LocationAPISyncService] geolocationcache parsed=%lu", (unsigned long)out.count);
+        completion([out copy], nil);
+    }];
+}
+
+- (NSError *)locationDeleteErrorFromData:(NSData *)data statusCode:(NSInteger)statusCode {
+    NSString *message = [NSString stringWithFormat:@"HTTP %ld", (long)statusCode];
+    NSString *errorCode = nil;
+    NSNumber *referenceCount = nil;
+    if (data.length > 0) {
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if ([obj isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *dict = (NSDictionary *)obj;
+            if ([dict[@"message"] isKindOfClass:[NSString class]] && [(NSString *)dict[@"message"] length] > 0) {
+                message = (NSString *)dict[@"message"];
+            } else if ([dict[@"error"] isKindOfClass:[NSString class]] && [(NSString *)dict[@"error"] length] > 0) {
+                message = (NSString *)dict[@"error"];
+            }
+            if ([dict[@"error"] isKindOfClass:[NSString class]]) {
+                errorCode = (NSString *)dict[@"error"];
+            }
+            if ([dict[@"referenceCount"] isKindOfClass:[NSNumber class]]) {
+                referenceCount = (NSNumber *)dict[@"referenceCount"];
+            }
+        }
+    }
+    NSMutableDictionary *userInfo = [@{NSLocalizedDescriptionKey: message,
+                                       OTLocationDeleteErrorMessageKey: message} mutableCopy];
+    if (errorCode.length > 0) {
+        userInfo[OTLocationDeleteErrorCodeKey] = errorCode;
+    }
+    if (referenceCount) {
+        userInfo[OTLocationDeleteErrorReferenceCountKey] = referenceCount;
+    }
+    return [NSError errorWithDomain:@"LocationAPISyncService"
+                               code:statusCode > 0 ? statusCode : 1
+                           userInfo:userInfo];
+}
+
+- (void)deleteGeolocationCacheLocationId:(NSInteger)locationId
+                       replacementZoneId:(NSNumber *)replacementZoneId
+                              completion:(void (^)(NSInteger, NSNumber * _Nullable, NSError * _Nullable))completion {
+    NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray array];
+    if (replacementZoneId) {
+        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"replacementZoneId"
+                                                          value:[replacementZoneId stringValue]]];
+    }
+    NSString *path = [NSString stringWithFormat:@"/api/geolocationcache/%ld", (long)locationId];
+    NSURL *url = [WebAppURLResolver geolocationCacheAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC
+                                                                  relativePath:path
+                                                                    queryItems:queryItems.count > 0 ? queryItems : nil];
+    [self performAuthenticatedRequestWithURL:url method:@"DELETE" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            completion(0, nil, error);
+            return;
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+            completion(0, nil, [self locationDeleteErrorFromData:data statusCode:statusCode]);
+            return;
+        }
+        NSInteger updatedRefs = 0;
+        NSNumber *echoedReplacement = nil;
+        if (data.length > 0) {
+            id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if ([obj isKindOfClass:[NSDictionary class]]) {
+                NSDictionary *dict = (NSDictionary *)obj;
+                if ([dict[@"updatedReferences"] isKindOfClass:[NSNumber class]]) {
+                    updatedRefs = [dict[@"updatedReferences"] integerValue];
+                }
+                if ([dict[@"replacementZoneId"] isKindOfClass:[NSNumber class]]) {
+                    echoedReplacement = (NSNumber *)dict[@"replacementZoneId"];
+                }
+            }
+        }
+        completion(updatedRefs, echoedReplacement, nil);
+    }];
+}
+
+- (void)fetchNotificationsWithSkip:(NSInteger)skip
+                              take:(NSInteger)take
+                       includeRead:(BOOL)includeRead
+                              type:(NSString *)type
+                        completion:(void (^)(OTWebNotificationsPage * _Nullable, NSError * _Nullable))completion {
+    NSString *apiType = type;
+    if ([apiType isEqualToString:@"ZoneTransition"]) {
+        apiType = @"ZoneChanged";
+    }
+    NSURL *url = [WebAppURLResolver notificationsAPIRequestURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC
+                                                                              skip:MAX(skip, 0)
+                                                                              take:MAX(take, 1)
+                                                                       includeRead:includeRead
+                                                                              type:apiType];
+    if (!url) {
+        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No notifications URL"}]);
+        return;
+    }
+    [self performAuthenticatedRequestWithURL:url method:@"GET" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        if (statusCode != 200) {
+            completion(nil, [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]);
+            return;
+        }
+        NSError *jsonErr = nil;
+        id obj = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
+        if (jsonErr || (![obj isKindOfClass:[NSDictionary class]] && ![obj isKindOfClass:[NSArray class]])) {
+            completion(nil, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
+            return;
+        }
+        NSDictionary *root = nil;
+        NSArray *list = nil;
+        if ([obj isKindOfClass:[NSDictionary class]]) {
+            root = (NSDictionary *)obj;
+            list = [root[@"notifications"] isKindOfClass:[NSArray class]] ? root[@"notifications"] : nil;
+        } else if ([obj isKindOfClass:[NSArray class]]) {
+            // Be tolerant in case backend returns a bare array.
+            list = (NSArray *)obj;
+            root = @{};
+        }
+        if (!list) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Invalid notifications payload"}]);
+            return;
+        }
+        NSMutableArray<OTWebNotificationItem *> *items = [NSMutableArray array];
+        for (id entry in list) {
+            if (![entry isKindOfClass:[NSDictionary class]]) {
+                continue;
+            }
+            OTWebNotificationItem *item = [self notificationItemFromDictionary:entry];
+            if (item) {
+                [items addObject:item];
+            }
+        }
+        OTWebNotificationsPage *page = [[OTWebNotificationsPage alloc] init];
+        page.notifications = [items copy];
+        page.totalCount = [root[@"totalCount"] isKindOfClass:[NSNumber class]] ? [root[@"totalCount"] integerValue] : items.count;
+        page.skip = [root[@"skip"] isKindOfClass:[NSNumber class]] ? [root[@"skip"] integerValue] : MAX(skip, 0);
+        page.take = [root[@"take"] isKindOfClass:[NSNumber class]] ? [root[@"take"] integerValue] : MAX(take, 1);
+        DDLogInfo(@"[LocationAPISyncService] notifications parsed=%lu total=%ld skip=%ld take=%ld",
+                  (unsigned long)items.count, (long)page.totalCount, (long)page.skip, (long)page.take);
+        completion(page, nil);
+    }];
+}
+
+- (void)fetchUnreadNotificationCountWithCompletion:(void (^)(NSInteger, NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver notificationsUnreadCountAPIRequestURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
+    if (!url) {
+        completion(0, [NSError errorWithDomain:@"LocationAPISyncService" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No unread-count URL"}]);
+        return;
+    }
+    [self performAuthenticatedRequestWithURL:url method:@"GET" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            completion(0, error);
+            return;
+        }
+        if (statusCode != 200) {
+            completion(0, [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]);
+            return;
+        }
+        id obj = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil];
+        if (![obj isKindOfClass:[NSDictionary class]] || ![obj[@"count"] isKindOfClass:[NSNumber class]]) {
+            completion(0, [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
+            return;
+        }
+        completion([obj[@"count"] integerValue], nil);
+    }];
+}
+
+- (void)markNotificationRead:(NSInteger)notificationId completion:(void (^)(NSError * _Nullable))completion {
+    NSString *path = [NSString stringWithFormat:@"/api/notifications/%ld/read", (long)notificationId];
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:path];
+    [self performAuthenticatedRequestWithURL:url method:@"PUT" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)markAllNotificationsReadWithCompletion:(void (^)(NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:@"/api/notifications/read-all"];
+    [self performAuthenticatedRequestWithURL:url method:@"PUT" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)bulkMarkNotificationsRead:(NSArray<NSNumber *> *)notificationIds completion:(void (^)(NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:@"/api/notifications/bulk-read"];
+    NSDictionary *body = @{@"notificationIds": notificationIds ?: @[]};
+    [self performAuthenticatedRequestWithURL:url method:@"PUT" jsonBody:body completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)markNotificationUnread:(NSInteger)notificationId completion:(void (^)(NSError * _Nullable))completion {
+    NSString *path = [NSString stringWithFormat:@"/api/notifications/%ld/unread", (long)notificationId];
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:path];
+    [self performAuthenticatedRequestWithURL:url method:@"PUT" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)bulkMarkNotificationsUnread:(NSArray<NSNumber *> *)notificationIds completion:(void (^)(NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:@"/api/notifications/bulk-unread"];
+    NSDictionary *body = @{@"notificationIds": notificationIds ?: @[]};
+    [self performAuthenticatedRequestWithURL:url method:@"PUT" jsonBody:body completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)deleteNotification:(NSInteger)notificationId completion:(void (^)(NSError * _Nullable))completion {
+    NSString *path = [NSString stringWithFormat:@"/api/notifications/%ld", (long)notificationId];
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:path];
+    [self performAuthenticatedRequestWithURL:url method:@"DELETE" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
+    }];
+}
+
+- (void)bulkDeleteNotifications:(NSArray<NSNumber *> *)notificationIds completion:(void (^)(NSError * _Nullable))completion {
+    NSURL *url = [WebAppURLResolver notificationsAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC relativePath:@"/api/notifications/bulk"];
+    NSDictionary *body = @{@"notificationIds": notificationIds ?: @[]};
+    [self performAuthenticatedRequestWithURL:url method:@"DELETE" jsonBody:body completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        completion(error ?: ((statusCode >= 200 && statusCode < 300) ? nil : [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]));
     }];
 }
 

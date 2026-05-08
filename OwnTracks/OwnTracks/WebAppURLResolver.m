@@ -133,4 +133,78 @@
     return c.URL;
 }
 
++ (nullable NSURL *)geolocationCacheAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/geolocationcache";
+    c.query = nil;
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)geolocationCacheAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                  relativePath:(NSString *)relativePath
+                                                    queryItems:(NSArray<NSURLQueryItem *> *)queryItems {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || relativePath.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = relativePath;
+    c.queryItems = queryItems;
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)notificationsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                             skip:(NSInteger)skip
+                                                             take:(NSInteger)take
+                                                      includeRead:(BOOL)includeRead
+                                                             type:(nullable NSString *)type {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/notifications";
+    NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray arrayWithArray:@[
+        [NSURLQueryItem queryItemWithName:@"skip" value:[NSString stringWithFormat:@"%ld", (long)MAX(skip, 0)]],
+        [NSURLQueryItem queryItemWithName:@"take" value:[NSString stringWithFormat:@"%ld", (long)MAX(take, 1)]],
+        [NSURLQueryItem queryItemWithName:@"includeRead" value:includeRead ? @"true" : @"false"]
+    ]];
+    if (type.length > 0) {
+        [items addObject:[NSURLQueryItem queryItemWithName:@"type" value:type]];
+    }
+    c.queryItems = items;
+    return c.URL;
+}
+
++ (nullable NSURL *)notificationsUnreadCountAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/notifications/unread-count";
+    c.query = nil;
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)notificationsAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                               relativePath:(NSString *)relativePath {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || relativePath.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = relativePath;
+    c.query = nil;
+    c.fragment = nil;
+    return c.URL;
+}
+
 @end

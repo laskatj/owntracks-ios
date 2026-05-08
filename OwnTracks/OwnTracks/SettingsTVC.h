@@ -10,4 +10,7 @@
 #import "ABStaticTableViewController.h"
 
 @interface SettingsTVC : ABStaticTableViewController <UIDocumentInteractionControllerDelegate, UITextFieldDelegate>
++ (void)performFullResetToBundledDefaultsFromPresenter:(UIViewController *)presenter
+                                               animated:(BOOL)animated
+                                             completion:(void (^ _Nullable)(void))completion;
 @end
