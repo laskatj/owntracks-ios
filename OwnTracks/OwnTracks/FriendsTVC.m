@@ -10,6 +10,7 @@
 #import "Settings.h"
 #import "FriendsTVC.h"
 #import "WaypointTVC.h"
+#import <Sauron-Swift.h>
 #import "PersonTVC.h"
 #import "Friend+CoreDataClass.h"
 #import "FriendTableViewCell.h"
@@ -165,16 +166,33 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
 }
 
+- (BOOL)shouldPerformSegueWithIdentifier:(NSString *)identifier sender:(id)sender {
+    if ([identifier isEqualToString:@"showWaypointFromFriends"]) {
+        NSIndexPath *ip = [self.tableView indexPathForCell:sender];
+        if (ip) {
+            Friend *friend = [self.fetchedResultsController objectAtIndexPath:ip];
+            Waypoint *waypoint = friend.newestWaypoint;
+            if (waypoint) {
+                DeviceDetailHostingController *vc =
+                    [[DeviceDetailHostingController alloc] initWithWaypoint:waypoint];
+                [self.navigationController pushViewController:vc animated:YES];
+            }
+        }
+        return NO;
+    }
+    return YES;
+}
+
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
     NSIndexPath *indexPath = nil;
-    
+
     if ([sender isKindOfClass:[UITableViewCell class]]) {
         indexPath = [self.tableView indexPathForCell:sender];
     }
-    
+
     if (indexPath) {
         Friend *friend = [self.fetchedResultsController objectAtIndexPath:indexPath];
-        
+
         if ([segue.identifier isEqualToString:@"showWaypointFromFriends"]) {
             if ([segue.destinationViewController respondsToSelector:@selector(setWaypoint:)]) {
                 Waypoint *waypoint = friend.newestWaypoint;
@@ -183,7 +201,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                 }
             }
         }
-        
+
     }
 }
 

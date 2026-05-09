@@ -15,6 +15,7 @@
 #import "FriendsTVC.h"
 #import "RegionsTVC.h"
 #import "WaypointTVC.h"
+#import <Sauron-Swift.h>
 #import "CoreData.h"
 #import "Friend+CoreDataClass.h"
 #import "Region+CoreDataClass.h"
@@ -1768,9 +1769,18 @@ calloutAccessoryControlTapped:(UIControl *)control {
         if ([view.annotation isKindOfClass:[Region class]]) {
             [self performSegueWithIdentifier:@"showRegionFromMap" sender:view];
         } else if ([view.annotation isKindOfClass:[Friend class]]) {
-            [self performSegueWithIdentifier:@"showWaypointFromMap" sender:view];
+            Friend *friend = (Friend *)view.annotation;
+            Waypoint *wp = friend.newestWaypoint;
+            if (wp) {
+                DeviceDetailHostingController *vc =
+                    [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
+                [self.navigationController pushViewController:vc animated:YES];
+            }
         } else if ([view.annotation isKindOfClass:[Waypoint class]]) {
-            [self performSegueWithIdentifier:@"showWaypointFromMap" sender:view];
+            Waypoint *wp = (Waypoint *)view.annotation;
+            DeviceDetailHostingController *vc =
+                [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
+            [self.navigationController pushViewController:vc animated:YES];
         }
     }
 }

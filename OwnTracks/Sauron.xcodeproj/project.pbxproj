@@ -117,6 +117,9 @@
 		C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */; };
 		CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */; };
 		CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */; };
+		DD010002DD010002DD010002 /* DeviceDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD010001DD010001DD010001 /* DeviceDetailViewModel.swift */; };
+		DD020002DD020002DD020002 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD020001DD020001DD020001 /* DeviceDetailView.swift */; };
+		DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -458,6 +461,9 @@
 		CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OTInboxRealtimeContract.m; sourceTree = "<group>"; };
 		CAFE20042F91008100532801 /* OwnTracks-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "OwnTracks-Bridging-Header.h"; sourceTree = "<group>"; };
 		CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTInboxRealtimeCoordinator.swift; sourceTree = "<group>"; };
+		DD010001DD010001DD010001 /* DeviceDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailViewModel.swift; sourceTree = "<group>"; };
+		DD020001DD020001DD020001 /* DeviceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailView.swift; sourceTree = "<group>"; };
+		DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailHostingController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -810,6 +816,9 @@
 				CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */,
 				CAFE20042F91008100532801 /* OwnTracks-Bridging-Header.h */,
 				CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */,
+				DD010001DD010001DD010001 /* DeviceDetailViewModel.swift */,
+				DD020001DD020001DD020001 /* DeviceDetailView.swift */,
+				DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */,
 				A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */,
 				A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */,
 				B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */,
@@ -1304,6 +1313,9 @@
 				C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */,
 				CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */,
 				CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */,
+				DD010002DD010002DD010002 /* DeviceDetailViewModel.swift in Sources */,
+				DD020002DD020002DD020002 /* DeviceDetailView.swift in Sources */,
+				DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
