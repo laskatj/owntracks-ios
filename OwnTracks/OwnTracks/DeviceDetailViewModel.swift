@@ -44,6 +44,8 @@ import MapKit
     @Published var photoData: Data? = nil
     @Published var zoneName: String? = nil
 
+    private var geocacheObserver: NSObjectProtocol?
+
     // Chart data values are stored in the display unit (mph/ft or km/h/m)
     @Published var speedHistory: [(date: Date, value: Double)] = []
     @Published var altitudeHistory: [(date: Date, value: Double)] = []
@@ -55,6 +57,13 @@ import MapKit
     init(waypoint: Waypoint) {
         self.waypoint = waypoint
         super.init()
+        geocacheObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("OwnTracksGeolocationCacheDidUpdate"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshGeocacheLocationLabel()
+        }
         populate()
         waypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
         if UserDefaults.standard.integer(forKey: "noRevgeo") > 0 {
@@ -65,6 +74,9 @@ import MapKit
     }
 
     deinit {
+        if let observer = geocacheObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         waypoint.removeObserver(self, forKeyPath: "placemark")
     }
 
@@ -140,12 +152,27 @@ import MapKit
         poi = (waypoint.poi?.isEmpty == false) ? waypoint.poi : nil
         tag = (waypoint.tag?.isEmpty == false) ? waypoint.tag : nil
         photoData = waypoint.image.flatMap { $0.count > 0 ? $0 : nil }
-        zoneName = (waypoint.zoneName?.isEmpty == false) ? waypoint.zoneName : nil
+        refreshGeocacheLocationLabel()
 
         speedUnit = useMetric ? "km/h" : "mph"
         altitudeUnit = useMetric ? "m" : "ft"
 
         buildChartData(friend: friend, useMetric: useMetric)
+    }
+
+    /// Location name from server geolocation cache when the waypoint lies inside an eligible circle (not Destination / not +follow name).
+    private func refreshGeocacheLocationLabel() {
+        guard let lat = waypoint.lat?.doubleValue,
+              let lon = waypoint.lon?.doubleValue else {
+            zoneName = nil
+            return
+        }
+        let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        guard CLLocationCoordinate2DIsValid(coord) else {
+            zoneName = nil
+            return
+        }
+        zoneName = LocationAPISyncService.sharedInstance().geolocationItemContaining(coord)?.displayName
     }
 
     private func buildChartData(friend: Friend?, useMetric: Bool) {
