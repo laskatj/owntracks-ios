@@ -595,6 +595,34 @@ static OwnTracking *theInstance = nil;
     return region;
 }
 
+- (void)ensureDefaultFollowRegionIfNeededForFriend:(Friend *)friend
+                                            location:(CLLocation *)location {
+    if (!friend || !location) {
+        return;
+    }
+    for (Region *r in friend.hasRegions) {
+        if (r.name.length && [r.name hasPrefix:@"+"]) {
+            return;
+        }
+    }
+    const double kDefaultFollowRadiusM = 30.0;
+    NSString *rid = [Region newRid];
+    [self addRegionFor:rid
+                friend:friend
+                  name:@"+follow"
+                   tst:[NSDate date]
+                  uuid:nil
+                 major:0
+                 minor:0
+                radius:kDefaultFollowRadiusM
+                   lat:location.coordinate.latitude
+                   lon:location.coordinate.longitude];
+    DDLogInfo(@"[OwnTracking] ensureDefaultFollowRegionIfNeeded: created +follow at lat=%.4f lon=%.4f rad=%.0f",
+              location.coordinate.latitude,
+              location.coordinate.longitude,
+              kDefaultFollowRadiusM);
+}
+
 - (void)removeRegion:(Region *)region context:(NSManagedObjectContext *)context {
     DDLogInfo(@"[OwnTracking] removeRegion %@", region.name);
     [[LocationManager sharedInstance] stopRegion:region.CLregion];

@@ -1871,7 +1871,10 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         DDLogError(@"[OwnTracksAppDelegate] no friend found");
         return FALSE;
     }
-    
+
+    [[OwnTracking sharedInstance] ensureDefaultFollowRegionIfNeededForFriend:friend
+                                                                    location:location];
+
     // Update +follow region
     for (Region *anyRegion in friend.hasRegions) {
         if (anyRegion.CLregion.isFollow) {
@@ -1882,10 +1885,11 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 if (time == HUGE_VAL || time == -HUGE_VAL || time == 0.0) {
                     time = 30.0;
                 }
+                double minFollowM = [anyRegion.name isEqualToString:@"+follow"] ? 30.0 : 50.0;
                 if (location.speed >= 0.0) {
-                    anyRegion.radius = @(MAX(location.speed * time, 50.0));
+                    anyRegion.radius = @(MAX(location.speed * time, minFollowM));
                 } else {
-                    anyRegion.radius = @(MAX(location.horizontalAccuracy, 50.0));
+                    anyRegion.radius = @(MAX(location.horizontalAccuracy, minFollowM));
                 }
                 [[LocationManager sharedInstance] startRegion:anyRegion.CLregion];
                 [self sendRegion:anyRegion];

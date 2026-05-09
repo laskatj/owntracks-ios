@@ -108,7 +108,7 @@ import MapKit
         triggerText = waypoint.triggerText
         monitoringText = waypoint.monitoringText
 
-        if let vac = waypoint.vac?.doubleValue, vac > 0, let alt = waypoint.alt?.doubleValue {
+        if let alt = waypoint.alt?.doubleValue {
             altitudeText = "✈︎ \(Self.formatLength(meters: alt, useMetric: useMetric, decimals: 0))"
         } else {
             altitudeText = "-"
@@ -149,8 +149,8 @@ import MapKit
     }
 
     private func buildChartData(friend: Friend?, useMetric: Bool) {
-        guard let allSet = friend?.hasWaypoints,
-              let allWaypoints = allSet.allObjects as? [Waypoint] else { return }
+        guard let allSet = friend?.hasWaypoints else { return }
+        let allWaypoints = Array(allSet)
 
         let sorted = allWaypoints
             .sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
@@ -162,8 +162,7 @@ import MapKit
             return (date: wp.effectiveTimestamp, value: displayValue)
         }
         altitudeHistory = sorted.compactMap { wp in
-            guard let alt = wp.alt?.doubleValue,
-                  let vac = wp.vac?.doubleValue, vac > 0 else { return nil }
+            guard let alt = wp.alt?.doubleValue else { return nil }
             let displayValue = useMetric ? alt : alt * 3.28084
             return (date: wp.effectiveTimestamp, value: displayValue)
         }

@@ -408,6 +408,12 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 
 /// Resolves an access token: tries multiple Keychain base URLs (/, /map, preference path), and discovery `client_id` for Keychain lookup (must match WebAppAuthHelper storage after OAuth).
 - (void)obtainAccessTokenForLocationAPIWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self obtainAccessTokenForLocationAPIWithCompletion:completion];
+        });
+        return;
+    }
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
     NSArray<NSURL *> *candidates = [WebAppURLResolver webAppKeychainURLCandidatesFromPreferenceInMOC:mainMOC];
     if (candidates.count == 0) {

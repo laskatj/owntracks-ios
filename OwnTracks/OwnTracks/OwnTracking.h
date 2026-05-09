@@ -38,6 +38,9 @@ radius:(double)radius
 lat:(double)lat
 lon:(double)lon;
 
+- (void)ensureDefaultFollowRegionIfNeededForFriend:(Friend *)friend
+                                            location:(CLLocation *)location;
+
 - (void)removeRegion:(Region *)region context:(NSManagedObjectContext *)context;
 
 - (NSDictionary *)waypointAsJSON:(Waypoint *)waypoint;
