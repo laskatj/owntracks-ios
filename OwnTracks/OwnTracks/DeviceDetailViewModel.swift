@@ -6,6 +6,11 @@ import MapKit
 @objc class DeviceDetailViewModel: NSObject, ObservableObject {
     private let waypoint: Waypoint
 
+    // Unit preference: read from UserDefaults, defaults to false (= imperial)
+    static var useMetric: Bool {
+        return UserDefaults.standard.bool(forKey: "useMetric")
+    }
+
     @Published var deviceName: String = ""
     @Published var topic: String = ""
     @Published var tid: String = ""
@@ -39,8 +44,11 @@ import MapKit
     @Published var photoData: Data? = nil
     @Published var zoneName: String? = nil
 
+    // Chart data values are stored in the display unit (mph/ft or km/h/m)
     @Published var speedHistory: [(date: Date, value: Double)] = []
     @Published var altitudeHistory: [(date: Date, value: Double)] = []
+    @Published var speedUnit: String = ""
+    @Published var altitudeUnit: String = ""
 
     @Published var showCopiedNotice: Bool = false
 
@@ -68,6 +76,7 @@ import MapKit
     }
 
     private func populate() {
+        let useMetric = Self.useMetric
         let friend = waypoint.belongsTo
         deviceName = friend?.nameOrTopic ?? ""
         topic = friend?.topic ?? ""
@@ -76,26 +85,23 @@ import MapKit
 
         lastSeenDate = waypoint.effectiveTimestamp
         connectionText = waypoint.connectionText
-        isOnline = (waypoint.effectiveTimestamp.timeIntervalSinceNow) > -300
+        isOnline = waypoint.effectiveTimestamp.timeIntervalSinceNow > -300
 
         batteryLevel = waypoint.batt?.doubleValue ?? -1
         batteryStatusText = waypoint.batteryStatusText
 
         address = waypoint.placemark ?? ""
         coordinateText = waypoint.coordinateText
+
         if let acc = waypoint.acc?.doubleValue, acc >= 0 {
-            let m = Measurement(value: acc, unit: UnitLength.meters)
-            let mf = MeasurementFormatter()
-            mf.unitOptions = .naturalScale
-            mf.numberFormatter.maximumFractionDigits = 0
-            accuracyText = "±\(mf.string(from: m))"
+            accuracyText = "±\(Self.formatLength(meters: acc, useMetric: useMetric, decimals: 0))"
         } else {
             accuracyText = "-"
         }
 
         if let userLoc = LocationManager.sharedInstance()?.location {
             let dist = waypoint.getDistanceFrom(userLoc)
-            distanceText = Waypoint.distanceText(dist)
+            distanceText = Self.formatDistance(meters: dist, useMetric: useMetric)
         }
 
         timestampText = waypoint.timestampText
@@ -103,21 +109,13 @@ import MapKit
         monitoringText = waypoint.monitoringText
 
         if let vac = waypoint.vac?.doubleValue, vac > 0, let alt = waypoint.alt?.doubleValue {
-            let m = Measurement(value: alt, unit: UnitLength.meters)
-            let mf = MeasurementFormatter()
-            mf.unitOptions = .naturalScale
-            mf.numberFormatter.maximumFractionDigits = 0
-            altitudeText = "✈︎ \(mf.string(from: m))"
+            altitudeText = "✈︎ \(Self.formatLength(meters: alt, useMetric: useMetric, decimals: 0))"
         } else {
             altitudeText = "-"
         }
 
         if let vel = waypoint.vel?.doubleValue, vel >= 0 {
-            let m = Measurement(value: vel, unit: UnitSpeed.kilometersPerHour)
-            let mf = MeasurementFormatter()
-            mf.unitOptions = .naturalScale
-            mf.numberFormatter.maximumFractionDigits = 0
-            speedText = mf.string(from: m)
+            speedText = Self.formatSpeed(kmh: vel, useMetric: useMetric)
         } else {
             speedText = "-"
         }
@@ -144,27 +142,84 @@ import MapKit
         photoData = waypoint.image.flatMap { $0.count > 0 ? $0 : nil }
         zoneName = (waypoint.zoneName?.isEmpty == false) ? waypoint.zoneName : nil
 
-        buildChartData(friend: friend)
+        speedUnit = useMetric ? "km/h" : "mph"
+        altitudeUnit = useMetric ? "m" : "ft"
+
+        buildChartData(friend: friend, useMetric: useMetric)
     }
 
-    private func buildChartData(friend: Friend?) {
+    private func buildChartData(friend: Friend?, useMetric: Bool) {
         guard let allSet = friend?.hasWaypoints,
               let allWaypoints = allSet.allObjects as? [Waypoint] else { return }
 
         let sorted = allWaypoints
-            .sorted { ($0.effectiveTimestamp) < ($1.effectiveTimestamp) }
+            .sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
             .suffix(50)
 
         speedHistory = sorted.compactMap { wp in
             guard let vel = wp.vel?.doubleValue, vel >= 0 else { return nil }
-            return (date: wp.effectiveTimestamp, value: vel)
+            let displayValue = useMetric ? vel : vel * 0.621371
+            return (date: wp.effectiveTimestamp, value: displayValue)
         }
         altitudeHistory = sorted.compactMap { wp in
             guard let alt = wp.alt?.doubleValue,
                   let vac = wp.vac?.doubleValue, vac > 0 else { return nil }
-            return (date: wp.effectiveTimestamp, value: alt)
+            let displayValue = useMetric ? alt : alt * 3.28084
+            return (date: wp.effectiveTimestamp, value: displayValue)
         }
     }
+
+    // MARK: - Unit Formatting Helpers
+
+    private static func formatSpeed(kmh: Double, useMetric: Bool) -> String {
+        if useMetric {
+            return "\(Int(kmh.rounded())) km/h"
+        } else {
+            let mph = kmh * 0.621371
+            return "\(Int(mph.rounded())) mph"
+        }
+    }
+
+    private static func formatLength(meters: Double, useMetric: Bool, decimals: Int) -> String {
+        let mf = MeasurementFormatter()
+        mf.unitStyle = .short
+        mf.unitOptions = .providedUnit
+        mf.numberFormatter.maximumFractionDigits = decimals
+        mf.numberFormatter.minimumFractionDigits = 0
+        if useMetric {
+            return mf.string(from: Measurement(value: meters, unit: UnitLength.meters))
+        } else {
+            let feet = meters * 3.28084
+            return mf.string(from: Measurement(value: feet, unit: UnitLength.feet))
+        }
+    }
+
+    private static func formatDistance(meters: Double, useMetric: Bool) -> String {
+        let mf = MeasurementFormatter()
+        mf.unitStyle = .short
+        mf.unitOptions = .providedUnit
+        mf.numberFormatter.minimumFractionDigits = 0
+        if useMetric {
+            if meters < 1000 {
+                mf.numberFormatter.maximumFractionDigits = 0
+                return mf.string(from: Measurement(value: meters, unit: UnitLength.meters))
+            } else {
+                mf.numberFormatter.maximumFractionDigits = 1
+                return mf.string(from: Measurement(value: meters / 1000, unit: UnitLength.kilometers))
+            }
+        } else {
+            let miles = meters / 1609.344
+            if miles < 0.1 {
+                mf.numberFormatter.maximumFractionDigits = 0
+                return mf.string(from: Measurement(value: meters * 3.28084, unit: UnitLength.feet))
+            } else {
+                mf.numberFormatter.maximumFractionDigits = 1
+                return mf.string(from: Measurement(value: miles, unit: UnitLength.miles))
+            }
+        }
+    }
+
+    // MARK: - Actions
 
     func navigate() {
         guard let lat = waypoint.lat?.doubleValue,

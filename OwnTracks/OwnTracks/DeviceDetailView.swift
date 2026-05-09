@@ -149,7 +149,7 @@ struct DeviceDetailView: View {
                 iconColor: .blue,
                 value: vm.speedText,
                 label: "Speed",
-                unit: "km/h",
+                unit: vm.speedUnit,
                 chartData: vm.speedHistory
             )
             ExpandableStatCard(
@@ -157,7 +157,7 @@ struct DeviceDetailView: View {
                 iconColor: .indigo,
                 value: vm.altitudeText,
                 label: "Altitude",
-                unit: "m",
+                unit: vm.altitudeUnit,
                 chartData: vm.altitudeHistory
             )
         }
