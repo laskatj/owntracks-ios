@@ -1617,4 +1617,45 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
     }] resume];
 }
 
+- (void)obtainOAuthAccessTokenForAPICallsWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    [self obtainAccessTokenForLocationAPIWithCompletion:completion];
+}
+
+- (void)registerApnsDeviceTokenHex:(NSString *)hexString sandbox:(BOOL)sandbox completion:(void (^)(NSError * _Nullable error))completion {
+    if (hexString.length == 0) {
+        completion([NSError errorWithDomain:@"LocationAPISyncService"
+                                        code:1
+                                    userInfo:@{ NSLocalizedDescriptionKey: @"Empty APNs device token" }]);
+        return;
+    }
+    NSURL *url = [WebAppURLResolver apnsDeviceRegistrationAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
+    if (!url) {
+        completion([NSError errorWithDomain:@"LocationAPISyncService"
+                                        code:2
+                                    userInfo:@{ NSLocalizedDescriptionKey: @"No web app origin for API registration" }]);
+        return;
+    }
+    NSDictionary *body = @{
+        @"deviceToken": hexString,
+        @"sandbox": @(sandbox)
+    };
+    [self performAuthenticatedRequestWithURL:url
+                                        method:@"POST"
+                                      jsonBody:body
+                                    completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            DDLogWarn(@"[APNsReg] POST failed %@", error.localizedDescription);
+            completion(error);
+            return;
+        }
+        if (statusCode >= 200 && statusCode < 300) {
+            DDLogInfo(@"[APNsReg] registered OK (HTTP %ld)", (long)statusCode);
+            completion(nil);
+            return;
+        }
+        DDLogWarn(@"[APNsReg] HTTP %ld", (long)statusCode);
+        completion([self errorForStatus:(NSInteger)statusCode fallbackDomain:@"LocationAPISyncService"]);
+    }];
+}
+
 @end

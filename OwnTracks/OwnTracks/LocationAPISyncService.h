@@ -127,6 +127,14 @@ FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorMessageKey;
 /// Same ordering as Keychain silent refresh: discovery id, settings id if different, then `NSNull` for nil-client lookup.
 + (NSArray *)orderedKeychainClientIdChainDiscovery:(nullable NSString *)discoveryClientId settings:(nullable NSString *)clientPref;
 
+/// Same silent refresh pipeline as authenticated REST APIs (Bearer token resolution).
+- (void)obtainOAuthAccessTokenForAPICallsWithCompletion:(void (^)(NSString * _Nullable token))completion;
+
+/// Registers or updates this device token for inbox push notifications (POST `/api/push/devices/apns`).
+- (void)registerApnsDeviceTokenHex:(NSString *)hexString
+                           sandbox:(BOOL)sandbox
+                        completion:(void (^)(NSError * _Nullable error))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

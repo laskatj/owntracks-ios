@@ -115,6 +115,8 @@
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
 		C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */; };
 		C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */; };
+		CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */; };
+		CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -452,6 +454,10 @@
 		C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = BluetoothHeartRateManager.m; sourceTree = "<group>"; };
 		C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		C0BEBA50C0BE000100BEA001 /* Model 18.6.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.6.0.xcdatamodel"; sourceTree = "<group>"; };
+		CAFE20022F91008100532801 /* OTInboxRealtimeContract.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OTInboxRealtimeContract.h; sourceTree = "<group>"; };
+		CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OTInboxRealtimeContract.m; sourceTree = "<group>"; };
+		CAFE20042F91008100532801 /* OwnTracks-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "OwnTracks-Bridging-Header.h"; sourceTree = "<group>"; };
+		CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTInboxRealtimeCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -800,6 +806,10 @@
 				8411B901189FEC070019D2D6 /* FriendAnnotationV.m */,
 				FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */,
 				FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */,
+				CAFE20022F91008100532801 /* OTInboxRealtimeContract.h */,
+				CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */,
+				CAFE20042F91008100532801 /* OwnTracks-Bridging-Header.h */,
+				CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */,
 				A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */,
 				A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */,
 				B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */,
@@ -890,6 +900,9 @@
 				8452741524A8EF0B00C44340 /* PBXTargetDependency */,
 			);
 			name = Sauron;
+			packageProductDependencies = (
+				E2E530020053280AB0000310 /* SignalRClient */,
+			);
 			productName = OwnTracks;
 			productReference = 8411B828189FDB140019D2D6 /* Sauron.app */;
 			productType = "com.apple.product-type.application";
@@ -1019,6 +1032,9 @@
 				"zh-Hans",
 			);
 			mainGroup = 8411B81F189FDB140019D2D6;
+			packageReferences = (
+				E2E530010053280AB0000310 /* XCRemoteSwiftPackageReference "signalr-client-swift" */,
+			);
 			productRefGroup = 8411B829189FDB140019D2D6 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1286,6 +1302,8 @@
 				842E6ECE20BEE96F001928FA /* Region+CoreDataClass.m in Sources */,
 				F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */,
 				C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */,
+				CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */,
+				CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1697,8 +1715,9 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "OwnTracks/OwnTracks-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks/include";
 				WRAPPER_EXTENSION = app;
@@ -1755,7 +1774,8 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_OBJC_BRIDGING_HEADER = "OwnTracks/OwnTracks-Bridging-Header.h";
+				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/OwnTracks/include";
 				WRAPPER_EXTENSION = app;
@@ -2092,6 +2112,25 @@
 			versionGroupType = wrapper.xcdatamodel;
 		};
 /* End XCVersionGroup section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E2E530010053280AB0000310 /* XCRemoteSwiftPackageReference "signalr-client-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/dotnet/signalr-client-swift.git";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E2E530020053280AB0000310 /* SignalRClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E2E530010053280AB0000310 /* XCRemoteSwiftPackageReference "signalr-client-swift" */;
+			productName = SignalRClient;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8411B820189FDB140019D2D6 /* Project object */;
 }

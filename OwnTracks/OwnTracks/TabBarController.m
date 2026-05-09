@@ -12,6 +12,7 @@
 #import "CoreData.h"
 #import "LocationAPISyncService.h"
 #import "WebAppURLResolver.h"
+#import "OTInboxRealtimeContract.h"
 #import "ViewController.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -566,6 +567,11 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
     self.relativeFormatter = [[NSRelativeDateTimeFormatter alloc] init];
     self.relativeFormatter.unitsStyle = NSRelativeDateTimeFormatterUnitsStyleFull;
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(reloadPage)
+                                                 name:OTInboxShouldRefreshNotification
+                                               object:nil];
+
     [self.tableView registerClass:[OTInboxTableViewCell class] forCellReuseIdentifier:@"InboxCell"];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 96.0;
@@ -574,6 +580,10 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
     [self.refreshControl addTarget:self action:@selector(reloadPage) forControlEvents:UIControlEventValueChanged];
     [self rebuildNavButtons];
     [self reloadPage];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (NSString *)displayNameForNotification:(OTWebNotificationItem *)item {
@@ -1020,6 +1030,13 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
      object:nil
      queue:[NSOperationQueue mainQueue]
      usingBlock:^(NSNotification *note){
+        [self refreshInboxBadge];
+    }];
+    [[NSNotificationCenter defaultCenter]
+     addObserverForName:OTInboxShouldRefreshNotification
+     object:nil
+     queue:[NSOperationQueue mainQueue]
+     usingBlock:^(NSNotification * _Nonnull note) {
         [self refreshInboxBadge];
     }];
 }
