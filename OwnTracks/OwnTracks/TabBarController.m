@@ -999,6 +999,34 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
 
 @implementation TabBarController
 
+- (NSArray<UIViewController *> *)baseControllersReplacingHistoryWithInbox {
+    NSMutableArray<UIViewController *> *base = [NSMutableArray arrayWithArray:self.viewControllers ?: @[]];
+    NSUInteger replacementIndex = NSNotFound;
+
+    if (self.historyVC) {
+        NSUInteger historyIndex = [base indexOfObject:self.historyVC];
+        if (historyIndex != NSNotFound) {
+            replacementIndex = historyIndex;
+            [base removeObjectAtIndex:historyIndex];
+        }
+    }
+
+    if (self.inboxVC) {
+        NSUInteger inboxIndex = [base indexOfObject:self.inboxVC];
+        if (inboxIndex != NSNotFound) {
+            [base removeObjectAtIndex:inboxIndex];
+            if (replacementIndex != NSNotFound && inboxIndex < replacementIndex) {
+                replacementIndex--;
+            }
+        }
+
+        NSUInteger insertIndex = replacementIndex == NSNotFound ? base.count : MIN(replacementIndex, base.count);
+        [base insertObject:self.inboxVC atIndex:insertIndex];
+    }
+
+    return [base copy];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
 
@@ -1014,7 +1042,8 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
         }
     }
     [self installParityTabsIfNeeded];
-    self.fixedBaseControllers = [self.viewControllers copy];
+    self.fixedBaseControllers = [self baseControllersReplacingHistoryWithInbox];
+    [self setViewControllers:self.fixedBaseControllers animated:NO];
     
     [[NSNotificationCenter defaultCenter]
      addObserverForName:@"reload"
@@ -1049,30 +1078,15 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
 - (void)adjust {
     NSMutableArray *viewControllers = [[NSMutableArray alloc] initWithArray:self.fixedBaseControllers ?: self.viewControllers];
 
-
-    if (self.historyVC) {
-        if ([Settings theMaximumHistoryInMOC:[CoreData sharedInstance].mainMOC]) {
-            if (![viewControllers containsObject:self.historyVC]) {
-                [viewControllers insertObject:self.historyVC
-                                      atIndex:viewControllers.count];
-            }
-        } else {
-            if ([viewControllers containsObject:self.historyVC]) {
-                [viewControllers removeObject:self.historyVC];
-            }
-        }
-    }
-    
     if (self.regionVC) {
         if (![Settings theLockedInMOC:CoreData.sharedInstance.mainMOC]) {
             if (![viewControllers containsObject:self.regionVC]) {
-                if ([viewControllers containsObject:self.historyVC]) {
-                    [viewControllers insertObject:self.regionVC
-                                          atIndex:viewControllers.count - 1];
-                } else {
-                    [viewControllers insertObject:self.regionVC
-                                          atIndex:viewControllers.count];
+                NSUInteger insertIndex = self.inboxVC ? [viewControllers indexOfObject:self.inboxVC] : NSNotFound;
+                if (insertIndex == NSNotFound) {
+                    insertIndex = viewControllers.count;
                 }
+                [viewControllers insertObject:self.regionVC
+                                      atIndex:insertIndex];
             }
         } else {
             if ([viewControllers containsObject:self.regionVC]) {

@@ -10,6 +10,7 @@
 #import "Settings.h"
 #import "FriendsTVC.h"
 #import "WaypointTVC.h"
+#import <Sauron-Swift.h>
 #import "PersonTVC.h"
 #import "Friend+CoreDataClass.h"
 #import "FriendTableViewCell.h"
@@ -21,6 +22,7 @@
 #import "LocationAPISyncService.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 #import <Contacts/Contacts.h>
+#import <CoreLocation/CoreLocation.h>
 
 @interface FriendsTVC ()
 @property (strong, nonatomic) NSFetchedResultsController *fetchedResultsController;
@@ -42,6 +44,14 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     return self;
 }
 
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:OwnTracksGeolocationCacheDidUpdateNotification object:nil];
+}
+
+- (void)geolocationCacheDidUpdate:(NSNotification *)note {
+    [self.tableView reloadData];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     
@@ -51,6 +61,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                                   usingBlock:^(NSNotification *note){
         self.fetchedResultsController = nil;
     }];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(geolocationCacheDidUpdate:)
+                                                 name:OwnTracksGeolocationCacheDidUpdateNotification
+                                               object:nil];
     
     BOOL locked = [Settings theLockedInMOC:CoreData.sharedInstance.mainMOC];
     if (!locked) {
@@ -143,6 +158,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
     [self.tableView reloadData];
     [[LocationAPISyncService sharedInstance] requestLocationRefreshIfAppropriate];
+    [[LocationAPISyncService sharedInstance] requestGeolocationCachePrefetchIfAppropriate];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -165,16 +181,33 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
 }
 
+- (BOOL)shouldPerformSegueWithIdentifier:(NSString *)identifier sender:(id)sender {
+    if ([identifier isEqualToString:@"showWaypointFromFriends"]) {
+        NSIndexPath *ip = [self.tableView indexPathForCell:sender];
+        if (ip) {
+            Friend *friend = [self.fetchedResultsController objectAtIndexPath:ip];
+            Waypoint *waypoint = friend.newestWaypoint;
+            if (waypoint) {
+                DeviceDetailHostingController *vc =
+                    [[DeviceDetailHostingController alloc] initWithWaypoint:waypoint];
+                [self.navigationController pushViewController:vc animated:YES];
+            }
+        }
+        return NO;
+    }
+    return YES;
+}
+
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
     NSIndexPath *indexPath = nil;
-    
+
     if ([sender isKindOfClass:[UITableViewCell class]]) {
         indexPath = [self.tableView indexPathForCell:sender];
     }
-    
+
     if (indexPath) {
         Friend *friend = [self.fetchedResultsController objectAtIndexPath:indexPath];
-        
+
         if ([segue.identifier isEqualToString:@"showWaypointFromFriends"]) {
             if ([segue.destinationViewController respondsToSelector:@selector(setWaypoint:)]) {
                 Waypoint *waypoint = friend.newestWaypoint;
@@ -183,7 +216,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                 }
             }
         }
-        
+
     }
 }
 
@@ -429,8 +462,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     
     Waypoint *waypoint = friend.newestWaypoint;
     if (waypoint) {
-        if (waypoint.zoneName.length) {
-            friendTableViewCell.address.text = waypoint.zoneName;
+        CLLocationCoordinate2D coord = CLLocationCoordinate2DMake((waypoint.lat).doubleValue, (waypoint.lon).doubleValue);
+        OTWebLocationItem *contained = nil;
+        if (CLLocationCoordinate2DIsValid(coord)) {
+            contained = [[LocationAPISyncService sharedInstance] geolocationItemContainingCoordinate:coord];
+        }
+        if (contained) {
+            friendTableViewCell.address.text = contained.displayName;
         } else if (waypoint.placemark) {
             friendTableViewCell.address.text = waypoint.placemark;
         } else {

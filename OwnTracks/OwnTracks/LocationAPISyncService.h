@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <CoreLocation/CoreLocation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -15,6 +16,9 @@ FOUNDATION_EXPORT NSNotificationName const OwnTracksOAuthAccessTokenBecameAvaila
 FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorCodeKey;
 FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorReferenceCountKey;
 FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorMessageKey;
+
+/// Posted on the main queue when `GET /api/geolocationcache` succeeds and the in-memory cache is updated.
+FOUNDATION_EXPORT NSNotificationName const OwnTracksGeolocationCacheDidUpdateNotification;
 
 @interface OTWebLocationItem : NSObject
 @property (nonatomic) NSInteger locationId;
@@ -69,6 +73,12 @@ FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorMessageKey;
 /// GET /api/geolocationcache
 - (void)fetchGeolocationCacheWithCompletion:(void (^)(NSArray<OTWebLocationItem *> * _Nullable locations,
                                                       NSError * _Nullable error))completion;
+
+/// Debounced prefetch of geolocation cache (Friends tab, foreground). Safe to call often.
+- (void)requestGeolocationCachePrefetchIfAppropriate;
+
+/// Best eligible cached location whose circle contains `coordinate` (excludes `Destination` and `+follow` names). Main-thread use recommended.
+- (nullable OTWebLocationItem *)geolocationItemContainingCoordinate:(CLLocationCoordinate2D)coordinate;
 
 /// DELETE /api/geolocationcache/{id}[?replacementZoneId=...]
 - (void)deleteGeolocationCacheLocationId:(NSInteger)locationId
