@@ -16,6 +16,7 @@
 }
 
 @dynamic acc;
+@dynamic heartRate;
 @dynamic alt;
 @dynamic batt;
 @dynamic bs;

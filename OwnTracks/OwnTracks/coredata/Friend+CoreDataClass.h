@@ -50,6 +50,7 @@ conn:(nullable NSString *)conn
 bs:(nullable NSNumber *)bs
 pressure:(nullable NSNumber *)pressure
 motionActivities:(nullable NSArray <NSString *> *)motionActivities
+heartRate:(nullable NSNumber *)heartRate
 zoneName:(nullable NSString *)zoneName;
 
 - (NSInteger)limitWaypointsToMaximum:(NSInteger)max;

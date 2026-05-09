@@ -417,6 +417,7 @@ static OwnTracking *theInstance = nil;
                                bs:bs
                          pressure:p
                  motionActivities:motionActivities
+                        heartRate:nil
                          zoneName:incomingZoneName];
         int positions = [Settings intForKey:@"positions_preference" inMOC:friend.managedObjectContext];
         NSInteger remainingPositions = [friend limitWaypointsToMaximum:positions];
@@ -679,6 +680,10 @@ static OwnTracking *theInstance = nil;
 
     if (waypoint.bs.doubleValue != UIDeviceBatteryStateUnknown) {
         json[@"bs"] = waypoint.bs;
+    }
+
+    if (waypoint.heartRate && waypoint.heartRate.intValue > 0) {
+        json[@"hr"] = waypoint.heartRate;
     }
 
     if (waypoint.inRegions) {
