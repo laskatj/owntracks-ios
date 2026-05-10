@@ -152,6 +152,8 @@
 	</dict>
 	<key>NSHealthShareUsageDescription</key>
 	<string>OwnTracks reads your heart rate from Apple Watch via HealthKit to include it with location updates when no Bluetooth heart rate monitor is connected</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>OwnTracks uses HealthKit with background updates so new heart rate samples from Apple Watch can be read while you track location. OwnTracks does not add, change, or remove data in the Health app.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>OwnTracks uses Bluetooth to connect to your heart rate sensor and include your current heart rate with location updates</string>
 	<key>NSCameraUsageDescription</key>
@@ -186,7 +188,6 @@ No information of your address book will be uploaded to any server.</string>
 	<array>
 		<string>bluetooth-central</string>
 		<string>fetch</string>
-		<string>healthkit</string>
 		<string>location</string>
 		<string>remote-notification</string>
 	</array>
