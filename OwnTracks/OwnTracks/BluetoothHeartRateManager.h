@@ -8,6 +8,8 @@
 #import <Foundation/Foundation.h>
 #import <CoreBluetooth/CoreBluetooth.h>
 
+FOUNDATION_EXPORT NSNotificationName _Nonnull const OTBluetoothHeartRateDidUpdateNotification;
+
 NS_ASSUME_NONNULL_BEGIN
 
 /// Discovers and maintains a BLE connection to the first peripheral advertising

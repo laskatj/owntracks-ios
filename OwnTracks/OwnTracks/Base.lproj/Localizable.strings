@@ -369,3 +369,33 @@
 
 /* "Please keep OwnTracks running to ensure the desired functionality" */
 "Please keep OwnTracks running to ensure the desired functionality" = "Please keep OwnTracks running to ensure the desired functionality";
+
+/* Map tab: heart rate monitoring chip when disabled */
+"Map heart rate off" = "Off";
+
+/* Map tab: monitoring on but no HR sample yet */
+"Map heart rate em dash" = "—";
+
+/* Map tab: BPM format */
+"%d bpm" = "%d bpm";
+
+/* VoiceOver: monitoring off */
+"Off" = "Off";
+
+/* VoiceOver: map heart rate chip label */
+"Heart rate monitoring" = "Heart rate monitoring";
+
+/* VoiceOver: hint when monitoring is off */
+"Map heart rate hint off" = "Double tap to turn on heart rate from a Bluetooth sensor or Apple Health.";
+
+/* VoiceOver: hint when monitoring is on */
+"Map heart rate hint on" = "Double tap to turn off heart rate monitoring.";
+
+/* VoiceOver: HR from Bluetooth */
+"%d bpm from Bluetooth" = "%d bpm from Bluetooth";
+
+/* VoiceOver: HR from HealthKit */
+"%d bpm from Apple Health" = "%d bpm from Apple Health";
+
+/* VoiceOver: no recent HR while monitoring */
+"No recent heart rate" = "No recent heart rate";

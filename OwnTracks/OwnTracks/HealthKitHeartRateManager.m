@@ -16,7 +16,10 @@ static const NSTimeInterval kHeartRateMaxAge = 30.0;
 @property (nonatomic, strong) HKHealthStore *store;
 @property (nonatomic, strong, nullable) NSNumber *_heartRate;
 @property (nonatomic, strong, nullable) NSDate *_lastReadingDate;
+@property (nonatomic, strong, nullable) HKObserverQuery *observerQuery;
 @property (nonatomic, assign) BOOL observing;
+/// Set by \c stopObserving so an in-flight \c requestAuthorization completion does not attach an observer.
+@property (nonatomic, assign) BOOL observationStartCancelled;
 @end
 
 @implementation HealthKitHeartRateManager
@@ -78,24 +81,63 @@ static HealthKitHeartRateManager *theInstance = nil;
         return;
     }
 
+    self.observationStartCancelled = NO;
     HKQuantityType *hrType = [HKQuantityType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
     NSSet *readTypes = [NSSet setWithObject:hrType];
 
+    __weak typeof(self) weakSelf = self;
     [self.store requestAuthorizationToShareTypes:nil
                                        readTypes:readTypes
                                       completion:^(BOOL success, NSError *error) {
-        if (!success) {
-            DDLogError(@"[HKHRM] HealthKit authorization denied: %@", error.localizedDescription);
-            return;
-        }
-        DDLogInfo(@"[HKHRM] HealthKit authorization granted");
-        [self _setupObserver];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            if (strongSelf.observationStartCancelled) {
+                DDLogInfo(@"[HKHRM] observation start cancelled before auth completed");
+                return;
+            }
+            if (!success) {
+                DDLogError(@"[HKHRM] HealthKit authorization denied: %@", error.localizedDescription);
+                return;
+            }
+            DDLogInfo(@"[HKHRM] HealthKit authorization granted");
+            [strongSelf _setupObserver];
+        });
     }];
+}
+
+- (void)stopObserving {
+    self.observationStartCancelled = YES;
+    if (!self.observing && !self.observerQuery) {
+        return;
+    }
+    HKQuantityType *hrType = [HKQuantityType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
+    [self.store disableBackgroundDeliveryForType:hrType
+                                  withCompletion:^(BOOL success, NSError *error) {
+        if (!success && error) {
+            DDLogError(@"[HKHRM] disableBackgroundDelivery failed: %@", error.localizedDescription);
+        }
+    }];
+    if (self.observerQuery) {
+        [self.store stopQuery:self.observerQuery];
+        self.observerQuery = nil;
+    }
+    self.observing = NO;
+    self._heartRate = nil;
+    self._lastReadingDate = nil;
+    DDLogInfo(@"[HKHRM] stopObserving");
+    [[NSNotificationCenter defaultCenter] postNotificationName:OTHealthKitHeartRateDidUpdateNotification
+                                                        object:self];
 }
 
 #pragma mark - Private
 
 - (void)_setupObserver {
+    if (self.observationStartCancelled) {
+        return;
+    }
     self.observing = YES;
     HKQuantityType *hrType = [HKQuantityType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
 
@@ -123,6 +165,7 @@ static HealthKitHeartRateManager *theInstance = nil;
             [weakSelf _fetchLatestSampleWithObserverCompletion:completionHandler onFinished:nil];
         }];
 
+    self.observerQuery = observerQuery;
     [self.store executeQuery:observerQuery];
 
     // Fetch once immediately so we have a value before the first observer fires.

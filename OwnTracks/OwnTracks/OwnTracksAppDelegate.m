@@ -22,8 +22,7 @@
 #import "LocationAPISyncService.h"
 #import "OTInboxRealtimeContract.h"
 #import "OwnTracksWatchBridge.h"
-#import "BluetoothHeartRateManager.h"
-#import "HealthKitHeartRateManager.h"
+#import "OTHeartRateMonitoring.h"
 #import <Sauron-Swift.h>
 
 #import "OwnTracksSendNowIntent.h"
@@ -330,8 +329,7 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
 
     [[OwnTracksWatchBridge shared] activate];
 
-    [[BluetoothHeartRateManager sharedInstance] startScanning];
-    [[HealthKitHeartRateManager sharedInstance] startObserving];
+    [OTHeartRateMonitoring applyCurrentPreference];
 
     return YES;
 }
@@ -1993,15 +1991,10 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
     }
 
     static const NSTimeInterval kHeartRateMaxSampleAgeForWaypoint = 15 * 60;
-    NSNumber *heartRate = [BluetoothHeartRateManager sharedInstance].heartRate;
-    if (!heartRate) {
-        heartRate = [[BluetoothHeartRateManager sharedInstance] heartRateIfSampleWithin:kHeartRateMaxSampleAgeForWaypoint];
-    }
-    if (!heartRate) {
-        heartRate = [HealthKitHeartRateManager sharedInstance].heartRate;
-    }
-    if (!heartRate) {
-        heartRate = [[HealthKitHeartRateManager sharedInstance] heartRateIfSampleWithin:kHeartRateMaxSampleAgeForWaypoint];
+    NSNumber *heartRate = nil;
+    if ([OTHeartRateMonitoring isMonitoringEnabled]) {
+        heartRate = [OTHeartRateMonitoring resolvedHeartRateBPMWithMaxSampleAge:kHeartRateMaxSampleAgeForWaypoint
+                                                                     outSource:NULL];
     }
 
     Waypoint *waypoint = [friend addWaypoint:location

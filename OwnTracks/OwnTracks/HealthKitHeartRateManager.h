@@ -37,6 +37,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// multiple times; subsequent calls are no-ops once authorized.
 - (void)startObserving;
 
+/// Stops observer query and background delivery; clears cached HR. Safe to call when not observing.
+- (void)stopObserving;
+
 /// Re-queries HealthKit for the latest heart rate sample (e.g. when opening a UI).
 /// \p completion is always invoked on the main queue when the query finishes.
 - (void)refreshLatestSampleForUIWithCompletion:(nullable dispatch_block_t)completion

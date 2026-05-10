@@ -28,6 +28,9 @@
 #import "SettingsTVC.h"
 #import "Settings.h"
 #import "OTMapFollowHeading.h"
+#import "OTHeartRateMonitoring.h"
+#import "BluetoothHeartRateManager.h"
+#import "HealthKitHeartRateManager.h"
 
 #import "OwnTracksChangeMonitoringIntent.h"
 
@@ -187,6 +190,14 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (strong, nonatomic) MKUserTrackingButton *trackingButton;
 @property (strong, nonatomic) MKScaleView *scaleView;
 @property (strong, nonatomic) MKCompassButton *compassButton;
+@property (strong, nonatomic) UIControl *heartRateMapChip;
+@property (strong, nonatomic) UIImageView *heartRateMapHeartImageView;
+@property (strong, nonatomic) UILabel *heartRateMapBPMLabel;
+@property (strong, nonatomic) UIImageView *heartRateMapSourceBadgeView;
+/// Opaque tokens from `addObserverForName:object:queue:usingBlock:` — must be `strong`, not `copy` (tokens are not copyable).
+@property (nonatomic, strong) id heartRateMapNotificationTokenHK;
+@property (nonatomic, strong) id heartRateMapNotificationTokenBLE;
+@property (nonatomic, strong) id heartRateMapNotificationTokenPref;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *askForMapButton;
 @property (strong, nonatomic) UIBarButtonItem *bellBarButton;
 @property (strong, nonatomic) UIBarButtonItem *avatarBarButton;
@@ -312,6 +323,7 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     [self updateMoveButton];
     [self setupMapMode];
     [self setupScaleView];
+    [self setupMapHeartRateIndicator];
     [self setupCompassButton];
     
     [[LocationManager sharedInstance] addObserver:self
@@ -357,6 +369,18 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:OwnTracksCurrentUserProfileDidUpdateNotification object:nil];
+    if (self.heartRateMapNotificationTokenHK) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self.heartRateMapNotificationTokenHK];
+        self.heartRateMapNotificationTokenHK = nil;
+    }
+    if (self.heartRateMapNotificationTokenBLE) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self.heartRateMapNotificationTokenBLE];
+        self.heartRateMapNotificationTokenBLE = nil;
+    }
+    if (self.heartRateMapNotificationTokenPref) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self.heartRateMapNotificationTokenPref];
+        self.heartRateMapNotificationTokenPref = nil;
+    }
 }
 
 - (void)currentUserProfileDidChangeForRouteHistory:(NSNotification *)note {
@@ -754,11 +778,168 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     compass.compassVisibility = MKFeatureVisibilityAdaptive;
     [self.view addSubview:compass];
     self.compassButton = compass;
+    NSLayoutYAxisAnchor *compassTop = self.mapView.topAnchor;
+    CGFloat compassTopConstant = 12.0;
+    if (self.heartRateMapChip) {
+        compassTop = self.heartRateMapChip.bottomAnchor;
+        compassTopConstant = 8.0;
+    }
     [NSLayoutConstraint activateConstraints:@[
         [compass.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
-        [compass.topAnchor constraintEqualToAnchor:self.mapView.topAnchor constant:12],
+        [compass.topAnchor constraintEqualToAnchor:compassTop constant:compassTopConstant],
     ]];
     [self.view bringSubviewToFront:compass];
+    if (self.heartRateMapChip) {
+        [self.view bringSubviewToFront:self.heartRateMapChip];
+    }
+}
+
+#pragma mark - Map heart rate indicator
+
+- (void)setupMapHeartRateIndicator {
+    const CGFloat kHeartRateChipWidth = 112.0;
+    UIControl *chip = [[UIControl alloc] init];
+    chip.translatesAutoresizingMaskIntoConstraints = NO;
+    chip.backgroundColor = [[UIColor secondarySystemGroupedBackgroundColor] colorWithAlphaComponent:0.92];
+    chip.layer.cornerRadius = 10.0;
+    chip.layer.masksToBounds = YES;
+    chip.accessibilityTraits = UIAccessibilityTraitButton;
+    [chip addTarget:self action:@selector(heartRateMapChipTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.heartRateMapChip = chip;
+
+    UIImageView *heart = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"heart.fill"]];
+    heart.translatesAutoresizingMaskIntoConstraints = NO;
+    heart.tintColor = [UIColor secondaryLabelColor];
+    heart.contentMode = UIViewContentModeScaleAspectFit;
+    self.heartRateMapHeartImageView = heart;
+
+    UILabel *bpm = [[UILabel alloc] init];
+    bpm.translatesAutoresizingMaskIntoConstraints = NO;
+    bpm.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
+    bpm.textColor = [UIColor secondaryLabelColor];
+    bpm.text = NSLocalizedString(@"Map heart rate off", @"Map chip: monitoring disabled");
+    bpm.textAlignment = NSTextAlignmentCenter;
+    bpm.adjustsFontSizeToFitWidth = YES;
+    bpm.minimumScaleFactor = 0.7;
+    self.heartRateMapBPMLabel = bpm;
+
+    UIImageView *badge = [[UIImageView alloc] init];
+    badge.translatesAutoresizingMaskIntoConstraints = NO;
+    badge.contentMode = UIViewContentModeScaleAspectFit;
+    badge.hidden = YES;
+    badge.tintColor = [UIColor labelColor];
+    self.heartRateMapSourceBadgeView = badge;
+
+    [chip addSubview:heart];
+    [chip addSubview:bpm];
+    [chip addSubview:badge];
+
+    [self.view addSubview:chip];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [chip.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
+        [chip.topAnchor constraintEqualToAnchor:self.mapView.topAnchor constant:12],
+        [chip.heightAnchor constraintGreaterThanOrEqualToConstant:40],
+        [chip.widthAnchor constraintEqualToConstant:kHeartRateChipWidth],
+
+        [heart.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor constant:10],
+        [heart.centerYAnchor constraintEqualToAnchor:chip.centerYAnchor],
+        [heart.widthAnchor constraintEqualToConstant:24],
+        [heart.heightAnchor constraintEqualToConstant:24],
+
+        [bpm.leadingAnchor constraintEqualToAnchor:heart.trailingAnchor constant:6],
+        [bpm.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor constant:-10],
+        [bpm.centerYAnchor constraintEqualToAnchor:chip.centerYAnchor],
+
+        [badge.widthAnchor constraintEqualToConstant:14],
+        [badge.heightAnchor constraintEqualToConstant:14],
+        [badge.trailingAnchor constraintEqualToAnchor:heart.trailingAnchor constant:4],
+        [badge.bottomAnchor constraintEqualToAnchor:heart.bottomAnchor constant:3],
+    ]];
+
+    __weak typeof(self) weakSelf = self;
+    self.heartRateMapNotificationTokenHK =
+        [[NSNotificationCenter defaultCenter] addObserverForName:OTHealthKitHeartRateDidUpdateNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(__unused NSNotification *note) {
+        [weakSelf updateMapHeartRateIndicatorAppearance];
+    }];
+    self.heartRateMapNotificationTokenBLE =
+        [[NSNotificationCenter defaultCenter] addObserverForName:OTBluetoothHeartRateDidUpdateNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(__unused NSNotification *note) {
+        [weakSelf updateMapHeartRateIndicatorAppearance];
+    }];
+    self.heartRateMapNotificationTokenPref =
+        [[NSNotificationCenter defaultCenter] addObserverForName:OTHeartRateMonitoringEnabledDidChangeNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(__unused NSNotification *note) {
+        [weakSelf updateMapHeartRateIndicatorAppearance];
+    }];
+
+    [self updateMapHeartRateIndicatorAppearance];
+}
+
+- (void)heartRateMapChipTapped {
+    BOOL on = ![OTHeartRateMonitoring isMonitoringEnabled];
+    [OTHeartRateMonitoring setMonitoringEnabled:on];
+}
+
+- (void)updateMapHeartRateIndicatorAppearance {
+    if (!self.heartRateMapChip) {
+        return;
+    }
+    const NSTimeInterval kMaxAge = 15 * 60;
+    BOOL monitoring = [OTHeartRateMonitoring isMonitoringEnabled];
+    OTHeartRateSource src = OTHeartRateSourceNone;
+    NSNumber *bpmValue = nil;
+    if (monitoring) {
+        bpmValue = [OTHeartRateMonitoring resolvedHeartRateBPMWithMaxSampleAge:kMaxAge outSource:&src];
+    }
+
+    if (!monitoring) {
+        self.heartRateMapHeartImageView.tintColor = [UIColor tertiaryLabelColor];
+        self.heartRateMapBPMLabel.textColor = [UIColor tertiaryLabelColor];
+        self.heartRateMapBPMLabel.text = NSLocalizedString(@"Map heart rate off", @"Map chip: monitoring disabled");
+        self.heartRateMapSourceBadgeView.hidden = YES;
+        self.heartRateMapChip.accessibilityLabel = NSLocalizedString(@"Heart rate monitoring", @"Accessibility label map HR chip");
+        self.heartRateMapChip.accessibilityValue = NSLocalizedString(@"Off", @"Accessibility value HR monitoring off");
+        self.heartRateMapChip.accessibilityHint = NSLocalizedString(@"Map heart rate hint off", @"VoiceOver hint to turn HR monitoring on");
+        return;
+    }
+
+    self.heartRateMapHeartImageView.tintColor = [UIColor systemPinkColor];
+    self.heartRateMapBPMLabel.textColor = [UIColor labelColor];
+    if (bpmValue && bpmValue.intValue > 0) {
+        self.heartRateMapBPMLabel.text = [NSString stringWithFormat:NSLocalizedString(@"%d bpm", @"Beats per minute integer on map chip"),
+                                                                   bpmValue.intValue];
+    } else {
+        self.heartRateMapBPMLabel.text = NSLocalizedString(@"Map heart rate em dash", @"Map chip: monitoring on but no sample");
+    }
+
+    if (bpmValue && bpmValue.intValue > 0 && src == OTHeartRateSourceBluetooth) {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold];
+        self.heartRateMapSourceBadgeView.image = [[UIImage systemImageNamed:@"bluetooth"
+                                                              withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        self.heartRateMapSourceBadgeView.hidden = NO;
+        self.heartRateMapChip.accessibilityValue = [NSString stringWithFormat:NSLocalizedString(@"%d bpm from Bluetooth", @"A11y map HR Bluetooth"),
+                                                                                     bpmValue.intValue];
+    } else if (bpmValue && bpmValue.intValue > 0 && src == OTHeartRateSourceHealthKit) {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold];
+        self.heartRateMapSourceBadgeView.image = [[UIImage systemImageNamed:@"heart.text.square.fill"
+                                                              withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        self.heartRateMapSourceBadgeView.hidden = NO;
+        self.heartRateMapChip.accessibilityValue = [NSString stringWithFormat:NSLocalizedString(@"%d bpm from Apple Health", @"A11y map HR HealthKit"),
+                                                                                     bpmValue.intValue];
+    } else {
+        self.heartRateMapSourceBadgeView.hidden = YES;
+        self.heartRateMapChip.accessibilityValue = NSLocalizedString(@"No recent heart rate", @"A11y map HR no sample");
+    }
+    self.heartRateMapChip.accessibilityLabel = NSLocalizedString(@"Heart rate monitoring", @"Accessibility label map HR chip");
+    self.heartRateMapChip.accessibilityHint = NSLocalizedString(@"Map heart rate hint on", @"VoiceOver hint to turn HR monitoring off");
 }
 
 #pragma mark - Route history (Recorder window + UI)

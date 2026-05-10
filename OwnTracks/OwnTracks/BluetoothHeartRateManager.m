@@ -8,6 +8,8 @@
 #import "BluetoothHeartRateManager.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
+NSNotificationName const OTBluetoothHeartRateDidUpdateNotification = @"OTBluetoothHeartRateDidUpdateNotification";
+
 // Heart Rate Service and Measurement characteristic UUIDs (Bluetooth SIG).
 static NSString * const kHeartRateServiceUUID        = @"180D";
 static NSString * const kHeartRateMeasurementUUID    = @"2A37";
@@ -99,6 +101,14 @@ static BluetoothHeartRateManager *theInstance = nil;
     }
     self._heartRate = nil;
     self._lastReadingDate = nil;
+    [self _postHeartRateNotification];
+}
+
+- (void)_postHeartRateNotification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:OTBluetoothHeartRateDidUpdateNotification
+                                                            object:self];
+    });
 }
 
 #pragma mark - CBCentralManagerDelegate
@@ -152,6 +162,7 @@ didDisconnectPeripheral:(CBPeripheral *)peripheral
     self.heartRatePeripheral = nil;
     self._heartRate = nil;
     self._lastReadingDate = nil;
+    [self _postHeartRateNotification];
     if (self.scanningRequested) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
@@ -222,6 +233,7 @@ didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic
             self._heartRate = bpm;
             self._lastReadingDate = [NSDate date];
             DDLogVerbose(@"[BHRM] heart rate: %@ bpm", bpm);
+            [self _postHeartRateNotification];
         }
     }
 }
