@@ -10,6 +10,7 @@
 #import "Settings.h"
 #import "FriendsTVC.h"
 #import "WaypointTVC.h"
+#import <Sauron-Swift.h>
 #import "PersonTVC.h"
 #import "Friend+CoreDataClass.h"
 #import "FriendTableViewCell.h"
@@ -21,9 +22,27 @@
 #import "LocationAPISyncService.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 #import <Contacts/Contacts.h>
+#import <CoreLocation/CoreLocation.h>
+
+typedef NS_ENUM(NSInteger, FriendsSortMode) {
+    FriendsSortModeNameAsc = 0,
+    FriendsSortModeNameDesc,
+    FriendsSortModeLastActivityDesc,
+};
+
+typedef NS_ENUM(NSInteger, FriendsFilterMode) {
+    FriendsFilterModeAll = 0,
+    FriendsFilterModeRecent7Days,
+};
+
+static NSString *const kFriendsSortModeKey = @"FriendsTVC.sortMode";
+static NSString *const kFriendsFilterModeKey = @"FriendsTVC.filterMode";
 
 @interface FriendsTVC ()
 @property (strong, nonatomic) NSFetchedResultsController *fetchedResultsController;
+@property (nonatomic) FriendsSortMode friendsSortMode;
+@property (nonatomic) FriendsFilterMode friendsFilterMode;
+- (void)rebuildSortFilterMenu;
 @end
 
 @implementation FriendsTVC
@@ -42,6 +61,14 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     return self;
 }
 
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:OwnTracksGeolocationCacheDidUpdateNotification object:nil];
+}
+
+- (void)geolocationCacheDidUpdate:(NSNotification *)note {
+    [self.tableView reloadData];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     
@@ -51,6 +78,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                                                   usingBlock:^(NSNotification *note){
         self.fetchedResultsController = nil;
     }];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(geolocationCacheDidUpdate:)
+                                                 name:OwnTracksGeolocationCacheDidUpdateNotification
+                                               object:nil];
     
     BOOL locked = [Settings theLockedInMOC:CoreData.sharedInstance.mainMOC];
     if (!locked) {
@@ -133,6 +165,143 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                 break;
         }
     }
+
+    [self rebuildSortFilterMenu];
+}
+
+#pragma mark - Sort & filter (persisted)
+
+- (FriendsSortMode)friendsSortMode {
+    NSInteger v = [[NSUserDefaults standardUserDefaults] integerForKey:kFriendsSortModeKey];
+    if (v < FriendsSortModeNameAsc || v > FriendsSortModeLastActivityDesc) {
+        v = FriendsSortModeNameAsc;
+    }
+    return (FriendsSortMode)v;
+}
+
+- (void)setFriendsSortMode:(FriendsSortMode)friendsSortMode {
+    [[NSUserDefaults standardUserDefaults] setInteger:friendsSortMode forKey:kFriendsSortModeKey];
+}
+
+- (FriendsFilterMode)friendsFilterMode {
+    NSInteger v = [[NSUserDefaults standardUserDefaults] integerForKey:kFriendsFilterModeKey];
+    if (v < FriendsFilterModeAll || v > FriendsFilterModeRecent7Days) {
+        v = FriendsFilterModeAll;
+    }
+    return (FriendsFilterMode)v;
+}
+
+- (void)setFriendsFilterMode:(FriendsFilterMode)friendsFilterMode {
+    [[NSUserDefaults standardUserDefaults] setInteger:friendsFilterMode forKey:kFriendsFilterModeKey];
+}
+
+- (void)rebuildSortFilterMenu {
+    FriendsSortMode sort = self.friendsSortMode;
+    FriendsFilterMode filter = self.friendsFilterMode;
+    __weak typeof(self) weakSelf = self;
+
+    UIAction *nameAsc = [UIAction actionWithTitle:NSLocalizedString(@"Name (A–Z)",
+                                                                    @"Friends list sort: alphabetical A–Z")
+                                           image:nil
+                                      identifier:nil
+                                         handler:^(__kindof UIAction * _Nonnull action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.friendsSortMode = FriendsSortModeNameAsc;
+        strongSelf.fetchedResultsController = nil;
+        [strongSelf.tableView reloadData];
+        [strongSelf rebuildSortFilterMenu];
+    }];
+    nameAsc.state = (sort == FriendsSortModeNameAsc) ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIAction *nameDesc = [UIAction actionWithTitle:NSLocalizedString(@"Name (Z–A)",
+                                                                     @"Friends list sort: reverse alphabetical")
+                                            image:nil
+                                       identifier:nil
+                                          handler:^(__kindof UIAction * _Nonnull action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.friendsSortMode = FriendsSortModeNameDesc;
+        strongSelf.fetchedResultsController = nil;
+        [strongSelf.tableView reloadData];
+        [strongSelf rebuildSortFilterMenu];
+    }];
+    nameDesc.state = (sort == FriendsSortModeNameDesc) ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIAction *lastActivity = [UIAction actionWithTitle:NSLocalizedString(@"Last activity (newest first)",
+                                                                          @"Friends list sort by last location time")
+                                                image:nil
+                                           identifier:nil
+                                              handler:^(__kindof UIAction * _Nonnull action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.friendsSortMode = FriendsSortModeLastActivityDesc;
+        strongSelf.fetchedResultsController = nil;
+        [strongSelf.tableView reloadData];
+        [strongSelf rebuildSortFilterMenu];
+    }];
+    lastActivity.state = (sort == FriendsSortModeLastActivityDesc) ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIMenu *sortSection = [UIMenu menuWithTitle:NSLocalizedString(@"Sort by", @"Friends list: sort menu section title")
+                                        image:nil
+                                   identifier:nil
+                                      options:UIMenuOptionsDisplayInline
+                                     children:@[nameAsc, nameDesc, lastActivity]];
+
+    UIAction *filterAll = [UIAction actionWithTitle:NSLocalizedString(@"All", @"Friends list filter: show all")
+                                              image:nil
+                                         identifier:nil
+                                            handler:^(__kindof UIAction * _Nonnull action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.friendsFilterMode = FriendsFilterModeAll;
+        strongSelf.fetchedResultsController = nil;
+        [strongSelf.tableView reloadData];
+        [strongSelf rebuildSortFilterMenu];
+    }];
+    filterAll.state = (filter == FriendsFilterModeAll) ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIAction *filterRecent = [UIAction actionWithTitle:NSLocalizedString(@"Recent activity (last 7 days)",
+                                                                        @"Friends list filter: last week only")
+                                               image:nil
+                                          identifier:nil
+                                             handler:^(__kindof UIAction * _Nonnull action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.friendsFilterMode = FriendsFilterModeRecent7Days;
+        strongSelf.fetchedResultsController = nil;
+        [strongSelf.tableView reloadData];
+        [strongSelf rebuildSortFilterMenu];
+    }];
+    filterRecent.state = (filter == FriendsFilterModeRecent7Days) ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIMenu *filterSection = [UIMenu menuWithTitle:NSLocalizedString(@"Filter", @"Friends list: filter menu section title")
+                                          image:nil
+                                     identifier:nil
+                                        options:UIMenuOptionsDisplayInline
+                                       children:@[filterAll, filterRecent]];
+
+    UIMenu *rootMenu = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:0 children:@[sortSection, filterSection]];
+
+    UIImage *icon = [UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"];
+    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithImage:icon
+                                                               style:UIBarButtonItemStylePlain
+                                                              target:nil
+                                                              action:nil];
+    item.menu = rootMenu;
+    item.accessibilityLabel = NSLocalizedString(@"Sort and filter friends",
+                                                @"Accessibility: opens friends list sort and filter menu");
+    self.navigationItem.rightBarButtonItem = item;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -143,6 +312,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
     [self.tableView reloadData];
     [[LocationAPISyncService sharedInstance] requestLocationRefreshIfAppropriate];
+    [[LocationAPISyncService sharedInstance] requestGeolocationCachePrefetchIfAppropriate];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -165,16 +335,33 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }
 }
 
+- (BOOL)shouldPerformSegueWithIdentifier:(NSString *)identifier sender:(id)sender {
+    if ([identifier isEqualToString:@"showWaypointFromFriends"]) {
+        NSIndexPath *ip = [self.tableView indexPathForCell:sender];
+        if (ip) {
+            Friend *friend = [self.fetchedResultsController objectAtIndexPath:ip];
+            Waypoint *waypoint = friend.newestWaypoint;
+            if (waypoint) {
+                DeviceDetailHostingController *vc =
+                    [[DeviceDetailHostingController alloc] initWithWaypoint:waypoint];
+                [self.navigationController pushViewController:vc animated:YES];
+            }
+        }
+        return NO;
+    }
+    return YES;
+}
+
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
     NSIndexPath *indexPath = nil;
-    
+
     if ([sender isKindOfClass:[UITableViewCell class]]) {
         indexPath = [self.tableView indexPathForCell:sender];
     }
-    
+
     if (indexPath) {
         Friend *friend = [self.fetchedResultsController objectAtIndexPath:indexPath];
-        
+
         if ([segue.identifier isEqualToString:@"showWaypointFromFriends"]) {
             if ([segue.destinationViewController respondsToSelector:@selector(setWaypoint:)]) {
                 Waypoint *waypoint = friend.newestWaypoint;
@@ -183,7 +370,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                 }
             }
         }
-        
+
     }
 }
 
@@ -284,17 +471,50 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
                                               inManagedObjectContext:CoreData.sharedInstance.mainMOC];
     fetchRequest.entity = entity;
     fetchRequest.fetchBatchSize = 20;
-    
+
+    NSMutableArray<NSPredicate *> *predicates = [NSMutableArray array];
     double ignoreStaleLocations = [Settings doubleForKey:@"ignorestalelocations_preference"
                                                    inMOC:CoreData.sharedInstance.mainMOC];
     if (ignoreStaleLocations) {
         NSTimeInterval stale = -ignoreStaleLocations * 24.0 * 3600.0;
-        fetchRequest.predicate = [NSPredicate predicateWithFormat:@"lastLocation > %@",
-                                  [NSDate dateWithTimeIntervalSinceNow:stale]];
+        [predicates addObject:[NSPredicate predicateWithFormat:@"lastLocation > %@",
+                               [NSDate dateWithTimeIntervalSinceNow:stale]]];
     }
-    
-    NSSortDescriptor *sortDescriptor1 = [NSSortDescriptor sortDescriptorWithKey:@"topic" ascending:YES];
-    NSArray *sortDescriptors = @[sortDescriptor1];
+    if (self.friendsFilterMode == FriendsFilterModeRecent7Days) {
+        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-7.0 * 24.0 * 3600.0];
+        [predicates addObject:[NSPredicate predicateWithFormat:@"lastLocation > %@", cutoff]];
+    }
+    if (predicates.count > 0) {
+        fetchRequest.predicate = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
+    }
+
+    NSSortDescriptor *topicAsc = [NSSortDescriptor sortDescriptorWithKey:@"topic"
+                                                                 ascending:YES
+                                                                  selector:@selector(caseInsensitiveCompare:)];
+    NSSortDescriptor *topicDesc = [NSSortDescriptor sortDescriptorWithKey:@"topic"
+                                                                ascending:NO
+                                                                 selector:@selector(caseInsensitiveCompare:)];
+    NSSortDescriptor *cardNameAsc = [NSSortDescriptor sortDescriptorWithKey:@"cardName"
+                                                                  ascending:YES
+                                                                   selector:@selector(caseInsensitiveCompare:)];
+    NSSortDescriptor *cardNameDesc = [NSSortDescriptor sortDescriptorWithKey:@"cardName"
+                                                                   ascending:NO
+                                                                    selector:@selector(caseInsensitiveCompare:)];
+    NSSortDescriptor *lastLocationDesc = [NSSortDescriptor sortDescriptorWithKey:@"lastLocation" ascending:NO];
+
+    NSArray<NSSortDescriptor *> *sortDescriptors;
+    switch (self.friendsSortMode) {
+        case FriendsSortModeNameDesc:
+            sortDescriptors = @[cardNameDesc, topicDesc];
+            break;
+        case FriendsSortModeLastActivityDesc:
+            sortDescriptors = @[lastLocationDesc, topicAsc];
+            break;
+        case FriendsSortModeNameAsc:
+        default:
+            sortDescriptors = @[cardNameAsc, topicAsc];
+            break;
+    }
     fetchRequest.sortDescriptors = sortDescriptors;
     
     NSFetchedResultsController *aFetchedResultsController = [[NSFetchedResultsController alloc]
@@ -429,8 +649,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     
     Waypoint *waypoint = friend.newestWaypoint;
     if (waypoint) {
-        if (waypoint.zoneName.length) {
-            friendTableViewCell.address.text = waypoint.zoneName;
+        CLLocationCoordinate2D coord = CLLocationCoordinate2DMake((waypoint.lat).doubleValue, (waypoint.lon).doubleValue);
+        OTWebLocationItem *contained = nil;
+        if (CLLocationCoordinate2DIsValid(coord)) {
+            contained = [[LocationAPISyncService sharedInstance] geolocationItemContainingCoordinate:coord];
+        }
+        if (contained) {
+            friendTableViewCell.address.text = contained.displayName;
         } else if (waypoint.placemark) {
             friendTableViewCell.address.text = waypoint.placemark;
         } else {

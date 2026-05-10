@@ -20,9 +20,11 @@
 #import "NSNumber+decimals.h"
 #import "Validation.h"
 #import "LocationAPISyncService.h"
+#import "OTInboxRealtimeContract.h"
 #import "OwnTracksWatchBridge.h"
 #import "BluetoothHeartRateManager.h"
 #import "HealthKitHeartRateManager.h"
+#import <Sauron-Swift.h>
 
 #import "OwnTracksSendNowIntent.h"
 #import "OwnTracksChangeMonitoringIntent.h"
@@ -31,8 +33,21 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
-// experimental code for APNS
-#define APNS FALSE
+static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
+    id v = userInfo[OTInboxPushEnvelopeTypeKey];
+    if ([v isKindOfClass:[NSString class]] &&
+        [(NSString *)v caseInsensitiveCompare:OTInboxPushEnvelopeTypeValue] == NSOrderedSame) {
+        return YES;
+    }
+    NSDictionary *aps = userInfo[@"aps"];
+    if ([aps isKindOfClass:[NSDictionary class]]) {
+        NSString *cat = [aps[@"category"] isKindOfClass:[NSString class]] ? aps[@"category"] : nil;
+        if (cat.length > 0 && [cat.lowercaseString containsString:@"inbox"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
 
 @interface OwnTracksAppDelegate()
 
@@ -232,9 +247,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     }];
     center.delegate = self;
     
-#if APNS
     [[UIApplication sharedApplication] registerForRemoteNotifications];
-#endif
     
     return YES;
 }
@@ -313,6 +326,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     });
 
     [[LocationAPISyncService sharedInstance] start];
+    [[OTInboxRealtimeCoordinator shared] activate];
 
     [[OwnTracksWatchBridge shared] activate];
 
@@ -331,19 +345,52 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
                       UNNotificationPresentationOptionSound);
 }
 
-#if APNS
 - (void)application:(UIApplication *)application
 didReceiveRemoteNotification:(NSDictionary *)userInfo
 fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
-    DDLogInfo(@"[OwnTracksAppDelegate] didReceiveRemoteNotification starting");
-    
-    [self performSelectorOnMainThread:@selector(doRefresh)
-                           withObject:nil
-                        waitUntilDone:TRUE];
-    DDLogInfo(@"[OwnTracksAppDelegate] didReceiveRemoteNotification finished");
-    completionHandler(UIBackgroundFetchResultNewData);
+    BOOL inboxHint = OT_APNSIndicatesInboxRefresh(userInfo);
+    DDLogInfo(@"[OwnTracksAppDelegate] didReceiveRemoteNotification inboxHint=%d", inboxHint);
+    if (!inboxHint) {
+        completionHandler(UIBackgroundFetchResultNoData);
+        return;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:OTInboxShouldRefreshNotification
+                         object:nil
+                       userInfo:@{ OTInboxShouldRefreshReasonKey: OTInboxShouldRefreshReasonAPNs }];
+    });
+
+    __block UIBackgroundTaskIdentifier bgId = UIBackgroundTaskInvalid;
+    bgId = [application beginBackgroundTaskWithExpirationHandler:^{
+        [application endBackgroundTask:bgId];
+    }];
+
+    [[LocationAPISyncService sharedInstance] fetchUnreadNotificationCountWithCompletion:^(NSInteger count,
+                                                                                           NSError *_Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!error) {
+                NSInteger badge = MAX((NSInteger)count, 0);
+                if (badge > INT_MAX) {
+                    badge = INT_MAX;
+                }
+                [[UNUserNotificationCenter currentNotificationCenter]
+                  setBadgeCount:badge
+          withCompletionHandler:^(NSError *_Nullable badgeErr) {
+                    if (badgeErr) {
+                        DDLogWarn(@"[APNs] setBadgeCount: %@", badgeErr.localizedDescription);
+                    }
+                    [application endBackgroundTask:bgId];
+                    completionHandler(UIBackgroundFetchResultNewData);
+                }];
+            } else {
+                [application endBackgroundTask:bgId];
+                completionHandler(UIBackgroundFetchResultFailed);
+            }
+        });
+    }];
 }
-#endif
 
 - (void)applicationWillResignActive:(UIApplication *)application {
     DDLogInfo(@"[OwnTracksAppDelegate] applicationWillResignActive");
@@ -1826,7 +1873,10 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         DDLogError(@"[OwnTracksAppDelegate] no friend found");
         return FALSE;
     }
-    
+
+    [[OwnTracking sharedInstance] ensureDefaultFollowRegionIfNeededForFriend:friend
+                                                                    location:location];
+
     // Update +follow region
     for (Region *anyRegion in friend.hasRegions) {
         if (anyRegion.CLregion.isFollow) {
@@ -1837,10 +1887,11 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                 if (time == HUGE_VAL || time == -HUGE_VAL || time == 0.0) {
                     time = 30.0;
                 }
+                double minFollowM = [anyRegion.name isEqualToString:@"+follow"] ? 30.0 : 50.0;
                 if (location.speed >= 0.0) {
-                    anyRegion.radius = @(MAX(location.speed * time, 50.0));
+                    anyRegion.radius = @(MAX(location.speed * time, minFollowM));
                 } else {
-                    anyRegion.radius = @(MAX(location.horizontalAccuracy, 50.0));
+                    anyRegion.radius = @(MAX(location.horizontalAccuracy, minFollowM));
                 }
                 [[LocationManager sharedInstance] startRegion:anyRegion.CLregion];
                 [self sendRegion:anyRegion];
@@ -2328,27 +2379,35 @@ continueUserActivity:(nonnull NSUserActivity *)userActivity
     return NO;
 }
 
-#if APNS
-#pragma Remote Notifications
+#pragma mark Remote Notifications (inbox backend)
+
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
-    
-    NSString *deviceHexString = [[NSString alloc] init];
-    for (int i = 0; i < deviceToken.length; i++) {
-        unsigned char c;
-        [deviceToken getBytes:&c range:NSMakeRange(i, 1)];
-        deviceHexString = [deviceHexString stringByAppendingFormat:@"%02X", c];
+    NSMutableString *deviceHexString = [[NSMutableString alloc] initWithCapacity:(NSUInteger)(deviceToken.length * 2)];
+    const unsigned char *bytes = (const unsigned char *)deviceToken.bytes;
+    for (NSUInteger i = 0; i < deviceToken.length; i++) {
+        [deviceHexString appendFormat:@"%02X", bytes[i]];
     }
     DDLogInfo(@"[OwnTracksAppDelegate] didRegisterForRemoteNotificationsWithDeviceToken: %@",
               deviceHexString);
+
+#if DEBUG
+    BOOL sandbox = YES;
+#else
+    BOOL sandbox = NO;
+#endif
+    [[LocationAPISyncService sharedInstance] registerApnsDeviceTokenHex:deviceHexString
+                                                                sandbox:sandbox
+                                                             completion:^(NSError *_Nullable error) {
+        if (error) {
+            DDLogWarn(@"[APNsReg] token upload failed %@", error.localizedDescription);
+        }
+    }];
 }
 
 - (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error {
     DDLogError(@"[OwnTracksAppDelegate] didFailToRegisterForRemoteNotificationsWithError: %@",
                error.localizedDescription);
-    
 }
-
-#endif
 
 @end
 

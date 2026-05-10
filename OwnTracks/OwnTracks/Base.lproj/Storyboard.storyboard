@@ -2088,7 +2088,7 @@
                             <outlet property="delegate" destination="0f4-YU-UXj" id="do4-gj-FkQ"/>
                         </connections>
                     </tableView>
-                    <navigationItem key="navigationItem" title="Friends" id="03k-Ca-PSS"/>
+                    <navigationItem key="navigationItem" title="" id="03k-Ca-PSS"/>
                 </tableViewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="uQ4-mZ-NmU" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>

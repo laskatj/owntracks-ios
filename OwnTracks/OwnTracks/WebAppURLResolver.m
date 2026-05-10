@@ -4,6 +4,7 @@
 //
 
 #import "WebAppURLResolver.h"
+#import "OTInboxRealtimeContract.h"
 #import "Settings.h"
 
 @implementation WebAppURLResolver
@@ -202,6 +203,34 @@
     }
     NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
     c.path = relativePath;
+    c.query = nil;
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)signalRHubURLFromPreferenceInMOC:(NSManagedObjectContext *)moc accessToken:(NSString *)accessToken {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || accessToken.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    if (OTInboxRealtimeHubPathComponent.length == 0) {
+        return nil;
+    }
+    c.path = OTInboxRealtimeHubPathComponent;
+    c.percentEncodedFragment = nil;
+    c.percentEncodedQuery = nil;
+    c.queryItems = @[ [NSURLQueryItem queryItemWithName:OTRealtimeSignalRAccessTokenQueryName value:accessToken] ];
+    return c.URL;
+}
+
++ (nullable NSURL *)apnsDeviceRegistrationAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || OTInboxAPNsRegisterAPIPath.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = OTInboxAPNsRegisterAPIPath;
     c.query = nil;
     c.fragment = nil;
     return c.URL;

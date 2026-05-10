@@ -15,6 +15,7 @@
 #import "FriendsTVC.h"
 #import "RegionsTVC.h"
 #import "WaypointTVC.h"
+#import <Sauron-Swift.h>
 #import "CoreData.h"
 #import "Friend+CoreDataClass.h"
 #import "Region+CoreDataClass.h"
@@ -31,6 +32,49 @@
 #import "OwnTracksChangeMonitoringIntent.h"
 
 static NSString * const kMapRouteHistoryHoursKey = @"mapRouteHistoryHours";
+
+static NSString * const kOTFollowUserPitchKey = @"OTFollowUserPitch";
+static NSString * const kOTFollowUserDistanceKey = @"OTFollowUserDistance";
+/// Default camera altitude (m) when starting follow — street-level; user can pinch after.
+static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
+
+static CGFloat OTClampedFollowUserPitch(double pitch) {
+    if (!isfinite(pitch)) {
+        return OTMaxFollowMapCameraPitch();
+    }
+    return (CGFloat)MIN(80.0, MAX(0.0, pitch));
+}
+
+static CLLocationDistance OTClampedFollowUserDistance(CLLocationDistance d) {
+    if (!isfinite(d) || d <= 0.0) {
+        return kFollowDefaultCameraDistanceM;
+    }
+    return MIN(1.5e6, MAX(80.0, d));
+}
+
+static CGFloat OTFollowUserPitch(void) {
+    NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+    if ([defs objectForKey:kOTFollowUserPitchKey] == nil) {
+        return OTMaxFollowMapCameraPitch();
+    }
+    return OTClampedFollowUserPitch([defs doubleForKey:kOTFollowUserPitchKey]);
+}
+
+static CLLocationDistance OTFollowUserDistance(void) {
+    NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+    if ([defs objectForKey:kOTFollowUserDistanceKey] == nil) {
+        return kFollowDefaultCameraDistanceM;
+    }
+    return OTClampedFollowUserDistance([defs doubleForKey:kOTFollowUserDistanceKey]);
+}
+
+static void OTPersistFollowUserCameraPitchAndDistance(double pitch, CLLocationDistance distance) {
+    CGFloat p = OTClampedFollowUserPitch(pitch);
+    CLLocationDistance d = OTClampedFollowUserDistance(distance);
+    NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+    [defs setDouble:p forKey:kOTFollowUserPitchKey];
+    [defs setDouble:d forKey:kOTFollowUserDistanceKey];
+}
 
 /// Best-effort unix seconds from a Recorder route point dict (for 6h/12h alignment debug).
 static NSTimeInterval RouteHistoryPointUnixTime(NSDictionary *pt) {
@@ -103,49 +147,6 @@ static NSString *RouteDebugPSTOrUnknown(id unixObj) {
 static BOOL OTGestureIsActive(UIGestureRecognizer *gr) {
     return gr.state == UIGestureRecognizerStateBegan ||
            gr.state == UIGestureRecognizerStateChanged;
-}
-
-/// Pinch-zoom temporarily suspends follow recentering; other gestures still pause course-up follow.
-static BOOL OTViewControllerRegionChangeIsPinchZoomOnly(MKMapView *mapView) {
-    UIView *content = mapView.subviews.firstObject;
-    if (!content) {
-        return NO;
-    }
-    BOOL anyActive = NO;
-    for (UIGestureRecognizer *gr in content.gestureRecognizers) {
-        if (!OTGestureIsActive(gr)) {
-            continue;
-        }
-        anyActive = YES;
-        if (![gr isKindOfClass:[UIPinchGestureRecognizer class]]) {
-            return NO;
-        }
-    }
-    return anyActive;
-}
-
-
-/// True when the active gesture looks like user tilt/pitch (two-finger pan) rather than map drag.
-static BOOL OTViewControllerRegionChangeIsPitchGestureOnly(MKMapView *mapView) {
-    UIView *content = mapView.subviews.firstObject;
-    if (!content) {
-        return NO;
-    }
-    BOOL anyActive = NO;
-    for (UIGestureRecognizer *gr in content.gestureRecognizers) {
-        if (!OTGestureIsActive(gr)) {
-            continue;
-        }
-        anyActive = YES;
-        if (![gr isKindOfClass:[UIPanGestureRecognizer class]]) {
-            return NO;
-        }
-        UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
-        if (pan.numberOfTouches < 2) {
-            return NO;
-        }
-    }
-    return anyActive;
 }
 
 /// Template clock: minute hand at 12; hour at 12 when `hours == 12`, at 6 when `hours == 6`.
@@ -1768,9 +1769,18 @@ calloutAccessoryControlTapped:(UIControl *)control {
         if ([view.annotation isKindOfClass:[Region class]]) {
             [self performSegueWithIdentifier:@"showRegionFromMap" sender:view];
         } else if ([view.annotation isKindOfClass:[Friend class]]) {
-            [self performSegueWithIdentifier:@"showWaypointFromMap" sender:view];
+            Friend *friend = (Friend *)view.annotation;
+            Waypoint *wp = friend.newestWaypoint;
+            if (wp) {
+                DeviceDetailHostingController *vc =
+                    [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
+                [self.navigationController pushViewController:vc animated:YES];
+            }
         } else if ([view.annotation isKindOfClass:[Waypoint class]]) {
-            [self performSegueWithIdentifier:@"showWaypointFromMap" sender:view];
+            Waypoint *wp = (Waypoint *)view.annotation;
+            DeviceDetailHostingController *vc =
+                [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
+            [self.navigationController pushViewController:vc animated:YES];
         }
     }
 }
@@ -1791,28 +1801,26 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
 - (void)mapView:(MKMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
     // Pan/zoom must NOT clear the selected friend or their route — selection is tied to the
-    // annotation (see didDeselectAnnotationView). Only stop optional camera-follow CADisplayLink.
-    if (OTViewControllerRegionChangeIsPinchZoomOnly(mapView) || OTViewControllerRegionChangeIsPitchGestureOnly(mapView)) {
-        DDLogInfo(@"[Follow] pinch/pitch gesture — temporarily suspend follow recenter; keep selection + route");
-        [self stopFollowLink];
-        self.followTemporarilySuspendedByGesture = (self.followEnabled && self.followFriend);
+    // annotation (see didDeselectAnnotationView). Pause follow while any user gesture is active.
+    UIView *mapContentView = mapView.subviews.firstObject;
+    if (!mapContentView) {
         return;
     }
-    UIView *mapContentView = mapView.subviews.firstObject;
+    BOOL anyActiveGesture = NO;
     for (UIGestureRecognizer *gr in mapContentView.gestureRecognizers) {
         if (OTGestureIsActive(gr)) {
-            DDLogInfo(@"[Follow] map pan/rotate — stopFollowLink; pause course-up (keep selection + route)");
-            [self stopFollowLink];
-            self.followTemporarilySuspendedByGesture = NO;
-            if (self.followEnabled && self.followFriend) {
-                self.followHeadingLockPausedByUserGesture = YES;
-                MKMapCamera *cam = [self.mapView.camera copy];
-                cam.heading = 0.0;
-                cam.pitch = OTMaxFollowMapCameraPitch();
-                [self.mapView setCamera:cam animated:NO];
-            }
-            return;
+            anyActiveGesture = YES;
+            break;
         }
+    }
+    if (!anyActiveGesture) {
+        return;
+    }
+    if (self.followEnabled && self.followFriend) {
+        DDLogInfo(@"[Follow] user gesture — suspend follow recenter; pause course-up; keep selection + route");
+        [self stopFollowLink];
+        self.followTemporarilySuspendedByGesture = YES;
+        self.followHeadingLockPausedByUserGesture = YES;
     }
 }
 
@@ -1820,6 +1828,8 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (!self.followTemporarilySuspendedByGesture || !self.followEnabled || !self.followFriend) {
         return;
     }
+    MKMapCamera *camSnapshot = [mapView.camera copy];
+    OTPersistFollowUserCameraPitchAndDistance(camSnapshot.pitch, camSnapshot.centerCoordinateDistance);
     self.followTemporarilySuspendedByGesture = NO;
     CLLocationCoordinate2D coord = self.followFriend.coordinate;
     if (!CLLocationCoordinate2DIsValid(coord)) {
@@ -1828,7 +1838,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     [self applyFollow3DCameraToCoordinate:coord
                                   heading:NAN
                        preserveUserAltitude:YES];
-    DDLogInfo(@"[Follow] pinch/pitch ended — resumed follow using user zoom/pitch distance");
+    DDLogInfo(@"[Follow] gesture ended — persisted follow zoom/pitch; resumed follow");
 }
 
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
@@ -2338,12 +2348,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
     [self updateRouteHistoryToggleVisibility];
 }
 
-/// Default camera altitude (m) when starting follow — street-level; user can pinch after.
-static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
-
-/// Course-up / north-up + maximum pitch while `followFriend` is set.
+/// Course-up / north-up + user pitch while `followFriend` is set.
 /// `preserveUserAltitude:YES` keeps `centerCoordinateDistance` after pinch-zoom (live updates).
-/// `NO` resets to `kFollowDefaultCameraDistanceM` when the user first selects a device.
+/// `NO` resets to persisted `OTFollowUserDistance` when the user first selects a device.
 - (void)applyFollow3DCameraToCoordinate:(CLLocationCoordinate2D)coord
                                 heading:(double)headingOrNAN
                      preserveUserAltitude:(BOOL)preserveUserAltitude {
@@ -2354,14 +2361,14 @@ static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
     }
     MKMapCamera *cam = [self.mapView.camera copy];
     cam.centerCoordinate = coord;
-    cam.pitch = OTMaxFollowMapCameraPitch();
+    cam.pitch = OTFollowUserPitch();
     if (preserveUserAltitude) {
         double d = cam.centerCoordinateDistance;
-        if (!isfinite(d) || d < 80.0 || d > 1.5e6) {
-            cam.centerCoordinateDistance = kFollowDefaultCameraDistanceM;
+        if (!isfinite(d) || d <= 0.0) {
+            cam.centerCoordinateDistance = OTFollowUserDistance();
         }
     } else {
-        cam.centerCoordinateDistance = kFollowDefaultCameraDistanceM;
+        cam.centerCoordinateDistance = OTFollowUserDistance();
     }
     if (self.followHeadingLockPausedByUserGesture) {
         cam.heading = 0.0;

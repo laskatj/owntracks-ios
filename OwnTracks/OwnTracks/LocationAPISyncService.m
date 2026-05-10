@@ -7,6 +7,7 @@
 //
 
 #import "LocationAPISyncService.h"
+#import <CoreLocation/CoreLocation.h>
 #import "WebAppURLResolver.h"
 #import "WebAppAuthHelper.h"
 #import "Settings.h"
@@ -58,6 +59,7 @@ static NSString * const kOTProvisionAPIDomain = @"OTProvisionAPI";
 static const NSInteger kOTProvisionAPICodeBusy = 998;
 
 NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification = @"OwnTracksOAuthAccessTokenBecameAvailable";
+NSNotificationName const OwnTracksGeolocationCacheDidUpdateNotification = @"OwnTracksGeolocationCacheDidUpdate";
 NSString * const OTLocationDeleteErrorCodeKey = @"OTLocationDeleteErrorCode";
 NSString * const OTLocationDeleteErrorReferenceCountKey = @"OTLocationDeleteErrorReferenceCount";
 NSString * const OTLocationDeleteErrorMessageKey = @"OTLocationDeleteErrorMessage";
@@ -96,6 +98,24 @@ static UIViewController *LocationAPISyncTopMostViewController(void) {
 static const NSTimeInterval kLocationAPIPollIntervalSeconds = 60.0;
 /// Minimum seconds between debounced refreshes (Friends tab, etc.) and the last successful GET /api/location apply.
 static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.0;
+/// Default radius (m) for geolocation cache items when API omits `radius` — matches `OTLocationDetailsViewController`.
+static const CLLocationDistance kOTGeolocationCacheDefaultRadiusMeters = 35.0;
+/// Minimum interval between automatic geolocationcache GETs (prefetch).
+static const NSTimeInterval kOTGeolocationCachePrefetchMinIntervalSeconds = 25.0;
+
+static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
+    static NSString * const kPrefix = @"+follow";
+    NSArray<NSString *> *candidates = @[item.displayName ?: @"", item.originalDisplayName ?: @""];
+    for (NSString *name in candidates) {
+        if (name.length == 0) {
+            continue;
+        }
+        if ([name.lowercaseString hasPrefix:kPrefix]) {
+            return YES;
+        }
+    }
+    return NO;
+}
 
 @implementation OTWebLocationItem
 @end
@@ -117,6 +137,10 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 @property (nonatomic, copy, nullable) NSString *cachedAccessToken;
 /// Unix timestamp (exp claim) of cachedAccessToken. Zero means unknown/uncached.
 @property (nonatomic) NSTimeInterval cachedAccessTokenExpiry;
+/// Last successful `GET /api/geolocationcache` payload (main thread only).
+@property (nonatomic, copy, nullable) NSArray<OTWebLocationItem *> *lastGeolocationCacheItems;
+@property (nonatomic, strong, nullable) NSDate *lastSuccessfulGeolocationCacheFetchDate;
+@property (nonatomic) BOOL geolocationCacheFetchInFlight;
 - (void)scheduleInteractiveOAuthIfNoTokenAfterFailure;
 /// OAuth stores refresh tokens under `keychainAccountForWebAppURL` using discovery `client_id` from `/.well-known/owntracks-app-auth`, not necessarily Settings `oauth_client_id_preference`. Try discovery id first, then settings, then nil lookup.
 - (void)trySilentRefreshWithCandidates:(NSArray<NSURL *> *)candidates
@@ -191,6 +215,7 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
     [self fetchAndApply];
+    [self requestGeolocationCachePrefetchIfAppropriate];
     [self startPollTimer];
     // Native-only UI never loads WebAppViewController; deferred provision covers cold start once LAS token path is warm.
     __weak typeof(self) wself = self;
@@ -408,6 +433,12 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
 
 /// Resolves an access token: tries multiple Keychain base URLs (/, /map, preference path), and discovery `client_id` for Keychain lookup (must match WebAppAuthHelper storage after OAuth).
 - (void)obtainAccessTokenForLocationAPIWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self obtainAccessTokenForLocationAPIWithCompletion:completion];
+        });
+        return;
+    }
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
     NSArray<NSURL *> *candidates = [WebAppURLResolver webAppKeychainURLCandidatesFromPreferenceInMOC:mainMOC];
     if (candidates.count == 0) {
@@ -1129,25 +1160,109 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
     return item;
 }
 
+- (void)requestGeolocationCachePrefetchIfAppropriate {
+    if (self.geolocationCacheFetchInFlight) {
+        DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch skipped (fetch in flight)");
+        return;
+    }
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    NSURL *url = [WebAppURLResolver geolocationCacheAPIRequestURLFromPreferenceInMOC:moc];
+    if (!url) {
+        return;
+    }
+    NSDate *last = self.lastSuccessfulGeolocationCacheFetchDate;
+    if (last && [[NSDate date] timeIntervalSinceDate:last] < kOTGeolocationCachePrefetchMinIntervalSeconds) {
+        DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch skipped (last fetch %.1fs ago)",
+                     [[NSDate date] timeIntervalSinceDate:last]);
+        return;
+    }
+    self.geolocationCacheFetchInFlight = YES;
+    __weak typeof(self) wself = self;
+    [self fetchGeolocationCacheWithCompletion:^(NSArray<OTWebLocationItem *> * _Nullable locations, NSError * _Nullable error) {
+        if (error) {
+            DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch: %@", error.localizedDescription);
+        }
+        (void)wself;
+    }];
+}
+
+- (nullable OTWebLocationItem *)geolocationItemContainingCoordinate:(CLLocationCoordinate2D)coordinate {
+    if (!CLLocationCoordinate2DIsValid(coordinate)) {
+        return nil;
+    }
+    NSArray<OTWebLocationItem *> *items = self.lastGeolocationCacheItems;
+    if (items.count == 0) {
+        return nil;
+    }
+    CLLocation *point = [[CLLocation alloc] initWithLatitude:coordinate.latitude longitude:coordinate.longitude];
+    OTWebLocationItem *best = nil;
+    CLLocationDistance bestDistance = DBL_MAX;
+    NSInteger bestLocationId = NSIntegerMax;
+
+    for (OTWebLocationItem *item in items) {
+        if ([item.sourceType isEqualToString:@"Destination"]) {
+            continue;
+        }
+        if (OTWebLocationItemHasFollowStyleName(item)) {
+            continue;
+        }
+        CLLocationDistance radiusM = kOTGeolocationCacheDefaultRadiusMeters;
+        if (item.radius != nil) {
+            double r = item.radius.doubleValue;
+            if (r > 0 && isfinite(r)) {
+                radiusM = r;
+            }
+        }
+        CLLocation *center = [[CLLocation alloc] initWithLatitude:item.latitude longitude:item.longitude];
+        CLLocationDistance d = fabs([point distanceFromLocation:center]);
+        if (d <= radiusM) {
+            if (d < bestDistance - 1e-6 || (fabs(d - bestDistance) < 1e-6 && item.locationId < bestLocationId)) {
+                best = item;
+                bestDistance = d;
+                bestLocationId = item.locationId;
+            }
+        }
+    }
+    return best;
+}
+
 - (void)fetchGeolocationCacheWithCompletion:(void (^)(NSArray<OTWebLocationItem *> * _Nullable, NSError * _Nullable))completion {
     NSURL *url = [WebAppURLResolver geolocationCacheAPIRequestURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
     if (!url) {
-        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No geolocation cache URL"}]);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.geolocationCacheFetchInFlight = NO;
+        });
+        if (completion) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No geolocation cache URL"}]);
+        }
         return;
     }
+    __weak typeof(self) wself = self;
     [self performAuthenticatedRequestWithURL:url method:@"GET" jsonBody:nil completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        void (^finishFailure)(NSError *) = ^(NSError *err) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(wself) sself = wself;
+                if (sself) {
+                    sself.geolocationCacheFetchInFlight = NO;
+                }
+            });
+            if (completion) {
+                completion(nil, err);
+            }
+        };
+
         if (error) {
-            completion(nil, error);
+            finishFailure(error);
             return;
         }
         if (statusCode != 200) {
-            completion(nil, [self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]);
+            finishFailure([self errorForStatus:statusCode fallbackDomain:@"LocationAPISyncService"]);
             return;
         }
         NSError *jsonErr = nil;
         id obj = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
         if (jsonErr || (![obj isKindOfClass:[NSArray class]] && ![obj isKindOfClass:[NSDictionary class]])) {
-            completion(nil, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
+            finishFailure(jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:nil]);
             return;
         }
         NSArray *rawList = nil;
@@ -1162,7 +1277,7 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             }
         }
         if (!rawList) {
-            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Invalid geolocationcache payload"}]);
+            finishFailure([NSError errorWithDomain:@"LocationAPISyncService" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Invalid geolocationcache payload"}]);
             return;
         }
         NSMutableArray<OTWebLocationItem *> *out = [NSMutableArray array];
@@ -1176,7 +1291,23 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             }
         }
         DDLogInfo(@"[LocationAPISyncService] geolocationcache parsed=%lu", (unsigned long)out.count);
-        completion([out copy], nil);
+        NSArray<OTWebLocationItem *> *result = [out copy];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(wself) sself = wself;
+            if (!sself) {
+                if (completion) {
+                    completion(result, nil);
+                }
+                return;
+            }
+            sself.lastGeolocationCacheItems = result;
+            sself.lastSuccessfulGeolocationCacheFetchDate = [NSDate date];
+            sself.geolocationCacheFetchInFlight = NO;
+            [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksGeolocationCacheDidUpdateNotification object:sself];
+            if (completion) {
+                completion(result, nil);
+            }
+        });
     }];
 }
 
@@ -1615,6 +1746,47 @@ static const NSTimeInterval kLocationAPIDebouncedRefreshMinIntervalSeconds = 25.
             }
         }];
     }] resume];
+}
+
+- (void)obtainOAuthAccessTokenForAPICallsWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    [self obtainAccessTokenForLocationAPIWithCompletion:completion];
+}
+
+- (void)registerApnsDeviceTokenHex:(NSString *)hexString sandbox:(BOOL)sandbox completion:(void (^)(NSError * _Nullable error))completion {
+    if (hexString.length == 0) {
+        completion([NSError errorWithDomain:@"LocationAPISyncService"
+                                        code:1
+                                    userInfo:@{ NSLocalizedDescriptionKey: @"Empty APNs device token" }]);
+        return;
+    }
+    NSURL *url = [WebAppURLResolver apnsDeviceRegistrationAPIURLFromPreferenceInMOC:CoreData.sharedInstance.mainMOC];
+    if (!url) {
+        completion([NSError errorWithDomain:@"LocationAPISyncService"
+                                        code:2
+                                    userInfo:@{ NSLocalizedDescriptionKey: @"No web app origin for API registration" }]);
+        return;
+    }
+    NSDictionary *body = @{
+        @"deviceToken": hexString,
+        @"sandbox": @(sandbox)
+    };
+    [self performAuthenticatedRequestWithURL:url
+                                        method:@"POST"
+                                      jsonBody:body
+                                    completion:^(NSData *data, NSInteger statusCode, NSError *error) {
+        if (error) {
+            DDLogWarn(@"[APNsReg] POST failed %@", error.localizedDescription);
+            completion(error);
+            return;
+        }
+        if (statusCode >= 200 && statusCode < 300) {
+            DDLogInfo(@"[APNsReg] registered OK (HTTP %ld)", (long)statusCode);
+            completion(nil);
+            return;
+        }
+        DDLogWarn(@"[APNsReg] HTTP %ld", (long)statusCode);
+        completion([self errorForStatus:(NSInteger)statusCode fallbackDomain:@"LocationAPISyncService"]);
+    }];
 }
 
 @end
