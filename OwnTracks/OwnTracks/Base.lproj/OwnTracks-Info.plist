@@ -150,6 +150,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>OwnTracks reads your heart rate from Apple Watch via HealthKit to include it with location updates when no Bluetooth heart rate monitor is connected</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>OwnTracks uses Bluetooth to connect to your heart rate sensor and include your current heart rate with location updates</string>
 	<key>NSCameraUsageDescription</key>

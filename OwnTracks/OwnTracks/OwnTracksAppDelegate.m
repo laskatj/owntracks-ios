@@ -22,6 +22,7 @@
 #import "LocationAPISyncService.h"
 #import "OwnTracksWatchBridge.h"
 #import "BluetoothHeartRateManager.h"
+#import "HealthKitHeartRateManager.h"
 
 #import "OwnTracksSendNowIntent.h"
 #import "OwnTracksChangeMonitoringIntent.h"
@@ -316,6 +317,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [[OwnTracksWatchBridge shared] activate];
 
     [[BluetoothHeartRateManager sharedInstance] startScanning];
+    [[HealthKitHeartRateManager sharedInstance] startObserving];
 
     return YES;
 }
@@ -1940,6 +1942,9 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
     }
 
     NSNumber *heartRate = [BluetoothHeartRateManager sharedInstance].heartRate;
+    if (!heartRate) {
+        heartRate = [HealthKitHeartRateManager sharedInstance].heartRate;
+    }
 
     Waypoint *waypoint = [friend addWaypoint:location
                                    createdAt:createdAt
