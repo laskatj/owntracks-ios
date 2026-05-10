@@ -109,7 +109,6 @@
 		A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
 		B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */ = {isa = PBXBuildFile; fileRef = B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */; };
 		C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */; };
-		E1E2E3E42F9100AA00532801 /* OTHeartRateMonitoring.m in Sources */ = {isa = PBXBuildFile; fileRef = E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */; };
 		C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */; };
 		CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */; };
 		CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */; };
@@ -119,6 +118,7 @@
 		DD020002DD020002DD020002 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD020001DD020001DD020001 /* DeviceDetailView.swift */; };
 		DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */; };
 		DD040002DD040002DD040002 /* DeviceMetricsChartsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */; };
+		E1E2E3E42F9100AA00532801 /* OTHeartRateMonitoring.m in Sources */ = {isa = PBXBuildFile; fileRef = E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */; };
 		F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F0A100212F9100010053280B /* OwnTracksWatchBridge.m */; };
 		F0A100242F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		F0A100282F9100010053280B /* SauronWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F0A100252F9100010053280B /* SauronWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -453,8 +453,6 @@
 		BB060471B4BDB6B94FD6C4A2 /* Pods-OwnTracksWrist WatchKit App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit App.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit App/Pods-OwnTracksWrist WatchKit App.debug.xcconfig"; sourceTree = "<group>"; };
 		C0BEBA47C0BE000100BEA001 /* BluetoothHeartRateManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BluetoothHeartRateManager.h; sourceTree = "<group>"; };
 		C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = BluetoothHeartRateManager.m; sourceTree = "<group>"; };
-		E1E2E3E42F9100A900532801 /* OTHeartRateMonitoring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTHeartRateMonitoring.h; sourceTree = "<group>"; };
-		E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTHeartRateMonitoring.m; sourceTree = "<group>"; };
 		C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		C0BEBA50C0BE000100BEA001 /* Model 18.6.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.6.0.xcdatamodel"; sourceTree = "<group>"; };
 		CAFE20022F91008100532801 /* OTInboxRealtimeContract.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OTInboxRealtimeContract.h; sourceTree = "<group>"; };
@@ -469,6 +467,8 @@
 		DD020001DD020001DD020001 /* DeviceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailView.swift; sourceTree = "<group>"; };
 		DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailHostingController.swift; sourceTree = "<group>"; };
 		DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMetricsChartsSheet.swift; sourceTree = "<group>"; };
+		E1E2E3E42F9100A900532801 /* OTHeartRateMonitoring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTHeartRateMonitoring.h; sourceTree = "<group>"; };
+		E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTHeartRateMonitoring.m; sourceTree = "<group>"; };
 		F0A100202F9100010053280B /* OwnTracksWatchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksWatchBridge.h; sourceTree = "<group>"; };
 		F0A100212F9100010053280B /* OwnTracksWatchBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksWatchBridge.m; sourceTree = "<group>"; };
 		F0A100232F9100010053280B /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
@@ -1739,7 +1739,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.0;
+				MARKETING_VERSION = 19.4.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1797,7 +1797,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.0;
+				MARKETING_VERSION = 19.4.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
@@ -1842,7 +1842,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 19.2.7;
+				MARKETING_VERSION = 19.4.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
@@ -1881,7 +1881,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 19.2.7;
+				MARKETING_VERSION = 19.4.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork.OwnTracksIntents;
@@ -1998,6 +1998,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
@@ -2035,6 +2036,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;

@@ -229,7 +229,8 @@ struct DeviceDetailView: View {
             value: vm.heartRateText,
             label: NSLocalizedString("Heart rate", comment: "Device detail heart rate stat card"),
             unit: "bpm",
-            chartData: vm.heartRateHistory
+            chartData: vm.heartRateHistory,
+            recencyDate: vm.heartRateLastSampleDate
         )
     }
 
@@ -430,6 +431,8 @@ struct ExpandableStatCard: View {
     let label: String
     let unit: String
     let chartData: [(date: Date, value: Double)]
+    /// When set (e.g. heart rate), shows a relative “time ago” line under the label.
+    var recencyDate: Date? = nil
 
     @State private var isExpanded = false
 
@@ -463,6 +466,11 @@ struct ExpandableStatCard: View {
                         Text(label)
                             .font(.caption)
                             .foregroundColor(.secondary)
+                        if let recencyDate {
+                            Text(recencyDate, style: .relative)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -12,9 +12,11 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OTBluetoothHeartRateDidUpdat
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Discovers and maintains a BLE connection to the first peripheral advertising
-/// the standard Heart Rate Service (UUID 0x180D).  Continuously reads the Heart
-/// Rate Measurement characteristic (0x2A37) and exposes the most recent value.
+/// Discovers and maintains a BLE connection to a peripheral with the standard Heart
+/// Rate Service (UUID 0x180D). Starts with a filtered scan (device must advertise
+/// 0x180D); if nothing connects within a short window, falls back to a broader scan
+/// and only connects to likely HR candidates (e.g. advertised 0x180D or common strap
+/// name prefixes). There is no in-app device picker—the first matching peripheral wins.
 ///
 /// Readings older than 30 s are considered stale and treated as unavailable.
 @interface BluetoothHeartRateManager : NSObject <CBCentralManagerDelegate, CBPeripheralDelegate>
@@ -30,6 +32,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Timestamp of the most recent reading, or nil if no reading has been received.
 @property (nonatomic, readonly, nullable) NSDate *lastReadingDate;
+
+/// YES when a peripheral is in \c CBPeripheralStateConnected (GATT session active).
+@property (nonatomic, readonly) BOOL isHeartRatePeripheralConnected;
+
+/// Localized short message when a BLE connect attempt stalled (e.g. strap busy); nil otherwise.
+@property (nonatomic, readonly, nullable) NSString *connectionTroubleHint;
 
 /// Start scanning for a heart rate peripheral.  Safe to call multiple times.
 - (void)startScanning;

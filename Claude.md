@@ -24,10 +24,18 @@
 
 ## watchOS companion (`SauronWatch`)
 
-- **Target:** `SauronWatch` (SwiftUI), embedded in the iOS app (`Embed Watch Content`).
+- **Target:** `SauronWatch` (SwiftUI), embedded in the iOS app via the `Embed Watch Content` Copy-Files build phase. Optional install — appears in iPhone → Apple Watch app → Available Apps.
+- **Bundle linkage:** `WKApplication = true` + `WKCompanionAppBundleIdentifier = org.laskatj.owntracksfork` in [SauronWatch/Info.plist](OwnTracks/SauronWatch/Info.plist). `WKRunsIndependentlyOfCompanionApp = true`.
 - **Config:** iOS pushes HTTP ingest settings via `OwnTracksWatchBridge` + WatchConnectivity (`updateApplicationContext` / `transferUserInfo`).
 - **Tracking:** Hybrid passive (coarse updates) vs active (higher frequency); see `docs/watch/TRACKING_MODES.md`.
 - **Auth:** Keychain + `WatchOAuthRefresher` stub; see `docs/watch/WATCH_AUTH_API.md`.
+
+### Build gotchas (Xcode 26)
+
+- **`SUPPORTED_PLATFORMS` must be set explicitly** on the SauronWatch target to `"watchos watchsimulator"`. Without it, Xcode 26's explicit-module-build pre-pass inherits the iOS host's platform list and tries to compile the watch's Swift sources with `iPhoneSimulator26.4.sdk` / `arm64-apple-ios-simulator`. The result is `error: unable to resolve module dependency: 'WatchKit'` because WatchKit doesn't exist on iOS. The fix is in both Debug + Release configs of the SauronWatch target. `SDKROOT = watchos` alone is **not** sufficient — the explicit-module pre-pass ignores it. (`platformFilter = watchos;` on the PBXTargetDependency was tried — does not help.)
+- **AppIcon must include `idiom: watch` role-specific entries** in [SauronWatch/Assets.xcassets/AppIcon.appiconset/Contents.json](OwnTracks/SauronWatch/Assets.xcassets/AppIcon.appiconset/Contents.json). A single `idiom: universal` 1024×1024 entry is enough for the watch's home-screen icon, but the **iPhone Apple Watch companion app** (My Watch → Available Apps) reads the watch app's compiled `AppIcon.car` and queries for `role: companionSettings` (29×29 @2x and @3x). When that role is missing it falls back to a tinted system placeholder — appears as a colored circle, not the app icon. Required at minimum: companionSettings @2x + @3x. PNGs are generated from the 1024 master with `sips -z N N AppIcon.png --out AppIcon-...png`.
+- **App Store Connect's icon validator (error code 90394) requires the legacy 38mm + 42mm entries** even though `WATCHOS_DEPLOYMENT_TARGET = 10.0` (Series 4+). Local `actool` accepts the asset catalog without them, but `xcodebuild -exportArchive` upload to App Store Connect fails with `Missing Icon. The watch application 'Sauron.app/Watch/SauronWatch.app' is missing icon with name pattern '*NxN@2x.png'`. Must include subtypes `38mm` (notificationCenter 24×24, appLauncher 40×40, quickLook 86×86) and `42mm` (notificationCenter 27.5×27.5, quickLook 98×98), plus the modern `40mm/44mm/45mm/49mm` for crispness on Series 4+. The full list is already in [Contents.json](OwnTracks/SauronWatch/Assets.xcassets/AppIcon.appiconset/Contents.json) — do not delete legacy entries when reorganizing.
+- **AppIcon must also keep an iOS-applicable fallback entry** so `actool` doesn't fail when the iOS host's pre-pass scans the watch asset catalog with `--platform iphonesimulator`. Use one entry with `idiom: universal, platform: ios, size: 1024x1024` alongside the watch entries (and a `idiom: watch-marketing` 1024 for App Store). The `idiom: watch` entries are correctly filtered out by the iOS pre-pass.
 
 ## Tab Structure
 
@@ -54,7 +62,10 @@ All under `OwnTracks/OwnTracks/`:
 | `Settings.m` | Preference management, MQTT/HTTP config serialization |
 | `LocationAPISyncService.m` | REST API polling for friend locations, OAuth token management |
 | `WebAppAuthHelper.m` | OAuth 2.0/OIDC flow, Keychain refresh token storage |
-| `ViewController.m` | Main map, friend annotations, map interaction |
+| `OTHeartRateMonitoring.m` | Coordinator: source enum (None/Bluetooth/HealthKit), enable/disable, source-priority resolution |
+| `BluetoothHeartRateManager.m` | BLE Heart Rate Service (0x180D / 0x2A37), background state restoration, scan/relax fallback |
+| `HealthKitHeartRateManager.m` | HealthKit anchored-object query for HR samples, background delivery |
+| `ViewController.m` | Main map, friend annotations, map interaction, heart rate map pill |
 | `WebAppViewController.m` | Embedded WKWebView, OIDC token injection |
 | `SettingsTVC.m` | Settings UI, preference editing |
 | `CoreData.m` | Core Data setup and schema migration |
@@ -181,6 +192,59 @@ See [claud-authissues.md](claud-authissues.md) for the full write-up of the re-a
 
 ---
 
+## Heart Rate — BLE, HealthKit, Map Pill
+
+Two managers + one coordinator, all singletons. Either source can feed BPM into the published location payload and the map UI; Bluetooth is preferred when a strap is connected, HealthKit is the fallback (covers Apple Watch / Polar→Health).
+
+### Components
+
+| File | Role |
+|---|---|
+| [OTHeartRateMonitoring.m](OwnTracks/OwnTracks/OTHeartRateMonitoring.m) | Coordinator. `+isMonitoringEnabled`, `+setMonitoringEnabled:`, `+resolvedHeartRateBPMWithMaxSampleAge:outSource:` (returns BPM + `OTHeartRateSource` of None/Bluetooth/HealthKit). |
+| [BluetoothHeartRateManager.m](OwnTracks/OwnTracks/BluetoothHeartRateManager.m) | CoreBluetooth central scanning the BLE Heart Rate Service (`0x180D` / characteristic `0x2A37`). Handles state restoration via `kCentralRestoreIdentifier = "org.owntracks.heartrate"` so background BLE resumes survive app suspend. Two-phase scan: strict (`[180D]` filter) for ~8s, then relaxed (name/UUID heuristic — many chest straps don't advertise the 180D service). Stale-reading window: `kHeartRateMaxAge = 30s`. Trouble hint exposed via `-connectionTroubleHint`. |
+| [HealthKitHeartRateManager.m](OwnTracks/OwnTracks/HealthKitHeartRateManager.m) | `HKAnchoredObjectQuery` on `HKQuantityType.heartRate`, background delivery enabled (covers Apple Watch / 3rd-party straps that publish to Health). |
+
+### Notification names
+
+UI subscribes to all three on the main queue; each fires when source state changes:
+
+- `OTBluetoothHeartRateDidUpdateNotification`
+- `OTHealthKitHeartRateDidUpdateNotification`
+- `OTHeartRateMonitoringEnabledDidChangeNotification`
+
+### Map heart rate pill (top-right of map)
+
+Lives in [ViewController.m](OwnTracks/OwnTracks/ViewController.m) (`setupMapHeartRateIndicator` + `updateMapHeartRateIndicatorAppearance`). Visual contract:
+
+- Same height (32 pt) and corner radius (8 pt) as the Quiet/Manual/Significant/Move `UISegmentedControl` next to it. Width hugs content (`≥64 pt` floor).
+- Heart symbol: SF `heart.fill` at 14 pt. Pink when monitoring is on, tertiary-label when off.
+- BPM label: 13 pt monospaced semibold.
+- **Source badge**: 11 pt circular plate overhanging the heart's bottom-right by 3 pt. Bluetooth-blue circle with white runic glyph (drawn from a 6-vertex even-odd `UIBezierPath` — SF Symbols ships **no** `bluetooth` glyph, do not call `systemImageNamed:@"bluetooth"`, it returns nil). Apple-Health-red circle with white `heart.fill` for HealthKit. Helper: `+OT_hrSourceBadgeImageForSource:`.
+- Tap toggles monitoring (`heartRateMapChipTapped` → `OTHeartRateMonitoring setMonitoringEnabled:`).
+- BLE trouble hint surfaces only via `accessibilityValue` (VoiceOver), not as a visible label — keeps the pill from growing vertically.
+
+### Source-priority logic (in `updateMapHeartRateIndicatorAppearance`)
+
+1. BLE peripheral connected → BT badge (full alpha if BPM is currently from BLE; faded if BPM is from HealthKit because the strap is momentarily quiet).
+2. BPM resolved from Bluetooth, no live peripheral → BT badge (recently-disconnected sample within `kMaxAge = 15 min`).
+3. BPM resolved from HealthKit → HK badge.
+4. No BPM but HealthKit has a stale recent sample → HK badge, faded.
+5. BLE trouble hint present → BT badge, very faded.
+
+### Required Info.plist + entitlements (both `org.laskatj.owntracksfork`)
+
+Already in place — listed here so they don't get accidentally stripped:
+
+- `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `NSBluetoothAlwaysUsageDescription` in [Base.lproj/OwnTracks-Info.plist](OwnTracks/OwnTracks/Base.lproj/OwnTracks-Info.plist).
+- `UIBackgroundModes` includes `bluetooth-central` (for state-restored HR resume).
+- `com.apple.developer.healthkit` and `com.apple.developer.healthkit.background-delivery` in [OwnTracks.entitlements](OwnTracks/OwnTracks/OwnTracks.entitlements). HealthKit is **not** declared as a `UIBackgroundModes` entry — it's driven entirely by the entitlement (per Apple, declaring `healthkit` in BackgroundModes triggers App Store review rejection).
+
+### Charting
+
+[DeviceMetricsChartsSheet.swift](OwnTracks/OwnTracks/DeviceMetricsChartsSheet.swift) and [DeviceDetailView.swift](OwnTracks/OwnTracks/DeviceDetailView.swift) render historical HR alongside other device metrics (Strava-style scrub interaction).
+
+---
+
 ## Recent Development Focus
 
 From git log (most recent first):
@@ -204,3 +268,6 @@ From git log (most recent first):
 - Remote notifications
 - App Groups: `group.org.owntracks.OwnTracks`
 - Motion activity (home activity sensor)
+- HealthKit + HealthKit background delivery (for HR fallback when no BLE strap)
+- Bluetooth Always usage (for HR strap)
+- `UIBackgroundModes` includes `bluetooth-central` (background BLE state restoration)

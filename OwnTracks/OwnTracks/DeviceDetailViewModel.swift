@@ -12,7 +12,11 @@ enum DeviceDetailConnectionTransport: Int {
 }
 
 @objc class DeviceDetailViewModel: NSObject, ObservableObject {
-    private let waypoint: Waypoint
+    /// MQTT topic of the `Friend` this screen represents (stable across waypoint inserts).
+    private let friendTopic: String
+    private let friendObjectID: NSManagedObjectID?
+    /// Always the latest `Friend.newestWaypoint` for this friend when sync runs; starts resolved in `init`.
+    private var currentWaypoint: Waypoint
 
     // Unit preference: read from UserDefaults, defaults to false (= imperial)
     static var useMetric: Bool {
@@ -45,6 +49,8 @@ enum DeviceDetailConnectionTransport: Int {
     @Published var triggerText: String = ""
     @Published var monitoringText: String = ""
     @Published var heartRateText: String = "-"
+    /// Sample time for the BPM currently shown on the heart tile (waypoint tst, BLE, or HealthKit).
+    @Published var heartRateLastSampleDate: Date? = nil
 
     @Published var ssid: String? = nil
     @Published var bssid: String? = nil
@@ -83,10 +89,16 @@ enum DeviceDetailConnectionTransport: Int {
 
     /// Matches `OTHealthKitHeartRateDidUpdateNotification` in `HealthKitHeartRateManager.m`.
     private static let healthKitHeartRateUpdated = Notification.Name("OTHealthKitHeartRateDidUpdateNotification")
+    /// Matches `OTBluetoothHeartRateDidUpdateNotification` in `BluetoothHeartRateManager.m`.
+    private static let bluetoothHeartRateUpdated = Notification.Name("OTBluetoothHeartRateDidUpdateNotification")
+    /// Same notification name as `ViewController` live map updates (`OwnTracksAppDelegate` posts it).
+    private static let liveFriendLocation = Notification.Name("OTLiveFriendLocation")
     private static let heartRateDisplayMaxSampleAge: TimeInterval = 15 * 60
     private static let heartRateHistoryLookbackSeconds: TimeInterval = 12 * 3600
 
     private var heartRateObserver: NSObjectProtocol?
+    private var bluetoothHeartRateObserver: NSObjectProtocol?
+    private var liveFriendLocationObserver: NSObjectProtocol?
     private var oauthSensitiveObserver: NSObjectProtocol?
     private var userProfileObserver: NSObjectProtocol?
 
@@ -109,7 +121,10 @@ enum DeviceDetailConnectionTransport: Int {
     private static let currentUserProfileUpdated = Notification.Name("OwnTracksCurrentUserProfileDidUpdate")
 
     init(waypoint: Waypoint) {
-        self.waypoint = waypoint
+        let friend = waypoint.belongsTo
+        self.friendTopic = friend?.topic ?? ""
+        self.friendObjectID = friend?.objectID
+        self.currentWaypoint = friend?.newestWaypoint ?? waypoint
         super.init()
         geocacheObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("OwnTracksGeolocationCacheDidUpdate"),
@@ -120,13 +135,15 @@ enum DeviceDetailConnectionTransport: Int {
         }
         populate()
         registerHeartRateObserverIfNeeded()
+        registerBluetoothHeartRateObserverIfNeeded()
+        registerLiveFriendLocationObserverIfNeeded()
         registerOAuthSensitiveObserverIfNeeded()
         registerUserProfileObserverIfNeeded()
-        waypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
+        currentWaypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
         if UserDefaults.standard.integer(forKey: "noRevgeo") > 0 {
-            waypoint.getReverseGeoCode()
+            currentWaypoint.getReverseGeoCode()
         } else {
-            waypoint.placemark = waypoint.defaultPlacemark
+            currentWaypoint.placemark = currentWaypoint.defaultPlacemark
         }
     }
 
@@ -137,13 +154,19 @@ enum DeviceDetailConnectionTransport: Int {
         if let observer = heartRateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = bluetoothHeartRateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = liveFriendLocationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         if let observer = oauthSensitiveObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = userProfileObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        waypoint.removeObserver(self, forKeyPath: "placemark")
+        currentWaypoint.removeObserver(self, forKeyPath: "placemark")
         routeMetricsRefreshWorkItem?.cancel()
         routeMetricsRefreshWorkItem = nil
     }
@@ -151,7 +174,7 @@ enum DeviceDetailConnectionTransport: Int {
     override func observeValue(forKeyPath keyPath: String?, of object: Any?,
                                change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
         if keyPath == "placemark" {
-            DispatchQueue.main.async { self.address = self.waypoint.placemark ?? "" }
+            DispatchQueue.main.async { self.address = self.currentWaypoint.placemark ?? "" }
         }
     }
 
@@ -160,72 +183,72 @@ enum DeviceDetailConnectionTransport: Int {
         showsUserAccountZoneIds = isOwnWaypoint
         applyAccountZoneIdTexts()
         let useMetric = Self.useMetric
-        let friend = waypoint.belongsTo
+        let friend = currentWaypoint.belongsTo
         deviceName = friend?.nameOrTopic ?? ""
         topic = friend?.topic ?? ""
         tid = friend?.effectiveTid ?? ""
         avatarData = friend?.image
 
-        lastSeenDate = waypoint.effectiveTimestamp
-        connectionText = waypoint.connectionText
-        connectionTransport = Self.connectionTransport(for: waypoint.conn)
-        isOnline = waypoint.effectiveTimestamp.timeIntervalSinceNow > -300
+        lastSeenDate = currentWaypoint.effectiveTimestamp
+        connectionText = currentWaypoint.connectionText
+        connectionTransport = Self.connectionTransport(for: currentWaypoint.conn)
+        isOnline = currentWaypoint.effectiveTimestamp.timeIntervalSinceNow > -300
 
-        batteryLevel = waypoint.batt?.doubleValue ?? -1
-        batteryStatusText = waypoint.batteryStatusText
+        batteryLevel = currentWaypoint.batt?.doubleValue ?? -1
+        batteryStatusText = currentWaypoint.batteryStatusText
 
-        address = waypoint.placemark ?? ""
-        coordinateText = waypoint.coordinateText
+        address = currentWaypoint.placemark ?? ""
+        coordinateText = currentWaypoint.coordinateText
 
-        if let acc = waypoint.acc?.doubleValue, acc >= 0 {
+        if let acc = currentWaypoint.acc?.doubleValue, acc >= 0 {
             accuracyText = "±\(Self.formatLength(meters: acc, useMetric: useMetric, decimals: 0))"
         } else {
             accuracyText = "-"
         }
 
         if let userLoc = LocationManager.sharedInstance()?.location {
-            let dist = waypoint.getDistanceFrom(userLoc)
+            let dist = currentWaypoint.getDistanceFrom(userLoc)
             distanceText = Self.formatDistance(meters: dist, useMetric: useMetric)
         }
 
-        timestampText = waypoint.timestampText
-        triggerText = waypoint.triggerText
-        monitoringText = waypoint.monitoringText
+        timestampText = currentWaypoint.timestampText
+        triggerText = currentWaypoint.triggerText
+        monitoringText = currentWaypoint.monitoringText
 
         applyHeartRateText()
 
-        if let alt = waypoint.alt?.doubleValue {
+        if let alt = currentWaypoint.alt?.doubleValue {
             altitudeText = "✈︎ \(Self.formatLength(meters: alt, useMetric: useMetric, decimals: 0))"
         } else {
             altitudeText = "-"
         }
 
-        if let vel = waypoint.vel?.doubleValue, vel >= 0 {
+        if let vel = currentWaypoint.vel?.doubleValue, vel >= 0 {
             speedText = Self.formatSpeed(kmh: vel, useMetric: useMetric)
         } else {
             speedText = "-"
         }
 
-        if let cog = waypoint.cog?.doubleValue, cog >= 0 {
+        if let cog = currentWaypoint.cog?.doubleValue, cog >= 0 {
             headingText = "\(Int(cog))°"
         } else {
             headingText = "-"
         }
 
-        ssid = (waypoint.ssid?.isEmpty == false) ? waypoint.ssid : nil
-        bssid = (waypoint.bssid?.isEmpty == false) ? waypoint.bssid : nil
+        ssid = (currentWaypoint.ssid?.isEmpty == false) ? currentWaypoint.ssid : nil
+        bssid = (currentWaypoint.bssid?.isEmpty == false) ? currentWaypoint.bssid : nil
 
-        if let data = waypoint.inRegions,
+        if let data = currentWaypoint.inRegions,
            let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
             regions = arr
         }
-        if let data = waypoint.motionActivities,
+        if let data = currentWaypoint.motionActivities,
            let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
             motionActivities = arr
         }
-        poi = (waypoint.poi?.isEmpty == false) ? waypoint.poi : nil
-        tag = (waypoint.tag?.isEmpty == false) ? waypoint.tag : nil
-        photoData = waypoint.image.flatMap { $0.count > 0 ? $0 : nil }
+        poi = (currentWaypoint.poi?.isEmpty == false) ? currentWaypoint.poi : nil
+        tag = (currentWaypoint.tag?.isEmpty == false) ? currentWaypoint.tag : nil
+        photoData = currentWaypoint.image.flatMap { $0.count > 0 ? $0 : nil }
         refreshGeocacheLocationLabel()
 
         speedUnit = useMetric ? "km/h" : "mph"
@@ -279,8 +302,8 @@ enum DeviceDetailConnectionTransport: Int {
     }
 
     private var isOwnWaypoint: Bool {
-        guard let moc = waypoint.managedObjectContext,
-              let topic = waypoint.belongsTo?.topic else { return false }
+        guard let moc = currentWaypoint.managedObjectContext,
+              let topic = currentWaypoint.belongsTo?.topic else { return false }
         let general = Settings.theGeneralTopic(inMOC: moc)
         return topic == general
     }
@@ -295,6 +318,72 @@ enum DeviceDetailConnectionTransport: Int {
             self?.applyHeartRateText()
             self?.refreshHeartRateHistoryFromHealthKit()
         }
+    }
+
+    private func registerBluetoothHeartRateObserverIfNeeded() {
+        guard isOwnWaypoint, bluetoothHeartRateObserver == nil else { return }
+        bluetoothHeartRateObserver = NotificationCenter.default.addObserver(
+            forName: Self.bluetoothHeartRateUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyHeartRateText()
+        }
+    }
+
+    private func registerLiveFriendLocationObserverIfNeeded() {
+        guard liveFriendLocationObserver == nil, !friendTopic.isEmpty else { return }
+        liveFriendLocationObserver = NotificationCenter.default.addObserver(
+            forName: Self.liveFriendLocation,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let noteTopic = note.userInfo?["topic"] as? String
+            guard self.liveNotificationTopicMatches(noteTopic) else { return }
+            self.refreshFromLiveFriendLocation()
+        }
+    }
+
+    /// Mirrors `ViewController` `isSelectedFriendEquivalentToOwnDeviceForLiveTopic` for own-device topic alias.
+    private func liveNotificationTopicMatches(_ noteTopic: String?) -> Bool {
+        guard let noteTopic, !noteTopic.isEmpty else { return false }
+        if noteTopic == friendTopic { return true }
+        guard let moc = currentWaypoint.managedObjectContext ?? CoreData.sharedInstance()?.mainMOC else {
+            return false
+        }
+        let general = Settings.theGeneralTopic(inMOC: moc)
+        guard !general.isEmpty, noteTopic == general else { return false }
+        if friendTopic == general { return true }
+        let ownTid = Settings.string(forKey: "trackerid_preference", inMOC: moc) ?? ""
+        guard !ownTid.isEmpty, let oid = friendObjectID else { return false }
+        guard let friend = try? moc.existingObject(with: oid) as? Friend else { return false }
+        let tid = friend.effectiveTid
+        return !tid.isEmpty && tid == ownTid
+    }
+
+    private func refreshFromLiveFriendLocation() {
+        guard let oid = friendObjectID else { return }
+        guard let moc = CoreData.sharedInstance()?.mainMOC else { return }
+        guard let friend = try? moc.existingObject(with: oid) as? Friend else { return }
+        guard let newest = friend.newestWaypoint else { return }
+        switchToWaypointIfNeeded(newest)
+    }
+
+    private func switchToWaypointIfNeeded(_ newest: Waypoint) {
+        if newest.objectID == currentWaypoint.objectID {
+            populate()
+            return
+        }
+        currentWaypoint.removeObserver(self, forKeyPath: "placemark")
+        currentWaypoint = newest
+        currentWaypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
+        if UserDefaults.standard.integer(forKey: "noRevgeo") > 0 {
+            currentWaypoint.getReverseGeoCode()
+        } else {
+            currentWaypoint.placemark = currentWaypoint.defaultPlacemark
+        }
+        populate()
     }
 
     private func registerOAuthSensitiveObserverIfNeeded() {
@@ -341,33 +430,52 @@ enum DeviceDetailConnectionTransport: Int {
     }
 
     private func applyHeartRateText() {
-        if let hr = waypoint.heartRate, hr.intValue > 0 {
-            heartRateText = Self.formattedBPM(hr.intValue)
+        heartRateLastSampleDate = nil
+
+        if !isOwnWaypoint {
+            if let hr = currentWaypoint.heartRate, hr.intValue > 0 {
+                heartRateText = Self.formattedBPM(hr.intValue)
+                heartRateLastSampleDate = currentWaypoint.effectiveTimestamp
+            } else {
+                heartRateText = "-"
+            }
             return
         }
-        guard isOwnWaypoint else {
+
+        struct HeartSample {
+            let bpm: Int
+            let date: Date
+        }
+        var samples: [HeartSample] = []
+
+        if let hr = currentWaypoint.heartRate, hr.intValue > 0 {
+            samples.append(HeartSample(bpm: hr.intValue, date: currentWaypoint.effectiveTimestamp))
+        }
+
+        let bt = BluetoothHeartRateManager.sharedInstance()
+        if let btDate = bt.lastReadingDate {
+            if let bpm = bt.heartRate, bpm.intValue > 0 {
+                samples.append(HeartSample(bpm: bpm.intValue, date: btDate))
+            } else if let bpm = bt.heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge), bpm.intValue > 0 {
+                samples.append(HeartSample(bpm: bpm.intValue, date: btDate))
+            }
+        }
+
+        let hk = HealthKitHeartRateManager.sharedInstance()
+        if let hkDate = hk.lastReadingDate {
+            if let bpm = hk.heartRate, bpm.intValue > 0 {
+                samples.append(HeartSample(bpm: bpm.intValue, date: hkDate))
+            } else if let bpm = hk.heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge), bpm.intValue > 0 {
+                samples.append(HeartSample(bpm: bpm.intValue, date: hkDate))
+            }
+        }
+
+        guard let best = samples.max(by: { $0.date < $1.date }) else {
             heartRateText = "-"
             return
         }
-        if let bt = BluetoothHeartRateManager.sharedInstance().heartRate, bt.intValue > 0 {
-            heartRateText = Self.formattedBPM(bt.intValue)
-            return
-        }
-        if let bt = BluetoothHeartRateManager.sharedInstance().heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge),
-           bt.intValue > 0 {
-            heartRateText = Self.formattedBPM(bt.intValue)
-            return
-        }
-        if let hk = HealthKitHeartRateManager.sharedInstance().heartRate, hk.intValue > 0 {
-            heartRateText = Self.formattedBPM(hk.intValue)
-            return
-        }
-        if let hk = HealthKitHeartRateManager.sharedInstance().heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge),
-           hk.intValue > 0 {
-            heartRateText = Self.formattedBPM(hk.intValue)
-            return
-        }
-        heartRateText = "-"
+        heartRateText = Self.formattedBPM(best.bpm)
+        heartRateLastSampleDate = best.date
     }
 
     private static func formattedBPM(_ value: Int) -> String {
@@ -379,8 +487,8 @@ enum DeviceDetailConnectionTransport: Int {
 
     /// Location name from server geolocation cache when the waypoint lies inside an eligible circle (not Destination / not +follow name).
     private func refreshGeocacheLocationLabel() {
-        guard let lat = waypoint.lat?.doubleValue,
-              let lon = waypoint.lon?.doubleValue else {
+        guard let lat = currentWaypoint.lat?.doubleValue,
+              let lon = currentWaypoint.lon?.doubleValue else {
             zoneName = nil
             return
         }
@@ -422,7 +530,7 @@ enum DeviceDetailConnectionTransport: Int {
         metricsChartEnd = end
         let useMetric = Self.useMetric
 
-        guard let friend = waypoint.belongsTo, let allSet = friend.hasWaypoints else {
+        guard let friend = currentWaypoint.belongsTo, let allSet = friend.hasWaypoints else {
             metricsChartSpeedHistory = []
             metricsChartAltitudeHistory = []
             metricsChartBatteryHistory = []
@@ -474,8 +582,8 @@ enum DeviceDetailConnectionTransport: Int {
         guard LocationAPISyncService.sharedInstance().currentUserMayViewRouteHistory() else {
             return
         }
-        guard let friend = waypoint.belongsTo,
-              waypoint.managedObjectContext != nil,
+        guard let friend = currentWaypoint.belongsTo,
+              currentWaypoint.managedObjectContext != nil,
               Self.routeAPIUserAndDevice(for: friend) != nil else {
             return
         }
@@ -490,8 +598,8 @@ enum DeviceDetailConnectionTransport: Int {
 
     private func startDebouncedRouteHistoryMetricsFetch() {
         guard LocationAPISyncService.sharedInstance().currentUserMayViewRouteHistory() else { return }
-        guard let friend = waypoint.belongsTo,
-              let moc = waypoint.managedObjectContext,
+        guard let friend = currentWaypoint.belongsTo,
+              let moc = currentWaypoint.managedObjectContext,
               let routePair = Self.routeAPIUserAndDevice(for: friend) else {
             return
         }
@@ -694,8 +802,8 @@ enum DeviceDetailConnectionTransport: Int {
     // MARK: - Actions
 
     func navigate() {
-        guard let lat = waypoint.lat?.doubleValue,
-              let lon = waypoint.lon?.doubleValue else { return }
+        guard let lat = currentWaypoint.lat?.doubleValue,
+              let lon = currentWaypoint.lon?.doubleValue else { return }
         let place = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
         let item = MKMapItem(placemark: place)
         item.name = deviceName
@@ -703,7 +811,7 @@ enum DeviceDetailConnectionTransport: Int {
     }
 
     func copyCoordinates() {
-        UIPasteboard.general.string = waypoint.shortCoordinateText
+        UIPasteboard.general.string = currentWaypoint.shortCoordinateText
         flashCopied()
     }
 

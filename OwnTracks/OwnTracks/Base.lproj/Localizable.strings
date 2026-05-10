@@ -376,6 +376,9 @@
 /* Map tab: monitoring on but no HR sample yet */
 "Map heart rate em dash" = "—";
 
+/* Map tab: BLE GATT connect stalled (watchdog)—strap may be in use elsewhere */
+"Map heart rate BLE stall hint" = "Link stalled—another app may be using this strap. Quit Polar (or other fitness) apps and toggle Bluetooth.";
+
 /* Map tab: BPM format */
 "%d bpm" = "%d bpm";
 
@@ -399,3 +402,12 @@
 
 /* VoiceOver: no recent HR while monitoring */
 "No recent heart rate" = "No recent heart rate";
+
+/* VoiceOver: BLE strap connected, BPM not yet shown */
+"Map heart rate a11y BLE connected" = "Bluetooth heart rate monitor connected, waiting for a reading.";
+
+/* VoiceOver: BPM from HealthKit while BLE strap GATT session is active */
+"Map heart rate a11y BPM Health BLE linked" = "%d beats per minute from Apple Health; Bluetooth strap connected.";
+
+/* VoiceOver: Apple Health has a recent sample but chip shows no number */
+"Map heart rate a11y Health recent" = "Recent heart rate from Apple Health (no Bluetooth strap link).";
