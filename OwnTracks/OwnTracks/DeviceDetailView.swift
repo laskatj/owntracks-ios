@@ -12,9 +12,11 @@ struct DeviceDetailView: View {
                     statusBanner
                     if vm.batteryLevel >= 0 { batteryCard }
                     statsRow
+                    heartRateExpandableCard
                     locationCard
                     detailGrid
                     if vm.ssid != nil { wifiCard }
+                    if vm.showsUserAccountZoneIds { accountZonesCard }
                     if !vm.regions.isEmpty { regionsCard }
                     if !vm.motionActivities.isEmpty { motionCard }
                     if vm.poi != nil || vm.tag != nil { poiCard }
@@ -23,6 +25,10 @@ struct DeviceDetailView: View {
                 .padding(16)
             }
             .background(Color(uiColor: .systemGroupedBackground))
+            .onAppear {
+                vm.refreshSensitiveDetailVisibility()
+                vm.refreshLiveHeartRateIfNeeded()
+            }
 
             if vm.showCopiedNotice {
                 VStack {
@@ -58,7 +64,7 @@ struct DeviceDetailView: View {
                     }
                     Text(vm.deviceName)
                         .font(.system(size: 26, weight: .bold))
-                    if !vm.topic.isEmpty {
+                    if vm.canViewSensitiveLocationDeviceFields, !vm.topic.isEmpty {
                         Text(vm.topic)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -80,9 +86,17 @@ struct DeviceDetailView: View {
     var statusBanner: some View {
         let offline = !vm.isOnline
         let bg: Color = offline ? .red.opacity(0.12) : .blue.opacity(0.08)
-        let icon = offline ? "wifi.slash"
-            : vm.connectionText.lowercased().contains("wifi") ? "wifi"
-            : "antenna.radiowaves.left.and.right"
+        let icon: String = {
+            if offline { return "wifi.slash" }
+            switch vm.connectionTransport {
+            case .wifi:
+                return "wifi"
+            case .cellular:
+                return "antenna.radiowaves.left.and.right"
+            case .noNetwork, .unknown:
+                return "network"
+            }
+        }()
         let tint: Color = offline ? .red : .blue
         return CardView(background: UIColor(bg)) {
             HStack(alignment: .top, spacing: 12) {
@@ -163,6 +177,17 @@ struct DeviceDetailView: View {
         }
     }
 
+    var heartRateExpandableCard: some View {
+        ExpandableStatCard(
+            icon: "heart.fill",
+            iconColor: .red,
+            value: vm.heartRateText,
+            label: NSLocalizedString("Heart rate", comment: "Device detail heart rate stat card"),
+            unit: "bpm",
+            chartData: vm.heartRateHistory
+        )
+    }
+
     // MARK: - Location Card
 
     var locationCard: some View {
@@ -232,8 +257,8 @@ struct DeviceDetailView: View {
                 DetailGridRow(
                     left: GridCell(icon: "location.north.line", color: .orange, value: vm.headingText, label: "Heading"),
                     right: GridCell(icon: "arrow.left.and.right", color: .teal,
-                                   value: vm.distanceText.isEmpty ? "-" : vm.distanceText,
-                                   label: "Distance")
+                                    value: vm.distanceText.isEmpty ? "-" : vm.distanceText,
+                                    label: "Distance")
                 )
             }
         }
@@ -252,6 +277,34 @@ struct DeviceDetailView: View {
                     Text(vm.ssid ?? "").font(.subheadline).bold()
                     if let b = vm.bssid {
                         Text(b).font(.caption).foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Home / work geolocation zone ids from `GET /api/authorization/user` (account scope).
+    var accountZonesCard: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(NSLocalizedString("Your account zones", comment: "Device detail section for home/work zone ids"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(NSLocalizedString("Home zone ID", comment: "Label for home zone id from user API"))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(vm.homeZoneIdText)
+                            .font(.subheadline)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(NSLocalizedString("Work zone ID", comment: "Label for work zone id from user API"))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(vm.workZoneIdText)
+                            .font(.subheadline)
                     }
                 }
             }
@@ -371,7 +424,7 @@ struct ExpandableStatCard: View {
                 .buttonStyle(.plain)
 
                 if isExpanded, hasData {
-                    Chart(chartData, id: \.date) { point in
+                    Chart(Array(chartData.enumerated()), id: \.offset) { _, point in
                         LineMark(
                             x: .value("Time", point.date),
                             y: .value(unit, point.value)

@@ -20,6 +20,9 @@ FOUNDATION_EXPORT NSString * const OTLocationDeleteErrorMessageKey;
 /// Posted on the main queue when `GET /api/geolocationcache` succeeds and the in-memory cache is updated.
 FOUNDATION_EXPORT NSNotificationName const OwnTracksGeolocationCacheDidUpdateNotification;
 
+/// Posted on the main queue after `GET /api/authorization/user` payload is applied (or cleared on logout).
+FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksCurrentUserProfileDidUpdateNotification;
+
 @interface OTWebLocationItem : NSObject
 @property (nonatomic) NSInteger locationId;
 @property (nonatomic) double latitude;
@@ -130,6 +133,25 @@ FOUNDATION_EXPORT NSNotificationName const OwnTracksGeolocationCacheDidUpdateNot
 
 /// Clears cached access token, discovery client id hint, and in-flight GET state after Keychain OAuth purge.
 - (void)invalidateOAuthCredentialCache;
+
+/// Applies JSON from `GET /api/authorization/user` (keys: \c isAdmin, \c canViewRouteHistory, \c homeZoneId, \c workZoneId). Main-thread only; posts \c OwnTracksCurrentUserProfileDidUpdateNotification.
+- (void)updateFromAuthorizationUserAPIPayload:(NSDictionary *)json;
+
+/// YES after a successful parse of `/api/authorization/user` this session (until \c invalidateOAuthCredentialCache).
+- (BOOL)hasAuthorizationUserProfilePayload;
+
+/// `isAdmin` from the last authorization user response (meaningful only if \c hasAuthorizationUserProfilePayload).
+- (BOOL)currentUserIsAdminFromAuthorizationAPI;
+
+/// Route history (Recorder REST window) allowed. If no profile loaded yet, returns YES (legacy). After profile load, uses \c canViewRouteHistory (defaults to YES if key absent).
+- (BOOL)currentUserMayViewRouteHistory;
+
+/// Home / work zone ids from the last authorization user response; nil if absent or null in JSON.
+- (nullable NSNumber *)authorizationUserHomeZoneId;
+- (nullable NSNumber *)authorizationUserWorkZoneId;
+
+/// Sensitive device UI (e.g. MQTT topic): if \c hasAuthorizationUserProfilePayload, uses API \c isAdmin; else JWT \c claimsIndicateLocationAdmin:. \c OTForceLocationAdminForDeviceDetail forces YES.
+- (BOOL)currentUserMayViewSensitiveLocationDeviceFields;
 
 /// Discovery `client_id` from owntracks-app-auth this session, if already fetched; used when purging Keychain.
 - (nullable NSString *)peekCachedDiscoveryOAuthClientId;

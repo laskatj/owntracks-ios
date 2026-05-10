@@ -22,6 +22,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Most recently received heart rate in beats per minute, or nil if unavailable / stale.
 @property (nonatomic, readonly, nullable) NSNumber *heartRate;
 
+/// Like \c heartRate but allows samples up to \p maxSampleAge seconds old.
+- (nullable NSNumber *)heartRateIfSampleWithin:(NSTimeInterval)maxSampleAge
+    NS_SWIFT_NAME(heartRateIfSample(within:));
+
 /// Timestamp of the most recent reading, or nil if no reading has been received.
 @property (nonatomic, readonly, nullable) NSDate *lastReadingDate;
 

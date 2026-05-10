@@ -65,6 +65,19 @@ static BluetoothHeartRateManager *theInstance = nil;
     return self._heartRate;
 }
 
+- (nullable NSNumber *)heartRateIfSampleWithin:(NSTimeInterval)maxSampleAge {
+    if (!self._heartRate || !self._lastReadingDate) {
+        return nil;
+    }
+    if (maxSampleAge <= 0.0) {
+        return self._heartRate;
+    }
+    if (-self._lastReadingDate.timeIntervalSinceNow > maxSampleAge) {
+        return nil;
+    }
+    return self._heartRate;
+}
+
 - (nullable NSDate *)lastReadingDate {
     return self._lastReadingDate;
 }

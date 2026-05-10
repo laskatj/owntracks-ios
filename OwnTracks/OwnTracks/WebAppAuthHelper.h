@@ -34,6 +34,12 @@ typedef void (^WebAppAuthTokenPairCompletion)(NSString * _Nullable accessToken, 
 /// Returns a human-readable lifetime summary from JWT claims, e.g. "iat=Apr 12 21:53 exp=Jun 11 21:53 59d 23h remaining".
 + (NSString *)jwtLifetimeSummaryFromClaims:(nullable NSDictionary *)claims;
 
+/// Interprets OAuth access-token JWT payload for “location admin” (sensitive native UI such as device MQTT topic).
+/// Recognized claims (any match): boolean/string \c location_admin, \c is_location_admin, \c owntracks_location_admin,
+/// \c location_api_admin; or \c groups / \c roles / \c group as array or comma-separated string containing one of:
+/// \c location-admin, \c location_admin, \c owntracks-admin, \c owntracks_admin, \c location-api-admin, \c location_api_admin.
++ (BOOL)claimsIndicateLocationAdmin:(nullable NSDictionary *)claims;
+
 /// Attempts a silent token refresh using a previously stored refresh token for the given origin.
 /// Calls completion with a new access token on success, or nil if no stored token / refresh failed.
 /// On failure the stored tokens for this origin are cleared so the next call goes through full auth.

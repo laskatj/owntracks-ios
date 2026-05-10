@@ -388,6 +388,47 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
                                              selector:@selector(refreshBellUnreadBadge)
                                                  name:UIApplicationDidBecomeActiveNotification
                                                object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(currentUserProfileDidChangeForRouteHistory:)
+                                                 name:OwnTracksCurrentUserProfileDidUpdateNotification
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:OwnTracksCurrentUserProfileDidUpdateNotification object:nil];
+}
+
+- (void)currentUserProfileDidChangeForRouteHistory:(NSNotification *)note {
+    (void)note;
+    [self OT_applyRouteHistoryPermissionIfNeeded];
+}
+
+/// When `canViewRouteHistory` becomes false, drop REST route merge state and redraw MQTT-only polylines.
+- (void)OT_applyRouteHistoryPermissionIfNeeded {
+    if ([[LocationAPISyncService sharedInstance] currentUserMayViewRouteHistory]) {
+        [self updateRouteHistoryToggleVisibility];
+        return;
+    }
+    if (![[LocationAPISyncService sharedInstance] hasAuthorizationUserProfilePayload]) {
+        [self updateRouteHistoryToggleVisibility];
+        return;
+    }
+    [self.routeFetchedTopics removeAllObjects];
+    [self.pendingRouteTopics removeAllObjects];
+    [self.routeFetchMQTTBaselineByTopic removeAllObjects];
+    NSArray<NSString *> *polyTopics = [self.liveTrackPolylines.allKeys copy];
+    for (NSString *topic in polyTopics) {
+        MKPolyline *pl = self.liveTrackPolylines[topic];
+        if (pl) {
+            [self.mapView removeOverlay:pl];
+        }
+        [self.liveTrackPolylines removeObjectForKey:topic];
+    }
+    NSArray<NSString *> *pointTopics = [self.liveTrackPoints.allKeys copy];
+    for (NSString *topic in pointTopics) {
+        [self rebuildLiveTrackForTopic:topic];
+    }
+    [self updateRouteHistoryToggleVisibility];
 }
 
 - (void)configureTopNavigationBar {
@@ -536,6 +577,7 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
             return;
         }
         NSDictionary *user = (NSDictionary *)obj;
+        [[LocationAPISyncService sharedInstance] updateFromAuthorizationUserAPIPayload:user];
         NSString *picture = [user[@"picture"] isKindOfClass:[NSString class]] ? user[@"picture"] : nil;
         UIImage *inlinePicture = OTImageFromDataURLString(picture);
         if (inlinePicture) {
@@ -908,6 +950,11 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     }
     Friend *f = self.selectedFriend;
     if (!f) {
+        self.routeHistoryToggleButton.hidden = YES;
+        return;
+    }
+    if ([[LocationAPISyncService sharedInstance] hasAuthorizationUserProfilePayload] &&
+        ![[LocationAPISyncService sharedInstance] currentUserMayViewRouteHistory]) {
         self.routeHistoryToggleButton.hidden = YES;
         return;
     }
@@ -2010,9 +2057,16 @@ calloutAccessoryControlTapped:(UIControl *)control {
 }
 
 - (void)fetchRouteForFriend:(Friend *)friend mapView:(MKMapView *)mapView historyHours:(NSInteger)historyHoursOverride {
+    NSString *topic = friend.topic;
+    if ([[LocationAPISyncService sharedInstance] hasAuthorizationUserProfilePayload] &&
+        ![[LocationAPISyncService sharedInstance] currentUserMayViewRouteHistory]) {
+        DDLogInfo(@"[ViewController] route fetch: skipped (canViewRouteHistory is false for signed-in user profile)");
+        [self rebuildLiveTrackForTopic:topic];
+        return;
+    }
+
     NSString *routeUser = friend.routeAPIUser;
     NSString *routeDevice = friend.tid;
-    NSString *topic = friend.topic;
 
     DDLogInfo(@"[ViewController] route fetch: tapped topic=%@ routeAPIUser=%@ tid=%@ historyHoursOverride=%ld defaultsHours=%ld",
               topic, routeUser ?: @"(nil)", routeDevice ?: @"(nil)",

@@ -2,6 +2,14 @@ import Foundation
 import Combine
 import CoreLocation
 import MapKit
+import HealthKit
+
+enum DeviceDetailConnectionTransport: Int {
+    case wifi = 0
+    case cellular = 1
+    case noNetwork = 2
+    case unknown = 3
+}
 
 @objc class DeviceDetailViewModel: NSObject, ObservableObject {
     private let waypoint: Waypoint
@@ -10,6 +18,8 @@ import MapKit
     static var useMetric: Bool {
         return UserDefaults.standard.bool(forKey: "useMetric")
     }
+
+    @Published var connectionTransport: DeviceDetailConnectionTransport = .unknown
 
     @Published var deviceName: String = ""
     @Published var topic: String = ""
@@ -34,6 +44,7 @@ import MapKit
     @Published var headingText: String = ""
     @Published var triggerText: String = ""
     @Published var monitoringText: String = ""
+    @Published var heartRateText: String = "-"
 
     @Published var ssid: String? = nil
     @Published var bssid: String? = nil
@@ -49,10 +60,32 @@ import MapKit
     // Chart data values are stored in the display unit (mph/ft or km/h/m)
     @Published var speedHistory: [(date: Date, value: Double)] = []
     @Published var altitudeHistory: [(date: Date, value: Double)] = []
+    /// Last 12 hours of HealthKit heart rate samples (own device only); display unit is bpm.
+    @Published var heartRateHistory: [(date: Date, value: Double)] = []
     @Published var speedUnit: String = ""
     @Published var altitudeUnit: String = ""
 
     @Published var showCopiedNotice: Bool = false
+
+    /// Own device (general MQTT topic) — show account home/work zone ids from `/api/authorization/user`.
+    @Published var showsUserAccountZoneIds: Bool = false
+    @Published var homeZoneIdText: String = "-"
+    @Published var workZoneIdText: String = "-"
+
+    /// Matches `OTHealthKitHeartRateDidUpdateNotification` in `HealthKitHeartRateManager.m`.
+    private static let healthKitHeartRateUpdated = Notification.Name("OTHealthKitHeartRateDidUpdateNotification")
+    private static let heartRateDisplayMaxSampleAge: TimeInterval = 15 * 60
+    private static let heartRateHistoryLookbackSeconds: TimeInterval = 12 * 3600
+
+    private var heartRateObserver: NSObjectProtocol?
+    private var oauthSensitiveObserver: NSObjectProtocol?
+    private var userProfileObserver: NSObjectProtocol?
+
+    /// When true, user may see MQTT topic and other sensitive fields (JWT location-admin; see `WebAppAuthHelper`).
+    @Published var canViewSensitiveLocationDeviceFields: Bool = false
+
+    private static let oauthTokenBecameAvailable = Notification.Name("OwnTracksOAuthAccessTokenBecameAvailable")
+    private static let currentUserProfileUpdated = Notification.Name("OwnTracksCurrentUserProfileDidUpdate")
 
     init(waypoint: Waypoint) {
         self.waypoint = waypoint
@@ -65,6 +98,9 @@ import MapKit
             self?.refreshGeocacheLocationLabel()
         }
         populate()
+        registerHeartRateObserverIfNeeded()
+        registerOAuthSensitiveObserverIfNeeded()
+        registerUserProfileObserverIfNeeded()
         waypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
         if UserDefaults.standard.integer(forKey: "noRevgeo") > 0 {
             waypoint.getReverseGeoCode()
@@ -75,6 +111,15 @@ import MapKit
 
     deinit {
         if let observer = geocacheObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = heartRateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = oauthSensitiveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = userProfileObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         waypoint.removeObserver(self, forKeyPath: "placemark")
@@ -88,6 +133,9 @@ import MapKit
     }
 
     private func populate() {
+        refreshSensitiveDetailVisibility()
+        showsUserAccountZoneIds = isOwnWaypoint
+        applyAccountZoneIdTexts()
         let useMetric = Self.useMetric
         let friend = waypoint.belongsTo
         deviceName = friend?.nameOrTopic ?? ""
@@ -97,6 +145,7 @@ import MapKit
 
         lastSeenDate = waypoint.effectiveTimestamp
         connectionText = waypoint.connectionText
+        connectionTransport = Self.connectionTransport(for: waypoint.conn)
         isOnline = waypoint.effectiveTimestamp.timeIntervalSinceNow > -300
 
         batteryLevel = waypoint.batt?.doubleValue ?? -1
@@ -119,6 +168,8 @@ import MapKit
         timestampText = waypoint.timestampText
         triggerText = waypoint.triggerText
         monitoringText = waypoint.monitoringText
+
+        applyHeartRateText()
 
         if let alt = waypoint.alt?.doubleValue {
             altitudeText = "✈︎ \(Self.formatLength(meters: alt, useMetric: useMetric, decimals: 0))"
@@ -158,6 +209,142 @@ import MapKit
         altitudeUnit = useMetric ? "m" : "ft"
 
         buildChartData(friend: friend, useMetric: useMetric)
+        refreshHeartRateHistoryFromHealthKit()
+    }
+
+    /// Re-reads OAuth-derived admin flag (e.g. after token refresh or when the detail screen appears).
+    func refreshSensitiveDetailVisibility() {
+        canViewSensitiveLocationDeviceFields = LocationAPISyncService.sharedInstance()
+            .currentUserMayViewSensitiveLocationDeviceFields()
+        applyAccountZoneIdTexts()
+    }
+
+    /// Re-query HealthKit when opening device details for this device so the UI is not stuck on a stale waypoint value.
+    func refreshLiveHeartRateIfNeeded() {
+        guard isOwnWaypoint else { return }
+        HealthKitHeartRateManager.sharedInstance().refreshLatestSampleForUI { [weak self] in
+            self?.applyHeartRateText()
+            self?.refreshHeartRateHistoryFromHealthKit()
+        }
+    }
+
+    /// Loads HealthKit samples for the chart (own device, last 12 hours). Clears history for friends.
+    func refreshHeartRateHistoryFromHealthKit() {
+        guard isOwnWaypoint else {
+            heartRateHistory = []
+            return
+        }
+        guard HKHealthStore.isHealthDataAvailable() else {
+            heartRateHistory = []
+            return
+        }
+        let end = Date()
+        let start = end.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
+        HealthKitHeartRateManager.sharedInstance().fetchHeartRateSamples(from: start, to: end) { [weak self] samples, _ in
+            guard let self else { return }
+            let list = (samples as? [NSDictionary]) ?? []
+            self.heartRateHistory = list.compactMap { row in
+                guard let date = row["date"] as? Date, let bpm = row["bpm"] as? NSNumber else { return nil }
+                return (date: date, value: bpm.doubleValue)
+            }
+        }
+    }
+
+    private var isOwnWaypoint: Bool {
+        guard let moc = waypoint.managedObjectContext,
+              let topic = waypoint.belongsTo?.topic else { return false }
+        let general = Settings.theGeneralTopic(inMOC: moc)
+        return topic == general
+    }
+
+    private func registerHeartRateObserverIfNeeded() {
+        guard isOwnWaypoint, heartRateObserver == nil else { return }
+        heartRateObserver = NotificationCenter.default.addObserver(
+            forName: Self.healthKitHeartRateUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyHeartRateText()
+            self?.refreshHeartRateHistoryFromHealthKit()
+        }
+    }
+
+    private func registerOAuthSensitiveObserverIfNeeded() {
+        guard oauthSensitiveObserver == nil else { return }
+        oauthSensitiveObserver = NotificationCenter.default.addObserver(
+            forName: Self.oauthTokenBecameAvailable,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshSensitiveDetailVisibility()
+        }
+    }
+
+    private func registerUserProfileObserverIfNeeded() {
+        guard userProfileObserver == nil else { return }
+        userProfileObserver = NotificationCenter.default.addObserver(
+            forName: Self.currentUserProfileUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshSensitiveDetailVisibility()
+        }
+    }
+
+    private func applyAccountZoneIdTexts() {
+        guard isOwnWaypoint else {
+            homeZoneIdText = "-"
+            workZoneIdText = "-"
+            return
+        }
+        let las = LocationAPISyncService.sharedInstance()
+        if let h = las.authorizationUserHomeZoneId() {
+            homeZoneIdText = "\(h.intValue)"
+        } else {
+            homeZoneIdText = "-"
+        }
+        if let w = las.authorizationUserWorkZoneId() {
+            workZoneIdText = "\(w.intValue)"
+        } else {
+            workZoneIdText = "-"
+        }
+    }
+
+    private func applyHeartRateText() {
+        if let hr = waypoint.heartRate, hr.intValue > 0 {
+            heartRateText = Self.formattedBPM(hr.intValue)
+            return
+        }
+        guard isOwnWaypoint else {
+            heartRateText = "-"
+            return
+        }
+        if let bt = BluetoothHeartRateManager.sharedInstance().heartRate, bt.intValue > 0 {
+            heartRateText = Self.formattedBPM(bt.intValue)
+            return
+        }
+        if let bt = BluetoothHeartRateManager.sharedInstance().heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge),
+           bt.intValue > 0 {
+            heartRateText = Self.formattedBPM(bt.intValue)
+            return
+        }
+        if let hk = HealthKitHeartRateManager.sharedInstance().heartRate, hk.intValue > 0 {
+            heartRateText = Self.formattedBPM(hk.intValue)
+            return
+        }
+        if let hk = HealthKitHeartRateManager.sharedInstance().heartRateIfSample(within: Self.heartRateDisplayMaxSampleAge),
+           hk.intValue > 0 {
+            heartRateText = Self.formattedBPM(hk.intValue)
+            return
+        }
+        heartRateText = "-"
+    }
+
+    private static func formattedBPM(_ value: Int) -> String {
+        String(
+            format: NSLocalizedString("%d bpm", comment: "Heart rate with unit on device detail"),
+            value
+        )
     }
 
     /// Location name from server geolocation cache when the waypoint lies inside an eligible circle (not Destination / not +follow name).
@@ -192,6 +379,20 @@ import MapKit
             guard let alt = wp.alt?.doubleValue else { return nil }
             let displayValue = useMetric ? alt : alt * 3.28084
             return (date: wp.effectiveTimestamp, value: displayValue)
+        }
+    }
+
+    private static func connectionTransport(for conn: String?) -> DeviceDetailConnectionTransport {
+        let raw = conn?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        switch raw {
+        case "w", "wifi", "wlan":
+            return .wifi
+        case "m", "wwan", "cellular", "mobile":
+            return .cellular
+        case "o", "offline", "none":
+            return .noNetwork
+        default:
+            return .unknown
         }
     }
 
@@ -262,6 +463,7 @@ import MapKit
     }
 
     func copyTopic() {
+        guard canViewSensitiveLocationDeviceFields, !topic.isEmpty else { return }
         UIPasteboard.general.string = topic
         flashCopied()
     }

@@ -272,6 +272,78 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     return [NSString stringWithFormat:@"iat=%@ exp=%@ %@", iatStr, expStr, remainStr];
 }
 
++ (BOOL)OT_truthyClaimValue:(nullable id)value {
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return [value boolValue];
+    }
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (!s.length) {
+            return NO;
+        }
+        if ([s caseInsensitiveCompare:@"true"] == NSOrderedSame || [s caseInsensitiveCompare:@"yes"] == NSOrderedSame) {
+            return YES;
+        }
+        if ([s isEqualToString:@"1"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
++ (BOOL)OT_string:(NSString *)s matchesLocationAdminGroupSet:(NSSet<NSString *> *)allowedLower {
+    NSString *low = s.lowercaseString;
+    return [allowedLower containsObject:low];
+}
+
++ (BOOL)OT_scanGroupishClaim:(nullable id)value allowedLower:(NSSet<NSString *> *)allowed {
+    if ([value isKindOfClass:[NSArray class]]) {
+        for (id item in (NSArray *)value) {
+            if (![item isKindOfClass:[NSString class]]) {
+                continue;
+            }
+            if ([self OT_string:(NSString *)item matchesLocationAdminGroupSet:allowed]) {
+                return YES;
+            }
+        }
+        return NO;
+    }
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *raw = (NSString *)value;
+        NSCharacterSet *sep = [NSCharacterSet characterSetWithCharactersInString:@",;| "];
+        for (NSString *part in [raw componentsSeparatedByCharactersInSet:sep]) {
+            NSString *t = [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (t.length && [self OT_string:t matchesLocationAdminGroupSet:allowed]) {
+                return YES;
+            }
+        }
+    }
+    return NO;
+}
+
++ (BOOL)claimsIndicateLocationAdmin:(nullable NSDictionary *)claims {
+    if (![claims isKindOfClass:[NSDictionary class]] || claims.count == 0) {
+        return NO;
+    }
+    NSArray<NSString *> *boolKeys = @[@"location_admin", @"is_location_admin", @"owntracks_location_admin", @"location_api_admin"];
+    for (NSString *k in boolKeys) {
+        if ([self OT_truthyClaimValue:claims[k]]) {
+            return YES;
+        }
+    }
+    NSSet *allowed = [NSSet setWithArray:@[
+        @"location-admin", @"location_admin", @"owntracks-admin", @"owntracks_admin",
+        @"location-api-admin", @"location_api_admin", @"locationapiadmin"
+    ]];
+    NSArray<NSString *> *groupKeys = @[@"groups", @"roles", @"group"];
+    for (NSString *gk in groupKeys) {
+        if ([self OT_scanGroupishClaim:claims[gk] allowedLower:allowed]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 - (NSString *)generateState {
     NSMutableData *data = [NSMutableData dataWithLength:16];
     int result = SecRandomCopyBytes(kSecRandomDefault, 16, data.mutableBytes);

@@ -1992,9 +1992,16 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         }
     }
 
+    static const NSTimeInterval kHeartRateMaxSampleAgeForWaypoint = 15 * 60;
     NSNumber *heartRate = [BluetoothHeartRateManager sharedInstance].heartRate;
     if (!heartRate) {
+        heartRate = [[BluetoothHeartRateManager sharedInstance] heartRateIfSampleWithin:kHeartRateMaxSampleAgeForWaypoint];
+    }
+    if (!heartRate) {
         heartRate = [HealthKitHeartRateManager sharedInstance].heartRate;
+    }
+    if (!heartRate) {
+        heartRate = [[HealthKitHeartRateManager sharedInstance] heartRateIfSampleWithin:kHeartRateMaxSampleAgeForWaypoint];
     }
 
     Waypoint *waypoint = [friend addWaypoint:location

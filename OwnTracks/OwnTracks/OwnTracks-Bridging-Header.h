@@ -11,3 +11,5 @@
 #import "Friend+CoreDataClass.h"
 #import "LocationManager.h"
 #import "Settings.h"
+#import "HealthKitHeartRateManager.h"
+#import "BluetoothHeartRateManager.h"

@@ -14,6 +14,68 @@
 #import "CoreData.h"
 #import "LocationManager.h"
 
+static NSString *OTDisplayStringForConn(NSString *conn) {
+    NSString *trimmed = [conn stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!trimmed.length) {
+        return NSLocalizedString(@"Unknown", @"Network connection type when conn field is missing");
+    }
+    NSString *low = trimmed.lowercaseString;
+    if ([low isEqualToString:@"w"] || [low isEqualToString:@"wifi"] || [low isEqualToString:@"wlan"]) {
+        return NSLocalizedString(@"Wi-Fi", @"Network connection type: Wi-Fi");
+    }
+    if ([low isEqualToString:@"m"] || [low isEqualToString:@"wwan"] || [low isEqualToString:@"cellular"] || [low isEqualToString:@"mobile"]) {
+        return NSLocalizedString(@"Cellular", @"Network connection type: cellular data");
+    }
+    if ([low isEqualToString:@"o"] || [low isEqualToString:@"offline"] || [low isEqualToString:@"none"]) {
+        return NSLocalizedString(@"No connection", @"Network connection type: device had no data connection");
+    }
+    if (trimmed.length > 1) {
+        return trimmed;
+    }
+    return [NSString stringWithFormat:NSLocalizedString(@"Unknown (%@)", @"Network connection type with raw code from device"), trimmed];
+}
+
+static NSString *OTDisplayStringForTrigger(NSString *trigger) {
+    if (!trigger.length) {
+        return NSLocalizedString(@"Automatic", @"Location publish trigger: implicit location update");
+    }
+    if ([trigger isEqualToString:@"C"]) {
+        return NSLocalizedString(@"Follow region", @"Location trigger: left +follow moving geofence");
+    }
+    NSString *low = trigger.lowercaseString;
+    if ([low isEqualToString:@"p"]) {
+        return NSLocalizedString(@"After refresh", @"Location trigger: publish after configuration refresh");
+    }
+    if ([low isEqualToString:@"t"]) {
+        return NSLocalizedString(@"Interval timer", @"Location trigger: periodic timer");
+    }
+    if ([low isEqualToString:@"v"]) {
+        return NSLocalizedString(@"Visit", @"Location trigger: iOS visit service");
+    }
+    if ([low isEqualToString:@"b"]) {
+        return NSLocalizedString(@"iBeacon region", @"Location trigger: iBeacon geofence");
+    }
+    if ([low isEqualToString:@"c"]) {
+        return NSLocalizedString(@"Circular region", @"Location trigger: circular geofence");
+    }
+    if ([low isEqualToString:@"u"]) {
+        return NSLocalizedString(@"Manual send", @"Location trigger: user tapped send");
+    }
+    if ([low isEqualToString:@"r"]) {
+        return NSLocalizedString(@"Report", @"Location trigger: report location command");
+    }
+    if ([low isEqualToString:@"g"]) {
+        return NSLocalizedString(@"GPS", @"Location trigger: GPS update (common on other clients)");
+    }
+    if ([low isEqualToString:@"i"]) {
+        return NSLocalizedString(@"Ping", @"Location trigger: ping");
+    }
+    if (trigger.length > 1) {
+        return trigger;
+    }
+    return [NSString stringWithFormat:NSLocalizedString(@"Other (%@)", @"Location trigger: unknown single-letter code"), trigger];
+}
+
 @implementation Waypoint
 
 - (void)getReverseGeoCode {
@@ -161,11 +223,7 @@
 }
 
 - (NSString *)triggerText {
-    if (self.trigger) {
-        return self.trigger;
-    } else {
-        return @"-";
-    }
+    return OTDisplayStringForTrigger(self.trigger);
 }
 
 - (NSString *)monitoringText {
@@ -187,12 +245,8 @@
     }
 }
 
-- (NSString *)connectionText{
-    if (self.conn && self.conn.length > 0) {
-        return self.conn;
-    } else {
-        return @"-";
-    }
+- (NSString *)connectionText {
+    return OTDisplayStringForConn(self.conn);
 }
 
 - (NSString *)batteryStatusText {

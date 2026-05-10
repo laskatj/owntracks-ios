@@ -8,6 +8,8 @@
 #import "HealthKitHeartRateManager.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
+NSNotificationName const OTHealthKitHeartRateDidUpdateNotification = @"OTHealthKitHeartRateDidUpdateNotification";
+
 static const NSTimeInterval kHeartRateMaxAge = 30.0;
 
 @interface HealthKitHeartRateManager ()
@@ -45,6 +47,19 @@ static HealthKitHeartRateManager *theInstance = nil;
         return nil;
     }
     if (-self._lastReadingDate.timeIntervalSinceNow > kHeartRateMaxAge) {
+        return nil;
+    }
+    return self._heartRate;
+}
+
+- (nullable NSNumber *)heartRateIfSampleWithin:(NSTimeInterval)maxSampleAge {
+    if (!self._heartRate || !self._lastReadingDate) {
+        return nil;
+    }
+    if (maxSampleAge <= 0.0) {
+        return self._heartRate;
+    }
+    if (-self._lastReadingDate.timeIntervalSinceNow > maxSampleAge) {
         return nil;
     }
     return self._heartRate;
@@ -105,16 +120,21 @@ static HealthKitHeartRateManager *theInstance = nil;
                 if (completionHandler) completionHandler();
                 return;
             }
-            [weakSelf _fetchLatestSampleWithCompletion:completionHandler];
+            [weakSelf _fetchLatestSampleWithObserverCompletion:completionHandler onFinished:nil];
         }];
 
     [self.store executeQuery:observerQuery];
 
     // Fetch once immediately so we have a value before the first observer fires.
-    [self _fetchLatestSampleWithCompletion:nil];
+    [self _fetchLatestSampleWithObserverCompletion:nil onFinished:nil];
 }
 
-- (void)_fetchLatestSampleWithCompletion:(nullable HKObserverQueryCompletionHandler)completionHandler {
+- (void)refreshLatestSampleForUIWithCompletion:(nullable dispatch_block_t)completion {
+    [self _fetchLatestSampleWithObserverCompletion:nil onFinished:completion];
+}
+
+- (void)_fetchLatestSampleWithObserverCompletion:(nullable HKObserverQueryCompletionHandler)completionHandler
+                                      onFinished:(nullable dispatch_block_t)onFinished {
     HKQuantityType *hrType = [HKQuantityType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
     NSSortDescriptor *mostRecent = [NSSortDescriptor sortDescriptorWithKey:HKSampleSortIdentifierStartDate
                                                                  ascending:NO];
@@ -128,7 +148,14 @@ static HealthKitHeartRateManager *theInstance = nil;
                                                     NSError *error) {
             if (error) {
                 DDLogError(@"[HKHRM] sample query error: %@", error.localizedDescription);
-                if (completionHandler) completionHandler();
+                if (completionHandler) {
+                    completionHandler();
+                }
+                if (onFinished) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        onFinished();
+                    });
+                }
                 return;
             }
 
@@ -142,10 +169,80 @@ static HealthKitHeartRateManager *theInstance = nil;
                              self._heartRate, sample.endDate);
             }
 
-            if (completionHandler) completionHandler();
+            if (completionHandler) {
+                completionHandler();
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:OTHealthKitHeartRateDidUpdateNotification
+                                                                  object:self];
+            if (onFinished) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    onFinished();
+                });
+            }
         }];
 
     [self.store executeQuery:sampleQuery];
+}
+
+- (void)fetchHeartRateSamplesFromDate:(NSDate *)startDate
+                               toDate:(NSDate *)endDate
+                           completion:(void (^)(NSArray<NSDictionary *> * _Nullable, NSError * _Nullable))completion {
+    if (!completion) {
+        return;
+    }
+    void (^deliver)(NSArray<NSDictionary *> *, NSError *) = ^(NSArray<NSDictionary *> *rows, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(rows, err);
+        });
+    };
+    if (![HKHealthStore isHealthDataAvailable]) {
+        deliver(@[], nil);
+        return;
+    }
+    if (!startDate || !endDate || [startDate compare:endDate] != NSOrderedAscending) {
+        deliver(@[], nil);
+        return;
+    }
+
+    HKQuantityType *hrType = [HKQuantityType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
+    NSPredicate *pred = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:0];
+    NSSortDescriptor *asc = [NSSortDescriptor sortDescriptorWithKey:HKSampleSortIdentifierEndDate ascending:YES];
+    HKSampleQuery *query =
+        [[HKSampleQuery alloc] initWithSampleType:hrType
+                                        predicate:pred
+                                            limit:HKObjectQueryNoLimit
+                                  sortDescriptors:@[asc]
+                                   resultsHandler:^(HKSampleQuery *q,
+                                                    NSArray<__kindof HKSample *> *results,
+                                                    NSError *error) {
+            if (error) {
+                DDLogError(@"[HKHRM] history query error: %@", error.localizedDescription);
+                deliver(@[], error);
+                return;
+            }
+            NSUInteger n = results.count;
+            NSMutableArray<NSDictionary *> *rows = [NSMutableArray arrayWithCapacity:MIN(n, (NSUInteger)400)];
+            HKUnit *bpmUnit = [[HKUnit countUnit] unitDividedByUnit:[HKUnit minuteUnit]];
+            const NSUInteger kMaxChartPoints = 400;
+            NSUInteger step = (n <= kMaxChartPoints) ? 1 : MAX(1, (n + kMaxChartPoints - 1) / kMaxChartPoints);
+            for (NSUInteger i = 0; i < n; i += step) {
+                HKQuantitySample *s = (HKQuantitySample *)results[i];
+                double bpm = [s.quantity doubleValueForUnit:bpmUnit];
+                [rows addObject:@{ @"date": s.endDate, @"bpm": @(bpm) }];
+            }
+            if (n > 0) {
+                HKQuantitySample *last = (HKQuantitySample *)results[n - 1];
+                NSDictionary *lastRow = @{ @"date": last.endDate,
+                                           @"bpm": @([last.quantity doubleValueForUnit:bpmUnit]) };
+                NSDictionary *prev = rows.lastObject;
+                if (!prev || ![prev[@"date"] isEqual:lastRow[@"date"]]) {
+                    [rows addObject:lastRow];
+                }
+            }
+            DDLogVerbose(@"[HKHRM] history %lu samples → %lu chart points", (unsigned long)n, (unsigned long)rows.count);
+            deliver(rows, nil);
+        }];
+    [self.store executeQuery:query];
 }
 
 @end

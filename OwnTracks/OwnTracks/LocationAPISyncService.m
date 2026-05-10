@@ -54,12 +54,49 @@ static NSString *OTProvisionSanitizedDeviceName(void) {
     return collapsed;
 }
 
+static BOOL OTJSONBoolish(id _Nullable value, BOOL defaultValue) {
+    if (value == nil || value == [NSNull null]) {
+        return defaultValue;
+    }
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return [(NSNumber *)value boolValue];
+    }
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if ([s caseInsensitiveCompare:@"true"] == NSOrderedSame || [s caseInsensitiveCompare:@"yes"] == NSOrderedSame || [s isEqualToString:@"1"]) {
+            return YES;
+        }
+        if ([s caseInsensitiveCompare:@"false"] == NSOrderedSame || [s isEqualToString:@"0"]) {
+            return NO;
+        }
+    }
+    return defaultValue;
+}
+
+static NSNumber *_Nullable OTNullableIntNumberFromJSON(id _Nullable value) {
+    if (value == nil || value == [NSNull null]) {
+        return nil;
+    }
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return (NSNumber *)value;
+    }
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (!s.length) {
+            return nil;
+        }
+        return @([s integerValue]);
+    }
+    return nil;
+}
+
 static NSString * const kOTProvisionAPIDomain = @"OTProvisionAPI";
 /// Returned when `provisionRemoteDeviceConfigurationIfNeededWithCompletion:` is invoked while a provision POST is already in flight.
 static const NSInteger kOTProvisionAPICodeBusy = 998;
 
 NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification = @"OwnTracksOAuthAccessTokenBecameAvailable";
 NSNotificationName const OwnTracksGeolocationCacheDidUpdateNotification = @"OwnTracksGeolocationCacheDidUpdate";
+NSNotificationName const OwnTracksCurrentUserProfileDidUpdateNotification = @"OwnTracksCurrentUserProfileDidUpdate";
 NSString * const OTLocationDeleteErrorCodeKey = @"OTLocationDeleteErrorCode";
 NSString * const OTLocationDeleteErrorReferenceCountKey = @"OTLocationDeleteErrorReferenceCount";
 NSString * const OTLocationDeleteErrorMessageKey = @"OTLocationDeleteErrorMessage";
@@ -141,6 +178,12 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 @property (nonatomic, copy, nullable) NSArray<OTWebLocationItem *> *lastGeolocationCacheItems;
 @property (nonatomic, strong, nullable) NSDate *lastSuccessfulGeolocationCacheFetchDate;
 @property (nonatomic) BOOL geolocationCacheFetchInFlight;
+/// From `GET /api/authorization/user` (main thread only).
+@property (nonatomic) BOOL authorizationUserProfileLoaded;
+@property (nonatomic) BOOL authorizationUserIsAdmin;
+@property (nonatomic) BOOL authorizationUserCanViewRouteHistory;
+@property (nonatomic, strong, nullable) NSNumber *authAPIHomeZoneId;
+@property (nonatomic, strong, nullable) NSNumber *authAPIWorkZoneId;
 - (void)scheduleInteractiveOAuthIfNoTokenAfterFailure;
 /// OAuth stores refresh tokens under `keychainAccountForWebAppURL` using discovery `client_id` from `/.well-known/owntracks-app-auth`, not necessarily Settings `oauth_client_id_preference`. Try discovery id first, then settings, then nil lookup.
 - (void)trySilentRefreshWithCandidates:(NSArray<NSURL *> *)candidates
@@ -185,6 +228,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 - (instancetype)initPrivate {
     self = [super init];
     if (self) {
+        _authorizationUserCanViewRouteHistory = YES;
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(applicationDidBecomeActive:)
                                                      name:UIApplicationDidBecomeActiveNotification
@@ -492,6 +536,78 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
     self.fetchInFlight = NO;
     self.provisionInFlight = NO;
     DDLogInfo(@"[LocationAPISyncService] invalidateOAuthCredentialCache");
+    __weak typeof(self) wself = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            return;
+        }
+        sself.authorizationUserProfileLoaded = NO;
+        sself.authorizationUserIsAdmin = NO;
+        sself.authorizationUserCanViewRouteHistory = YES;
+        sself.authAPIHomeZoneId = nil;
+        sself.authAPIWorkZoneId = nil;
+        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksCurrentUserProfileDidUpdateNotification
+                                                              object:sself];
+    });
+}
+
+- (void)updateFromAuthorizationUserAPIPayload:(NSDictionary *)json {
+    if (![json isKindOfClass:[NSDictionary class]] || json.count == 0) {
+        return;
+    }
+    __weak typeof(self) wself = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            return;
+        }
+        sself.authorizationUserProfileLoaded = YES;
+        sself.authorizationUserIsAdmin = OTJSONBoolish(json[@"isAdmin"], NO);
+        sself.authorizationUserCanViewRouteHistory = OTJSONBoolish(json[@"canViewRouteHistory"], YES);
+        sself.authAPIHomeZoneId = OTNullableIntNumberFromJSON(json[@"homeZoneId"]);
+        sself.authAPIWorkZoneId = OTNullableIntNumberFromJSON(json[@"workZoneId"]);
+        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksCurrentUserProfileDidUpdateNotification
+                                                              object:sself];
+    });
+}
+
+- (BOOL)hasAuthorizationUserProfilePayload {
+    return self.authorizationUserProfileLoaded;
+}
+
+- (BOOL)currentUserIsAdminFromAuthorizationAPI {
+    return self.authorizationUserIsAdmin;
+}
+
+- (BOOL)currentUserMayViewRouteHistory {
+    if (!self.authorizationUserProfileLoaded) {
+        return YES;
+    }
+    return self.authorizationUserCanViewRouteHistory;
+}
+
+- (nullable NSNumber *)authorizationUserHomeZoneId {
+    return self.authAPIHomeZoneId;
+}
+
+- (nullable NSNumber *)authorizationUserWorkZoneId {
+    return self.authAPIWorkZoneId;
+}
+
+- (BOOL)currentUserMayViewSensitiveLocationDeviceFields {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"OTForceLocationAdminForDeviceDetail"]) {
+        return YES;
+    }
+    if (self.authorizationUserProfileLoaded) {
+        return self.authorizationUserIsAdmin;
+    }
+    NSString *tok = self.cachedAccessToken;
+    if (!tok.length) {
+        return NO;
+    }
+    NSDictionary *claims = [WebAppAuthHelper jwtPayloadClaimsFromToken:tok];
+    return [WebAppAuthHelper claimsIndicateLocationAdmin:claims];
 }
 
 - (nullable NSString *)peekCachedDiscoveryOAuthClientId {

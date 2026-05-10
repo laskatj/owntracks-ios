@@ -186,6 +186,7 @@ No information of your address book will be uploaded to any server.</string>
 	<array>
 		<string>bluetooth-central</string>
 		<string>fetch</string>
+		<string>healthkit</string>
 		<string>location</string>
 		<string>remote-notification</string>
 	</array>

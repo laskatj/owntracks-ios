@@ -394,6 +394,12 @@ static OwnTracking *theInstance = nil;
             return;
         }
 
+        NSNumber *hr = dictionary[@"hr"];
+        if (hr && ![hr isKindOfClass:[NSNumber class]]) {
+            DDLogError(@"[OwnTracking processLocation] json does contain invalid hr: not processed");
+            return;
+        }
+
         NSArray <NSString *> *motionActivities = dictionary[@"motionactivities"];
         if (inRegions && ![inRegions isKindOfClass:[NSArray class]]) {
             DDLogError(@"[OwnTracking processLocation] json does not contain valid motionactivities: not processed");
@@ -417,7 +423,7 @@ static OwnTracking *theInstance = nil;
                                bs:bs
                          pressure:p
                  motionActivities:motionActivities
-                        heartRate:nil
+                        heartRate:hr
                          zoneName:incomingZoneName];
         int positions = [Settings intForKey:@"positions_preference" inMOC:friend.managedObjectContext];
         NSInteger remainingPositions = [friend limitWaypointsToMaximum:positions];
