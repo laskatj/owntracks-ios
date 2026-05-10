@@ -3,6 +3,7 @@ import Charts
 
 struct DeviceDetailView: View {
     @ObservedObject var vm: DeviceDetailViewModel
+    @State private var showMetricsCharts = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -10,6 +11,7 @@ struct DeviceDetailView: View {
                 LazyVStack(spacing: 12) {
                     headerCard
                     statusBanner
+                    metricsChartEntryRow
                     if vm.batteryLevel >= 0 { batteryCard }
                     statsRow
                     heartRateExpandableCard
@@ -27,6 +29,7 @@ struct DeviceDetailView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .onAppear {
                 vm.refreshSensitiveDetailVisibility()
+                vm.refreshRouteHistoryMetricsIfNeeded()
                 vm.refreshLiveHeartRateIfNeeded()
             }
 
@@ -46,6 +49,9 @@ struct DeviceDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showMetricsCharts) {
+            DeviceMetricsChartsSheet(vm: vm)
+        }
     }
 
     // MARK: - Header Card
@@ -124,6 +130,45 @@ struct DeviceDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Metrics charts (sheet)
+
+    var metricsChartEntryRow: some View {
+        Button {
+            showMetricsCharts = true
+        } label: {
+            CardView {
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(
+                            NSLocalizedString(
+                                "Metrics charts",
+                                comment: "Tappable row to open aligned speed/altitude/heart rate/battery charts"
+                            )
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        Text(
+                            NSLocalizedString(
+                                "Same 12-hour window for all metrics",
+                                comment: "Subtitle on metrics charts entry row"
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Battery Card

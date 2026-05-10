@@ -62,6 +62,15 @@ enum DeviceDetailConnectionTransport: Int {
     @Published var altitudeHistory: [(date: Date, value: Double)] = []
     /// Last 12 hours of HealthKit heart rate samples (own device only); display unit is bpm.
     @Published var heartRateHistory: [(date: Date, value: Double)] = []
+    /// Shared 12h window for the aligned metrics sheet (same instants for all charts).
+    @Published var metricsChartStart: Date = .distantPast
+    @Published var metricsChartEnd: Date = .distantPast
+    @Published var metricsChartSpeedHistory: [(date: Date, value: Double)] = []
+    @Published var metricsChartAltitudeHistory: [(date: Date, value: Double)] = []
+    /// Battery fraction 0…1 (matches `Waypoint.batt` / OwnTracks JSON `batt` as percent/100).
+    @Published var metricsChartBatteryHistory: [(date: Date, value: Double)] = []
+    /// Own device: HealthKit bpm in window; friend: sparse `heartRate` from waypoints in window.
+    @Published var metricsChartHeartRateHistory: [(date: Date, value: Double)] = []
     @Published var speedUnit: String = ""
     @Published var altitudeUnit: String = ""
 
@@ -80,6 +89,18 @@ enum DeviceDetailConnectionTransport: Int {
     private var heartRateObserver: NSObjectProtocol?
     private var oauthSensitiveObserver: NSObjectProtocol?
     private var userProfileObserver: NSObjectProtocol?
+
+    /// Incremented only when a debounced route fetch actually starts; completions with a lower serial are ignored.
+    private var routeMetricsRequestSerial: Int = 0
+    private var routeMetricsRefreshWorkItem: DispatchWorkItem?
+    private static let routeMetricsRefreshDebounce: TimeInterval = 0.35
+    /// Avoids stacked `GET .../route` calls while LAS is still completing one request.
+    private var routeMetricsFetchInFlight: Bool = false
+    /// After a successful overlay, skip identical refetches for a while (SwiftUI / notifications still call refresh often).
+    private var lastRouteMetricsSuccessfulApply: Date?
+    private static let routeMetricsMinimumRefetchInterval: TimeInterval = 120
+    /// Bucket `end` to wall-clock minutes so `LocationAPISyncService` route cache keys match across rapid triggers.
+    private static let routeMetricsUnixBucketSeconds: Int = 60
 
     /// When true, user may see MQTT topic and other sensitive fields (JWT location-admin; see `WebAppAuthHelper`).
     @Published var canViewSensitiveLocationDeviceFields: Bool = false
@@ -123,6 +144,8 @@ enum DeviceDetailConnectionTransport: Int {
             NotificationCenter.default.removeObserver(observer)
         }
         waypoint.removeObserver(self, forKeyPath: "placemark")
+        routeMetricsRefreshWorkItem?.cancel()
+        routeMetricsRefreshWorkItem = nil
     }
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?,
@@ -210,6 +233,8 @@ enum DeviceDetailConnectionTransport: Int {
 
         buildChartData(friend: friend, useMetric: useMetric)
         refreshHeartRateHistoryFromHealthKit()
+        rebuildMetricsChartSeries()
+        refreshRouteHistoryMetricsIfNeeded()
     }
 
     /// Re-reads OAuth-derived admin flag (e.g. after token refresh or when the detail screen appears).
@@ -236,6 +261,7 @@ enum DeviceDetailConnectionTransport: Int {
         }
         guard HKHealthStore.isHealthDataAvailable() else {
             heartRateHistory = []
+            metricsChartHeartRateHistory = []
             return
         }
         let end = Date()
@@ -243,10 +269,12 @@ enum DeviceDetailConnectionTransport: Int {
         HealthKitHeartRateManager.sharedInstance().fetchHeartRateSamples(from: start, to: end) { [weak self] samples, _ in
             guard let self else { return }
             let list = (samples as? [NSDictionary]) ?? []
-            self.heartRateHistory = list.compactMap { row in
+            let parsed = list.compactMap { row -> (date: Date, value: Double)? in
                 guard let date = row["date"] as? Date, let bpm = row["bpm"] as? NSNumber else { return nil }
                 return (date: date, value: bpm.doubleValue)
             }
+            self.heartRateHistory = parsed
+            self.metricsChartHeartRateHistory = parsed
         }
     }
 
@@ -277,6 +305,7 @@ enum DeviceDetailConnectionTransport: Int {
             queue: .main
         ) { [weak self] _ in
             self?.refreshSensitiveDetailVisibility()
+            self?.refreshRouteHistoryMetricsIfNeeded()
         }
     }
 
@@ -288,6 +317,7 @@ enum DeviceDetailConnectionTransport: Int {
             queue: .main
         ) { [weak self] _ in
             self?.refreshSensitiveDetailVisibility()
+            self?.refreshRouteHistoryMetricsIfNeeded()
         }
     }
 
@@ -380,6 +410,221 @@ enum DeviceDetailConnectionTransport: Int {
             let displayValue = useMetric ? alt : alt * 3.28084
             return (date: wp.effectiveTimestamp, value: displayValue)
         }
+    }
+
+    /// Refreshes waypoint-derived series and the shared 12h domain for the metrics sheet. Heart rate
+    /// for the **own** device is updated asynchronously by `refreshHeartRateHistoryFromHealthKit`;
+    /// this copies the current `heartRateHistory` when available and rebuilds waypoint HR for friends.
+    func rebuildMetricsChartSeries() {
+        let end = Date()
+        let start = end.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
+        metricsChartStart = start
+        metricsChartEnd = end
+        let useMetric = Self.useMetric
+
+        guard let friend = waypoint.belongsTo, let allSet = friend.hasWaypoints else {
+            metricsChartSpeedHistory = []
+            metricsChartAltitudeHistory = []
+            metricsChartBatteryHistory = []
+            if isOwnWaypoint {
+                metricsChartHeartRateHistory = heartRateHistory
+            } else {
+                metricsChartHeartRateHistory = []
+            }
+            return
+        }
+
+        let filtered = Array(allSet)
+            .filter { $0.effectiveTimestamp >= start && $0.effectiveTimestamp <= end }
+            .sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
+
+        metricsChartSpeedHistory = filtered.compactMap { wp in
+            guard let vel = wp.vel?.doubleValue, vel >= 0 else { return nil }
+            let displayValue = useMetric ? vel : vel * 0.621371
+            return (date: wp.effectiveTimestamp, value: displayValue)
+        }
+        metricsChartAltitudeHistory = filtered.compactMap { wp in
+            guard let alt = wp.alt?.doubleValue else { return nil }
+            let displayValue = useMetric ? alt : alt * 3.28084
+            return (date: wp.effectiveTimestamp, value: displayValue)
+        }
+        metricsChartBatteryHistory = filtered.compactMap { wp in
+            guard let raw = wp.batt?.doubleValue, raw >= 0 else { return nil }
+            let frac = raw > 1.0 ? raw / 100.0 : raw
+            guard frac <= 1.001 else { return nil }
+            let clamped = min(1.0, max(0.0, frac))
+            return (date: wp.effectiveTimestamp, value: clamped)
+        }
+
+        if isOwnWaypoint {
+            metricsChartHeartRateHistory = heartRateHistory
+        } else {
+            metricsChartHeartRateHistory = filtered.compactMap { wp in
+                guard let hr = wp.heartRate?.doubleValue, hr > 0 else { return nil }
+                return (date: wp.effectiveTimestamp, value: hr)
+            }
+        }
+    }
+
+    /// Schedules `GET .../history/.../route` when `currentUserMayViewRouteHistory` allows and merges into chart series.
+    /// Does not rebuild the Core Data baseline here — that runs from `populate()` only, so OAuth/profile-driven
+    /// refreshes do not oscillate charts between CD-only and route-overlay data.
+    /// Route GET is debounced so SwiftUI `onAppear` bursts do not stack requests.
+    func refreshRouteHistoryMetricsIfNeeded() {
+        guard LocationAPISyncService.sharedInstance().currentUserMayViewRouteHistory() else {
+            return
+        }
+        guard let friend = waypoint.belongsTo,
+              waypoint.managedObjectContext != nil,
+              Self.routeAPIUserAndDevice(for: friend) != nil else {
+            return
+        }
+
+        routeMetricsRefreshWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.startDebouncedRouteHistoryMetricsFetch()
+        }
+        routeMetricsRefreshWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.routeMetricsRefreshDebounce, execute: work)
+    }
+
+    private func startDebouncedRouteHistoryMetricsFetch() {
+        guard LocationAPISyncService.sharedInstance().currentUserMayViewRouteHistory() else { return }
+        guard let friend = waypoint.belongsTo,
+              let moc = waypoint.managedObjectContext,
+              let routePair = Self.routeAPIUserAndDevice(for: friend) else {
+            return
+        }
+
+        if routeMetricsFetchInFlight {
+            return
+        }
+        if let last = lastRouteMetricsSuccessfulApply,
+           Date().timeIntervalSince(last) < Self.routeMetricsMinimumRefetchInterval {
+            return
+        }
+
+        routeMetricsFetchInFlight = true
+        routeMetricsRequestSerial += 1
+        let serial = routeMetricsRequestSerial
+        let bucket = Self.routeMetricsUnixBucketSeconds
+        let rawEnd = Int(Date().timeIntervalSince1970)
+        let endUnix = bucket > 1 ? (rawEnd / bucket) * bucket : rawEnd
+        let startUnix = endUnix - Int(Self.heartRateHistoryLookbackSeconds)
+        let useMetric = Self.useMetric
+
+        LocationAPISyncService.sharedInstance().fetchRouteHistoryPoints(
+            forRouteUser: routePair.user,
+            routeDevice: routePair.device,
+            startUnix: startUnix,
+            endUnix: endUnix,
+            managedObjectContext: moc
+        ) { [weak self] points, error in
+            guard let self else { return }
+            defer { self.routeMetricsFetchInFlight = false }
+            guard serial == self.routeMetricsRequestSerial else {
+                return
+            }
+            if let error {
+                NSLog("[DeviceDetailVM] route API error: %@", error.localizedDescription)
+                return
+            }
+            guard let nsArray = points as NSArray? else {
+                NSLog("[DeviceDetailVM] route API returned nil points array")
+                return
+            }
+            let plist = nsArray.compactMap { $0 as? NSDictionary }
+            if plist.isEmpty {
+                return
+            }
+            self.applyRouteHistoryPointsToMetricsCharts(plist, useMetric: useMetric)
+            self.lastRouteMetricsSuccessfulApply = Date()
+        }
+    }
+
+    /// Same user/device resolution as `ViewController` route fetch (`owntracks/{user}/{device}` fallback).
+    private static func routeAPIUserAndDevice(for friend: Friend) -> (user: String, device: String)? {
+        var routeUser = (friend.routeAPIUser ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var routeDevice = (friend.tid ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if routeUser.isEmpty || routeDevice.isEmpty {
+            let topic = friend.topic ?? ""
+            let parts = topic.split(separator: "/").map(String.init)
+            if parts.count >= 3 {
+                routeUser = parts[1]
+                routeDevice = parts.dropFirst(2).joined(separator: "/")
+            }
+        }
+        if routeUser.isEmpty || routeDevice.isEmpty { return nil }
+        return (routeUser, routeDevice)
+    }
+
+    private func applyRouteHistoryPointsToMetricsCharts(_ points: [NSDictionary], useMetric: Bool) {
+        let preserveOwnHeartRate = isOwnWaypoint
+        let savedHeartRate = preserveOwnHeartRate ? metricsChartHeartRateHistory : []
+
+        var speeds: [(date: Date, value: Double)] = []
+        var alts: [(date: Date, value: Double)] = []
+        var batts: [(date: Date, value: Double)] = []
+        var hrs: [(date: Date, value: Double)] = []
+
+        for pt in points {
+            let unix = OTRouteHistoryPointUnixTime(pt)
+            if unix.isNaN || !unix.isFinite { continue }
+            let date = Date(timeIntervalSince1970: unix)
+
+            if let vel = Self.doubleValue(from: pt, keys: ["vel", "velocity"]), vel >= 0 {
+                let displayValue = useMetric ? vel : vel * 0.621371
+                speeds.append((date: date, value: displayValue))
+            }
+            if let altM = Self.doubleValue(from: pt, keys: ["alt", "altitude"]) {
+                let displayValue = useMetric ? altM : altM * 3.28084
+                alts.append((date: date, value: displayValue))
+            }
+            if let rawBatt = Self.doubleValue(from: pt, keys: ["batt", "battery"]), rawBatt >= 0 {
+                let frac = rawBatt > 1.0 ? rawBatt / 100.0 : rawBatt
+                if frac <= 1.001 {
+                    batts.append((date: date, value: min(1.0, max(0.0, frac))))
+                }
+            }
+            if !preserveOwnHeartRate, let hr = Self.doubleValue(from: pt, keys: ["hr", "heartRate"]), hr > 0 {
+                hrs.append((date: date, value: hr))
+            }
+        }
+
+        if speeds.count >= 2 {
+            speeds.sort { $0.date < $1.date }
+            metricsChartSpeedHistory = speeds
+        }
+        if alts.count >= 2 {
+            alts.sort { $0.date < $1.date }
+            metricsChartAltitudeHistory = alts
+        }
+        if batts.count >= 2 {
+            batts.sort { $0.date < $1.date }
+            metricsChartBatteryHistory = batts
+        }
+        if preserveOwnHeartRate {
+            metricsChartHeartRateHistory = savedHeartRate
+        } else if hrs.count >= 2 {
+            hrs.sort { $0.date < $1.date }
+            metricsChartHeartRateHistory = hrs
+        }
+        // Keep chart X domain aligned to “now” once when overlay applies (not on every OAuth/profile ping).
+        let chartEnd = Date()
+        metricsChartEnd = chartEnd
+        metricsChartStart = chartEnd.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
+    }
+
+    private static func doubleValue(from dict: NSDictionary, keys: [String]) -> Double? {
+        for key in keys {
+            if let n = dict[key] as? NSNumber {
+                return n.doubleValue
+            }
+            if let s = dict[key] as? String, let v = Double(s) {
+                return v
+            }
+        }
+        return nil
     }
 
     private static func connectionTransport(for conn: String?) -> DeviceDetailConnectionTransport {

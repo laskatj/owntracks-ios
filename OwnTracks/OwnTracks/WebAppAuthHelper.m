@@ -39,6 +39,10 @@ static NSString * const kKeychainClientIdKey = @"client_id";
 // Per-account in-flight refresh coalescing: maps Keychain account key → array of pending completions.
 // Only one token exchange is started per account at a time; all concurrent callers share the result.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray *> *pendingRefreshCallbacks;
+/// Suppress duplicate `OwnTracksOAuthAccessTokenBecameAvailable` posts (same AT or rapid churn).
+@property (nonatomic, copy, nullable) NSString *lastOAuthBroadcastAccessToken;
+@property (nonatomic) NSTimeInterval lastOAuthBroadcastWallTime;
+- (void)postOwnTracksOAuthAccessTokenBecameAvailableIfNeeded:(NSString *)accessToken;
 @end
 
 @implementation WebAppAuthHelper
@@ -570,7 +574,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
     self.pendingWebAppURL = nil;
     if (comp) comp(accessToken, nil);
     if (accessToken.length) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksOAuthAccessTokenBecameAvailableNotification object:nil];
+        [self postOwnTracksOAuthAccessTokenBecameAvailableIfNeeded:accessToken];
     }
 }
 
@@ -857,7 +861,7 @@ static NSString * const kKeychainClientIdKey = @"client_id";
             NSString *storedRT = newRefreshToken.length > 0 ? newRefreshToken : tokenData[kKeychainRefreshTokenKey];
             [sself storeRefreshToken:storedRT tokenEndpoint:tokenEndpoint clientId:clientId forWebAppURL:webAppURL];
             fireAll(newAccessToken, nil);
-            [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksOAuthAccessTokenBecameAvailableNotification object:nil];
+            [sself postOwnTracksOAuthAccessTokenBecameAvailableIfNeeded:newAccessToken];
         });
     }] resume];
 }
@@ -888,7 +892,28 @@ static NSString * const kKeychainClientIdKey = @"client_id";
         [self deleteTokenForAccount:acc];
     }
     DDLogInfo(@"[WebAppAuthHelper] Cleared %lu Keychain account(s) for web app %@", (unsigned long)accounts.count, webAppOrigin.absoluteString);
+    self.lastOAuthBroadcastAccessToken = nil;
+    self.lastOAuthBroadcastWallTime = 0;
     [[LocationAPISyncService sharedInstance] invalidateOAuthCredentialCache];
+}
+
+- (void)postOwnTracksOAuthAccessTokenBecameAvailableIfNeeded:(NSString *)accessToken {
+    if (accessToken.length == 0) {
+        return;
+    }
+    if ([accessToken isEqualToString:self.lastOAuthBroadcastAccessToken]) {
+        DDLogVerbose(@"[WebAppAuthHelper] Skipping duplicate OwnTracksOAuthAccessTokenBecameAvailable (same access token)");
+        return;
+    }
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (self.lastOAuthBroadcastWallTime > 0 && (now - self.lastOAuthBroadcastWallTime) < 20.0) {
+        DDLogVerbose(@"[WebAppAuthHelper] Throttling OwnTracksOAuthAccessTokenBecameAvailable (%.0fs since last broadcast)",
+                     now - self.lastOAuthBroadcastWallTime);
+        return;
+    }
+    self.lastOAuthBroadcastAccessToken = [accessToken copy];
+    self.lastOAuthBroadcastWallTime = now;
+    [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksOAuthAccessTokenBecameAvailableNotification object:nil];
 }
 
 #pragma mark - ASWebAuthenticationPresentationContextProviding

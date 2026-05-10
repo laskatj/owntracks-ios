@@ -2,9 +2,9 @@
 //  OTInboxRealtimeContract.h
 //  OwnTracks
 //
-//  Client–server contract for real-time inbox (SignalR + APNs). The admin API repo
-//  should implement matching endpoints and hub behaviour (ApnsSubscription model,
-//  POST registration, ApnsNotificationSubscriber, LocationHub emitting InboxUpdated).
+//  Client–server contract for real-time inbox (SignalR + APNs). Matches ASP.NET Core
+//  `MapHub<LocationHub>("/locationHub")` and JwtBearer `access_token` query for that path.
+//  Hub client events: `Notification`, `AdminNotification` (not legacy `InboxUpdated`).
 //
 
 #import <Foundation/Foundation.h>
@@ -27,8 +27,11 @@ FOUNDATION_EXTERN NSString * const OTInboxShouldRefreshReasonAPNs;
 
 FOUNDATION_EXTERN NSString * const OTInboxRealtimeHubPathComponent;
 
-/// Server invokes `Clients.User(...).SendAsync(OTRealtimeInboxSignalREventName, ...)` — client listens for no-arg payloads.
+/// Primary hub method for generic notifications (`Notification` on LocationHub).
 FOUNDATION_EXTERN NSString * const OTRealtimeInboxSignalREventName;
+
+/// Secondary hub method (`AdminNotification` on LocationHub); client may subscribe alongside `OTRealtimeInboxSignalREventName`.
+FOUNDATION_EXTERN NSString * const OTRealtimeLocationHubAdminNotificationEventName;
 
 /// JWT query-string parameter consumed by JwtBearer MessageReceived (ASP.NET SignalR websocket).
 FOUNDATION_EXTERN NSString * const OTRealtimeSignalRAccessTokenQueryName;

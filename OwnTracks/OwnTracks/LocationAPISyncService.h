@@ -10,6 +10,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Best-effort unix seconds from a Recorder `/api/location/history/.../route` point dictionary (shared with map + device metrics).
+FOUNDATION_EXPORT NSTimeInterval OTRouteHistoryPointUnixTime(id _Nonnull pt);
+
 /// Posted on the main queue after a new OAuth access token is obtained (PKCE exchange or silent refresh).
 /// `LocationAPISyncService` observes this to run native `POST /api/config/provision` when needed, without the Web tab.
 FOUNDATION_EXPORT NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification;
@@ -161,6 +164,16 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksCurrentUserProfileD
 
 /// Same silent refresh pipeline as authenticated REST APIs (Bearer token resolution).
 - (void)obtainOAuthAccessTokenForAPICallsWithCompletion:(void (^)(NSString * _Nullable token))completion;
+
+/// GET `/api/location/history/{routeUser}/{routeDevice}/route?start=&end=` (Recorder). Parses `points` array; completion is always on the **main** queue. Results are cached in-memory briefly.
+- (void)fetchRouteHistoryPointsForRouteUser:(NSString *)routeUser
+                              routeDevice:(NSString *)routeDevice
+                               startUnix:(NSInteger)startUnix
+                                 endUnix:(NSInteger)endUnix
+                    managedObjectContext:(NSManagedObjectContext *)moc
+                              completion:(void (^)(NSArray<NSDictionary *> * _Nullable points,
+                                                   NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchRouteHistoryPoints(forRouteUser:routeDevice:startUnix:endUnix:managedObjectContext:completion:));
 
 /// Registers or updates this device token for inbox push notifications (POST `/api/push/devices/apns`).
 - (void)registerApnsDeviceTokenHex:(NSString *)hexString

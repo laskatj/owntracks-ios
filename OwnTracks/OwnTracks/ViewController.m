@@ -76,45 +76,6 @@ static void OTPersistFollowUserCameraPitchAndDistance(double pitch, CLLocationDi
     [defs setDouble:d forKey:kOTFollowUserDistanceKey];
 }
 
-/// Best-effort unix seconds from a Recorder route point dict (for 6h/12h alignment debug).
-static NSTimeInterval RouteHistoryPointUnixTime(NSDictionary *pt) {
-    if (![pt isKindOfClass:[NSDictionary class]]) {
-        return NAN;
-    }
-    NSArray<NSString *> *keys = @[ @"tst", @"timestamp", @"time", @"createdAt", @"created_at" ];
-    for (NSString *key in keys) {
-        id v = pt[key];
-        if ([v isKindOfClass:[NSNumber class]]) {
-            double t = [(NSNumber *)v doubleValue];
-            if (t > 1e12) {
-                t /= 1000.0;
-            }
-            if (t > 946684800 && t < 4102444800) {
-                return t;
-            }
-        } else if ([v isKindOfClass:[NSString class]]) {
-            NSString *s = (NSString *)v;
-            double t = [s doubleValue];
-            if (t > 1e12) {
-                t /= 1000.0;
-            }
-            if (t > 946684800 && t < 4102444800) {
-                return t;
-            }
-            static NSISO8601DateFormatter *isoFmt;
-            static dispatch_once_t onceToken;
-            dispatch_once(&onceToken, ^{
-                isoFmt = [[NSISO8601DateFormatter alloc] init];
-            });
-            NSDate *d = [isoFmt dateFromString:s];
-            if (d) {
-                return [d timeIntervalSince1970];
-            }
-        }
-    }
-    return NAN;
-}
-
 /// US Pacific for route debug (`America/Los_Angeles` — PST or PDT by calendar).
 static NSString *RouteDebugTimeStringPST(NSTimeInterval unix) {
     NSDate *d = [NSDate dateWithTimeIntervalSince1970:unix];
@@ -2099,13 +2060,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
     [self updateRouteHistoryToggleVisibility];
 
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
-    NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC];
-    if (!origin) {
-        DDLogInfo(@"[ViewController] route fetch: no origin URL, showing cached track for %@", topic);
-        [self.pendingRouteTopics removeObject:topic];
-        [self rebuildLiveTrackForTopic:topic];
-        return;
-    }
 
     NSInteger endTs = (NSInteger)[[NSDate date] timeIntervalSince1970];
     NSInteger hours = (historyHoursOverride == 6 || historyHoursOverride == 12)
@@ -2113,24 +2067,8 @@ calloutAccessoryControlTapped:(UIControl *)control {
         : [self routeHistoryHours];
     NSInteger startTs = endTs - hours * 60 * 60;
 
-    NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
-
-    NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
-    components.path = path;
-    components.queryItems = @[
-        [NSURLQueryItem queryItemWithName:@"start" value:@(startTs).stringValue],
-        [NSURLQueryItem queryItemWithName:@"end" value:@(endTs).stringValue],
-    ];
-    NSURL *routeURL = components.URL;
-    if (!routeURL) {
-        DDLogWarn(@"[ViewController] route fetch: could not build URL for %@", topic);
-        [self.pendingRouteTopics removeObject:topic];
-        [self rebuildLiveTrackForTopic:topic];
-        return;
-    }
-
-    DDLogInfo(@"[ViewController] route fetch: GET %@ windowHours=%ld spanSec=%ld start=%ld end=%ld",
-              routeURL, (long)hours, (long)(endTs - startTs), (long)startTs, (long)endTs);
+    DDLogInfo(@"[ViewController] route fetch: windowHours=%ld spanSec=%ld start=%ld end=%ld",
+              (long)hours, (long)(endTs - startTs), (long)startTs, (long)endTs);
 
     NSUInteger mqttBaseline = [self.liveTrackPoints[topic] count];
     self.routeFetchMQTTBaselineByTopic[topic] = @(mqttBaseline);
@@ -2138,9 +2076,13 @@ calloutAccessoryControlTapped:(UIControl *)control {
               (unsigned long)mqttBaseline, topic);
 
     __weak typeof(self) wself = self;
-    [[LocationAPISyncService sharedInstance] performAuthenticatedGET:routeURL
-                                                          completion:^(NSData * _Nullable data, NSError * _Nullable error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+    [[LocationAPISyncService sharedInstance] fetchRouteHistoryPointsForRouteUser:routeUser
+                                                                     routeDevice:routeDevice
+                                                                      startUnix:startTs
+                                                                        endUnix:endTs
+                                                           managedObjectContext:mainMOC
+                                                                     completion:^(NSArray<NSDictionary *> * _Nullable points,
+                                                                                  NSError * _Nullable error) {
             __strong typeof(wself) sself = wself;
             if (!sself) return;
 
@@ -2152,41 +2094,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
             }
             [sself.pendingRouteTopics removeObject:topic];
 
-            DDLogInfo(@"[ViewController] route fetch: response for %@ — data=%lu bytes error=%@",
-                      topic, (unsigned long)data.length, error.localizedDescription ?: @"none");
+            DDLogInfo(@"[ViewController] route fetch: response for %@ — points=%lu error=%@",
+                      topic, (unsigned long)points.count, error.localizedDescription ?: @"none");
 
-            if (error || !data.length) {
-                DDLogInfo(@"[ViewController] route fetch failed for %@: %@, showing cached track", topic, error.localizedDescription);
-                [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
-                [sself rebuildLiveTrackForTopic:topic];
-                return;
-            }
-
-            NSError *jsonError = nil;
-            id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
-            if (jsonError) {
-                DDLogWarn(@"[ViewController] route fetch JSON parse error for %@: %@", topic, jsonError.localizedDescription);
-                NSString *bodySnippet = [[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(0, MIN(data.length, 200))]
-                                                              encoding:NSUTF8StringEncoding];
-                DDLogWarn(@"[ViewController] route fetch raw body (first 200 bytes): %@", bodySnippet);
-            }
-            NSArray *points = nil;
-            if ([obj isKindOfClass:[NSDictionary class]]) {
-                id p = ((NSDictionary *)obj)[@"points"];
-                if ([p isKindOfClass:[NSArray class]]) {
-                    points = (NSArray *)p;
-                } else {
-                    DDLogWarn(@"[ViewController] route fetch: 'points' key missing or wrong type for %@ — keys: %@",
-                              topic, [(NSDictionary *)obj allKeys]);
-                }
-            } else {
-                DDLogWarn(@"[ViewController] route fetch: response is not a dict for %@ (class: %@)", topic, NSStringFromClass([obj class]));
-            }
-
-            DDLogInfo(@"[ViewController] route fetch: %lu raw points for %@", (unsigned long)points.count, topic);
-
-            if (!points.count) {
-                DDLogInfo(@"[ViewController] route fetch: no points for %@, showing cached track", topic);
+            if (error || points.count == 0) {
+                DDLogInfo(@"[ViewController] route fetch failed or empty for %@: %@, showing cached track", topic, error.localizedDescription);
                 [sself.routeFetchMQTTBaselineByTopic removeObjectForKey:topic];
                 [sself rebuildLiveTrackForTopic:topic];
                 return;
@@ -2200,13 +2112,12 @@ calloutAccessoryControlTapped:(UIControl *)control {
             NSUInteger pointsWithTst = 0;
             NSUInteger tsOutsideLow = 0;
             NSUInteger tsOutsideHigh = 0;
-            for (id pt in points) {
-                if (![pt isKindOfClass:[NSDictionary class]]) {
+            for (NSDictionary *d in points) {
+                if (![d isKindOfClass:[NSDictionary class]]) {
                     continue;
                 }
-                NSDictionary *d = (NSDictionary *)pt;
-                id latObj = d[@"latitude"];
-                id lonObj = d[@"longitude"];
+                id latObj = d[@"latitude"] ?: d[@"lat"];
+                id lonObj = d[@"longitude"] ?: d[@"lon"];
                 if (![latObj isKindOfClass:[NSNumber class]] || ![lonObj isKindOfClass:[NSNumber class]]) {
                     continue;
                 }
@@ -2215,7 +2126,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                 if (lat == 0.0 && lon == 0.0) {
                     continue;
                 }
-                NSTimeInterval unix = RouteHistoryPointUnixTime(d);
+                NSTimeInterval unix = OTRouteHistoryPointUnixTime(d);
                 if (!isnan(unix)) {
                     pointsWithTst++;
                     if (!haveAnyTs) {
@@ -2287,7 +2198,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
             [sself updateRouteHistoryToggleVisibility];
             DDLogInfo(@"[ViewController] route fetch: seeded %lu API + %lu MQTT(during-fetch) points for %@",
                       (unsigned long)count, (unsigned long)mqttDuringFetch.count, topic);
-        });
     }];
 }
 
@@ -2355,7 +2265,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                   topic, smin, minTs.doubleValue, smax, maxTs.doubleValue,
                   (unsigned long)outLo, (unsigned long)outHi, skewStart, skewEnd, misaligned);
     } else {
-        DDLogInfo(@"[RouteDebug] drawn topic=%@ no parsable tst on API points — cannot compare to %ldh window; extend RouteHistoryPointUnixTime if server uses another field",
+        DDLogInfo(@"[RouteDebug] drawn topic=%@ no parsable tst on API points — cannot compare to %ldh window; extend OTRouteHistoryPointUnixTime if server uses another field",
                   topic, (long)wh);
     }
     if (mqttN > 0) {

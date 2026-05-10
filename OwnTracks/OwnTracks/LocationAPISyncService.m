@@ -163,6 +163,73 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 @implementation OTWebNotificationsPage
 @end
 
+NSTimeInterval OTRouteHistoryPointUnixTime(id pt) {
+    if (![pt isKindOfClass:[NSDictionary class]]) {
+        return NAN;
+    }
+    NSDictionary *dict = (NSDictionary *)pt;
+    NSArray<NSString *> *keys = @[ @"tst", @"timestamp", @"time", @"createdAt", @"created_at" ];
+    for (NSString *key in keys) {
+        id v = dict[key];
+        if ([v isKindOfClass:[NSNumber class]]) {
+            double t = [(NSNumber *)v doubleValue];
+            if (t > 1e12) {
+                t /= 1000.0;
+            }
+            if (t > 946684800 && t < 4102444800) {
+                return t;
+            }
+        } else if ([v isKindOfClass:[NSString class]]) {
+            NSString *s = (NSString *)v;
+            double t = [s doubleValue];
+            if (t > 1e12) {
+                t /= 1000.0;
+            }
+            if (t > 946684800 && t < 4102444800) {
+                return t;
+            }
+            static NSISO8601DateFormatter *isoFmt;
+            static dispatch_once_t onceToken;
+            dispatch_once(&onceToken, ^{
+                isoFmt = [[NSISO8601DateFormatter alloc] init];
+            });
+            NSDate *d = [isoFmt dateFromString:s];
+            if (d) {
+                return [d timeIntervalSince1970];
+            }
+        }
+    }
+    return NAN;
+}
+
+static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *data, NSError **outError) {
+    NSError *jsonError = nil;
+    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+    if (jsonError) {
+        if (outError) {
+            *outError = jsonError;
+        }
+        return nil;
+    }
+    NSArray *points = nil;
+    if ([obj isKindOfClass:[NSDictionary class]]) {
+        id p = ((NSDictionary *)obj)[@"points"];
+        if ([p isKindOfClass:[NSArray class]]) {
+            points = (NSArray *)p;
+        }
+    }
+    if (![points isKindOfClass:[NSArray class]]) {
+        return @[];
+    }
+    NSMutableArray<NSDictionary *> *out = [NSMutableArray arrayWithCapacity:points.count];
+    for (id item in points) {
+        if ([item isKindOfClass:[NSDictionary class]]) {
+            [out addObject:[(NSDictionary *)item copy]];
+        }
+    }
+    return [out copy];
+}
+
 @interface LocationAPISyncService ()
 @property (nonatomic, strong, nullable) NSTimer *pollTimer;
 @property (nonatomic) BOOL fetchInFlight;
@@ -184,6 +251,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 @property (nonatomic) BOOL authorizationUserCanViewRouteHistory;
 @property (nonatomic, strong, nullable) NSNumber *authAPIHomeZoneId;
 @property (nonatomic, strong, nullable) NSNumber *authAPIWorkZoneId;
+@property (nonatomic, strong) NSCache<NSString *, NSArray<NSDictionary *> *> *routeHistoryPointsCache;
 - (void)scheduleInteractiveOAuthIfNoTokenAfterFailure;
 /// OAuth stores refresh tokens under `keychainAccountForWebAppURL` using discovery `client_id` from `/.well-known/owntracks-app-auth`, not necessarily Settings `oauth_client_id_preference`. Try discovery id first, then settings, then nil lookup.
 - (void)trySilentRefreshWithCandidates:(NSArray<NSURL *> *)candidates
@@ -240,7 +308,9 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(oauthAccessTokenBecameAvailable:)
                                                      name:OwnTracksOAuthAccessTokenBecameAvailableNotification
-                                                   object:nil];
+                                                     object:nil];
+        _routeHistoryPointsCache = [[NSCache alloc] init];
+        _routeHistoryPointsCache.countLimit = 40;
     }
     return self;
 }
@@ -274,7 +344,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 }
 
 - (void)oauthAccessTokenBecameAvailable:(NSNotification *)notification {
-    DDLogInfo(@"[ProvisionAPI] OAuth access token available — attempting native provision if needed");
+    DDLogVerbose(@"[ProvisionAPI] OAuth access token available — attempting native provision if needed");
     [self attemptNativeProvisionAfterOAuthOrForegroundIfNeeded];
 }
 
@@ -483,12 +553,35 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
         });
         return;
     }
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (self.cachedAccessToken.length > 0 && self.cachedAccessTokenExpiry > now + 60.0) {
+        DDLogVerbose(@"[LocationAPISyncService] obtainAccessToken: reusing cached access token (exp in %.0fs)",
+                     self.cachedAccessTokenExpiry - now);
+        if (completion) {
+            completion(self.cachedAccessToken);
+        }
+        return;
+    }
+
     NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
     NSArray<NSURL *> *candidates = [WebAppURLResolver webAppKeychainURLCandidatesFromPreferenceInMOC:mainMOC];
     if (candidates.count == 0) {
-        completion(nil);
+        if (completion) {
+            completion(nil);
+        }
         return;
     }
+
+    void (^wrapped)(NSString *) = ^(NSString *tok) {
+        if (tok.length > 0) {
+            self.cachedAccessToken = tok;
+            NSDictionary *claims = [WebAppAuthHelper jwtPayloadClaimsFromToken:tok];
+            self.cachedAccessTokenExpiry = [claims[@"exp"] doubleValue];
+        }
+        if (completion) {
+            completion(tok);
+        }
+    };
 
     NSString *clientPref = [Settings stringForKey:@"oauth_client_id_preference" inMOC:mainMOC];
     if (clientPref.length == 0) {
@@ -498,14 +591,14 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
     // Fast path: already cached discovery client_id — build chain without network.
     if (self.cachedOAuthClientIdFromDiscovery.length > 0) {
         NSArray *chain = [self.class orderedKeychainClientIdChainDiscovery:self.cachedOAuthClientIdFromDiscovery settings:clientPref];
-        [self trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:completion];
+        [self trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:wrapped];
         return;
     }
 
     NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:mainMOC];
     if (!origin) {
         NSArray *chain = [self.class orderedKeychainClientIdChainDiscovery:nil settings:clientPref];
-        [self trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:completion];
+        [self trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:wrapped];
         return;
     }
 
@@ -513,7 +606,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
     [[WebAppAuthHelper sharedInstance] fetchDiscoveryFromOrigin:origin completion:^(NSDictionary * _Nullable config, NSError * _Nullable error) {
         __strong typeof(wself) sself = wself;
         if (!sself) {
-            completion(nil);
+            wrapped(nil);
             return;
         }
         NSString *cid = nil;
@@ -525,7 +618,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
             DDLogVerbose(@"[LocationAPISyncService] Discovery fetch failed: %@ — trying Keychain lookup with Settings client_id only", error.localizedDescription);
         }
         NSArray *chain = [LocationAPISyncService orderedKeychainClientIdChainDiscovery:cid settings:clientPref];
-        [sself trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:completion];
+        [sself trySilentRefreshWithCandidates:candidates clientIdsOrdered:chain idsIndex:0 completion:wrapped];
     }];
 }
 
@@ -535,6 +628,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
     self.cachedOAuthClientIdFromDiscovery = nil;
     self.fetchInFlight = NO;
     self.provisionInFlight = NO;
+    [self.routeHistoryPointsCache removeAllObjects];
     DDLogInfo(@"[LocationAPISyncService] invalidateOAuthCredentialCache");
     __weak typeof(self) wself = self;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -676,7 +770,7 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
             return;
         }
         if (accessToken.length > 0) {
-            DDLogInfo(@"[LocationAPISyncService] Silent refresh OK for base URL %@", u.absoluteString);
+            DDLogVerbose(@"[LocationAPISyncService] Silent refresh OK for base URL %@", u.absoluteString);
             completion(accessToken);
             return;
         }
@@ -984,6 +1078,112 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
     return [d copy];
 }
 
+- (void)fetchRouteHistoryPointsForRouteUser:(NSString *)routeUser
+                              routeDevice:(NSString *)routeDevice
+                               startUnix:(NSInteger)startUnix
+                                 endUnix:(NSInteger)endUnix
+                    managedObjectContext:(NSManagedObjectContext *)moc
+                              completion:(void (^)(NSArray<NSDictionary *> * _Nullable points,
+                                                   NSError * _Nullable error))completion {
+    if (!completion) {
+        return;
+    }
+    void (^deliver)(NSArray<NSDictionary *> *, NSError *) = ^(NSArray<NSDictionary *> *pts, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(pts, err);
+        });
+    };
+    if (!routeUser.length || !routeDevice.length) {
+        deliver(@[], [NSError errorWithDomain:@"LocationAPISyncService"
+                                          code:2
+                                      userInfo:@{NSLocalizedDescriptionKey: @"Missing route user or device"}]);
+        return;
+    }
+    NSString *cacheKey = [NSString stringWithFormat:@"%@|%@|%ld|%ld",
+                          routeUser, routeDevice, (long)startUnix, (long)endUnix];
+    NSArray<NSDictionary *> *cached = [self.routeHistoryPointsCache objectForKey:cacheKey];
+    if (cached) {
+        DDLogInfo(@"[LocationAPISyncService] route history cache hit %@", cacheKey);
+        deliver(cached, nil);
+        return;
+    }
+
+    NSURL *origin = [WebAppURLResolver webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        deliver(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                           code:3
+                                       userInfo:@{NSLocalizedDescriptionKey: @"No web app origin URL"}]);
+        return;
+    }
+
+    NSString *path = [NSString stringWithFormat:@"/api/location/history/%@/%@/route", routeUser, routeDevice];
+    NSURLComponents *components = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    components.path = path;
+    components.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"start" value:@(startUnix).stringValue],
+        [NSURLQueryItem queryItemWithName:@"end" value:@(endUnix).stringValue],
+    ];
+    NSURL *routeURL = components.URL;
+    if (!routeURL) {
+        deliver(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                           code:4
+                                       userInfo:@{NSLocalizedDescriptionKey: @"Could not build route URL"}]);
+        return;
+    }
+
+    DDLogInfo(@"[LocationAPISyncService] route history GET %@ (start=%ld end=%ld)", routeURL, (long)startUnix, (long)endUnix);
+    __weak typeof(self) wself = self;
+    [self performAuthenticatedGET:routeURL
+                         completion:^(NSData * _Nullable data, NSError * _Nullable error) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            deliver(nil, [NSError errorWithDomain:@"LocationAPISyncService" code:0 userInfo:nil]);
+            return;
+        }
+        if (error || !data.length) {
+            deliver(nil, error ?: [NSError errorWithDomain:@"LocationAPISyncService"
+                                                      code:5
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Empty route response"}]);
+            return;
+        }
+        NSError *parseErr = nil;
+        NSArray<NSDictionary *> *points = OTExtractRouteHistoryPointsFromJSONData(data, &parseErr);
+        if (parseErr) {
+            DDLogWarn(@"[LocationAPISyncService] route history JSON error: %@", parseErr.localizedDescription);
+        }
+        if (!points) {
+            deliver(nil, parseErr);
+            return;
+        }
+        NSTimeInterval minTs = 0;
+        NSTimeInterval maxTs = 0;
+        BOOL haveTs = NO;
+        for (NSDictionary *d in points) {
+            NSTimeInterval u = OTRouteHistoryPointUnixTime(d);
+            if (!isnan(u)) {
+                if (!haveTs) {
+                    minTs = maxTs = u;
+                    haveTs = YES;
+                } else {
+                    minTs = MIN(minTs, u);
+                    maxTs = MAX(maxTs, u);
+                }
+            }
+        }
+        if (haveTs) {
+            DDLogInfo(@"[LocationAPISyncService] route history parsed %lu points tst span=%.0fs (%.2fh) min=%.0f max=%.0f",
+                      (unsigned long)points.count, maxTs - minTs, (maxTs - minTs) / 3600.0, minTs, maxTs);
+        } else {
+            DDLogWarn(@"[LocationAPISyncService] route history parsed %lu points but none had parsable tst — check API field names",
+                      (unsigned long)points.count);
+        }
+        if (points.count > 0) {
+            [sself.routeHistoryPointsCache setObject:points forKey:cacheKey];
+        }
+        deliver(points, nil);
+    }];
+}
+
 - (void)performAuthenticatedGET:(NSURL *)url completion:(void (^)(NSData * _Nullable, NSError * _Nullable))completion {
     DDLogInfo(@"[LocationAPISyncService] performAuthenticatedGET: obtaining token for %@", url);
     __weak typeof(self) wself = self;
@@ -1287,10 +1487,22 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
         return;
     }
     NSDate *last = self.lastSuccessfulGeolocationCacheFetchDate;
-    if (last && [[NSDate date] timeIntervalSinceDate:last] < kOTGeolocationCachePrefetchMinIntervalSeconds) {
-        DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch skipped (last fetch %.1fs ago)",
-                     [[NSDate date] timeIntervalSinceDate:last]);
-        return;
+    NSTimeInterval sinceLastSuccess = last ? [[NSDate date] timeIntervalSinceDate:last] : DBL_MAX;
+    BOOL hasCachedItems = (self.lastGeolocationCacheItems.count > 0);
+    // When we already have zones, keep the 25s debounce. When the cache is still empty (cold start, transient
+    // failure, or first paint before GET completed), allow retries sooner so Friends list can resolve names.
+    static const NSTimeInterval kOTGeolocationCacheEmptyRetryMinIntervalSeconds = 5.0;
+    if (sinceLastSuccess < kOTGeolocationCachePrefetchMinIntervalSeconds) {
+        if (hasCachedItems) {
+            DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch skipped (last fetch %.1fs ago, cache populated)",
+                         sinceLastSuccess);
+            return;
+        }
+        if (sinceLastSuccess < kOTGeolocationCacheEmptyRetryMinIntervalSeconds) {
+            DDLogVerbose(@"[LocationAPISyncService] geolocationcache prefetch skipped (empty cache, last attempt %.1fs ago)",
+                         sinceLastSuccess);
+            return;
+        }
     }
     self.geolocationCacheFetchInFlight = YES;
     __weak typeof(self) wself = self;

@@ -17,8 +17,16 @@ public final class OTInboxRealtimeCoordinator: NSObject {
 
     private var connectionTask: Task<Void, Never>?
     private var debounceWork: DispatchWorkItem?
+    private var oauthReconnectDebounceWork: DispatchWorkItem?
     private let lifeLock = NSLock()
     private var observationWired = false
+
+    /// After repeated negotiate failures (e.g. HTTP 405 — hub not deployed), pause hub attempts to stop log spam.
+    private var suspendRealtimeHubUntil: Date?
+    private var hubNegotiateFailureCount: Int = 0
+    private static let hubSuspendDuration: TimeInterval = 900
+    private static let hubFailuresBeforeSuspend: Int = 2
+    private static let oauthReconnectDebounceSeconds: TimeInterval = 2.0
 
     private override init() {
         super.init()
@@ -58,6 +66,10 @@ public final class OTInboxRealtimeCoordinator: NSObject {
     }
 
     @objc private func handleForeground() {
+        suspendRealtimeHubUntil = nil
+        hubNegotiateFailureCount = 0
+        oauthReconnectDebounceWork?.cancel()
+        oauthReconnectDebounceWork = nil
         reconnectSignalRSession()
     }
 
@@ -66,10 +78,15 @@ public final class OTInboxRealtimeCoordinator: NSObject {
         connectionTask = nil
     }
 
+    /// Debounced so each silent refresh does not immediately start another token fetch + negotiate cycle.
     @objc private func handleOAuthReady() {
-        if UIApplication.shared.applicationState == .active {
-            reconnectSignalRSession()
+        guard UIApplication.shared.applicationState == .active else { return }
+        oauthReconnectDebounceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.reconnectSignalRSession()
         }
+        oauthReconnectDebounceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.oauthReconnectDebounceSeconds, execute: work)
     }
 
     private func reconnectSignalRSession() {
@@ -107,6 +124,18 @@ public final class OTInboxRealtimeCoordinator: NSObject {
         if Task.isCancelled {
             return
         }
+
+        let suspended: Bool = await MainActor.run { [weak self] in
+            guard let self else { return false }
+            if let until = self.suspendRealtimeHubUntil, Date() < until {
+                return true
+            }
+            return false
+        }
+        if suspended {
+            return
+        }
+
         guard let token = await fetchAccessTokenAsync(), !token.isEmpty else {
             return
         }
@@ -127,10 +156,25 @@ public final class OTInboxRealtimeCoordinator: NSObject {
         await hub.on(OTRealtimeInboxSignalREventName as String) { [weak self] in
             self?.postDebouncedInboxRefresh()
         }
+        await hub.on(OTRealtimeLocationHubAdminNotificationEventName as String) { [weak self] in
+            self?.postDebouncedInboxRefresh()
+        }
 
         do {
             try await hub.start()
+            await MainActor.run { [weak self] in
+                self?.hubNegotiateFailureCount = 0
+                self?.suspendRealtimeHubUntil = nil
+            }
         } catch {
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.hubNegotiateFailureCount += 1
+                if self.hubNegotiateFailureCount >= Self.hubFailuresBeforeSuspend {
+                    self.suspendRealtimeHubUntil = Date().addingTimeInterval(Self.hubSuspendDuration)
+                    self.hubNegotiateFailureCount = 0
+                }
+            }
             return
         }
 

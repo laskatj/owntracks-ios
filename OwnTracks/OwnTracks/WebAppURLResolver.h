@@ -55,7 +55,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSURL *)notificationsAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
                                                relativePath:(NSString *)relativePath;
 
-/// Fully qualified SignalR hub URL (`wss`/https negotiated) including `access_token` query for JwtBearer websocket auth.
+/// Fully qualified LocationHub URL (`…/locationHub`, negotiate + WebSockets) including `access_token` for JwtBearer (see `OTInboxRealtimeHubPathComponent`).
 + (nullable NSURL *)signalRHubURLFromPreferenceInMOC:(NSManagedObjectContext *)moc accessToken:(NSString *)accessToken;
 
 /// POST {origin}/api/push/devices/apns (OAuth Bearer); see OTInboxRealtimeContract.h.

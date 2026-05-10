@@ -43,6 +43,7 @@ static NSString *const kFriendsFilterModeKey = @"FriendsTVC.filterMode";
 @property (nonatomic) FriendsSortMode friendsSortMode;
 @property (nonatomic) FriendsFilterMode friendsFilterMode;
 - (void)rebuildSortFilterMenu;
+- (void)reloadFriendsTableWhenInViewHierarchy;
 @end
 
 @implementation FriendsTVC
@@ -66,7 +67,7 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 }
 
 - (void)geolocationCacheDidUpdate:(NSNotification *)note {
-    [self.tableView reloadData];
+    [self reloadFriendsTableWhenInViewHierarchy];
 }
 
 - (void)viewDidLoad {
@@ -310,9 +311,31 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     while (!self.fetchedResultsController) {
         //
     }
-    [self.tableView reloadData];
+    [self reloadFriendsTableWhenInViewHierarchy];
     [[LocationAPISyncService sharedInstance] requestLocationRefreshIfAppropriate];
     [[LocationAPISyncService sharedInstance] requestGeolocationCachePrefetchIfAppropriate];
+}
+
+/// Avoids `UITableViewAlertForLayoutOutsideViewHierarchy` when `reloadData` runs before the table is in a window (tab timing).
+- (void)reloadFriendsTableWhenInViewHierarchy {
+    __weak typeof(self) weakSelf = self;
+    void (^reload)(void) = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        if (strongSelf.tableView.window != nil) {
+            [strongSelf.tableView reloadData];
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) inner = weakSelf;
+            if (inner.tableView.window != nil) {
+                [inner.tableView reloadData];
+            }
+        });
+    };
+    reload();
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
