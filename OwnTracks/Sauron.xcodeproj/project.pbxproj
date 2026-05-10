@@ -121,6 +121,10 @@
 		F0A100332F9100010053280B /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 849B3C0F242F9EFC0052EE6D /* CoreLocation.framework */; };
 		F0A100342F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
+		C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */; };
+		C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */; };
+		D4E5F6A1B2C30001AAAA0001 /* HealthKitHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */; };
+		D4E5F6A1B2C30002AAAA0001 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4E5F6A1B2C30005AAAA0001 /* HealthKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -465,6 +469,13 @@
 		F0A100252F9100010053280B /* SauronWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SauronWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendMarkerAnimator.h; sourceTree = "<group>"; };
 		FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendMarkerAnimator.m; sourceTree = "<group>"; };
+		C0BEBA47C0BE000100BEA001 /* BluetoothHeartRateManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BluetoothHeartRateManager.h; sourceTree = "<group>"; };
+		C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = BluetoothHeartRateManager.m; sourceTree = "<group>"; };
+		C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
+		D4E5F6A1B2C30003AAAA0001 /* HealthKitHeartRateManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HealthKitHeartRateManager.h; sourceTree = "<group>"; };
+		D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HealthKitHeartRateManager.m; sourceTree = "<group>"; };
+		D4E5F6A1B2C30005AAAA0001 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		C0BEBA50C0BE000100BEA001 /* Model 18.6.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Model 18.6.0.xcdatamodel"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -523,6 +534,7 @@
 				6F96424309D0FAF52D234D4E /* Pods_Sauron.framework in Frameworks */,
 				F0A100242F9100010053280B /* WatchConnectivity.framework in Frameworks */,
 				C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */,
+				D4E5F6A1B2C30002AAAA0001 /* HealthKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -621,6 +633,7 @@
 				8422AF671AF825C7008932A2 /* SystemConfiguration.framework */,
 				84AF468F1AB9571800E954E3 /* CoreLocation.framework */,
 				C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */,
+				D4E5F6A1B2C30005AAAA0001 /* HealthKit.framework */,
 				847F8B5719295C65003876D4 /* CoreMotion.framework */,
 				8411B860189FDD200019D2D6 /* MapKit.framework */,
 				8411B82B189FDB140019D2D6 /* Foundation.framework */,
@@ -662,6 +675,8 @@
 				F0A100212F9100010053280B /* OwnTracksWatchBridge.m */,
 				C0BEBA47C0BE000100BEA001 /* BluetoothHeartRateManager.h */,
 				C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */,
+				D4E5F6A1B2C30003AAAA0001 /* HealthKitHeartRateManager.h */,
+				D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */,
 				849D457B18CDACDF00201BF3 /* MQTT.plist */,
 				8400D9721D83825E00DEA134 /* HTTP.plist */,
 				8411B88F189FE9CE0019D2D6 /* Settings.h */,
@@ -1313,6 +1328,7 @@
 				842E6ECE20BEE96F001928FA /* Region+CoreDataClass.m in Sources */,
 				F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */,
 				C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */,
+				D4E5F6A1B2C30001AAAA0001 /* HealthKitHeartRateManager.m in Sources */,
 				CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */,
 				CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */,
 				DD010002DD010002DD010002 /* DeviceDetailViewModel.swift in Sources */,

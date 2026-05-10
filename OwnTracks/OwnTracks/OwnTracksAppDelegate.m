@@ -23,6 +23,7 @@
 #import "OTInboxRealtimeContract.h"
 #import "OwnTracksWatchBridge.h"
 #import "BluetoothHeartRateManager.h"
+#import "HealthKitHeartRateManager.h"
 #import <Sauron-Swift.h>
 
 #import "OwnTracksSendNowIntent.h"
@@ -330,6 +331,7 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     [[OwnTracksWatchBridge shared] activate];
 
     [[BluetoothHeartRateManager sharedInstance] startScanning];
+    [[HealthKitHeartRateManager sharedInstance] startObserving];
 
     return YES;
 }
@@ -1991,6 +1993,9 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
     }
 
     NSNumber *heartRate = [BluetoothHeartRateManager sharedInstance].heartRate;
+    if (!heartRate) {
+        heartRate = [HealthKitHeartRateManager sharedInstance].heartRate;
+    }
 
     Waypoint *waypoint = [friend addWaypoint:location
                                    createdAt:createdAt
