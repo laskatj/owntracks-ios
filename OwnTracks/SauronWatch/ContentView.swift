@@ -5,6 +5,7 @@
 
 import SwiftUI
 import CoreLocation
+import WidgetKit
 
 struct ContentView: View {
     @EnvironmentObject private var config: WatchConfigStore
@@ -33,6 +34,7 @@ struct ContentView: View {
                     Button {
                         modeRaw = WatchTrackingMode.passive.rawValue
                         tracker.apply(mode: .passive)
+                        WidgetCenter.shared.reloadAllTimelines()
                     } label: {
                         Text("Passive").frame(maxWidth: .infinity)
                     }
@@ -42,6 +44,7 @@ struct ContentView: View {
                     Button {
                         modeRaw = WatchTrackingMode.active.rawValue
                         tracker.apply(mode: .active)
+                        WidgetCenter.shared.reloadAllTimelines()
                     } label: {
                         Text("Active").frame(maxWidth: .infinity)
                     }

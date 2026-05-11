@@ -86,12 +86,15 @@ final class WatchUploadScheduler: ObservableObject {
 
             do {
                 _ = try await uploadNextFromQueue(config: cfg, bearerToken: tokenForUpload)
+                let now = Date()
+                let depth = PendingLocationQueue.shared.load().count
                 await MainActor.run {
-                    self.lastUpload = Date()
+                    self.lastUpload = now
                     self.lastUploadError = nil
                     self.consecutiveFailures = 0
-                    self.queueDepth = PendingLocationQueue.shared.load().count
+                    self.queueDepth = depth
                 }
+                WatchWidgetSync.push(queueDepth: depth, lastUpload: now)
 
                 let remaining = PendingLocationQueue.shared.load().count
                 if remaining == 0 { return }

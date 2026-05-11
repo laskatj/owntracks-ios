@@ -126,6 +126,8 @@
 		F0A100332F9100010053280B /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 849B3C0F242F9EFC0052EE6D /* CoreLocation.framework */; };
 		F0A100342F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
+		AAAA0012AAAA0012AAAA0012 /* SauronWatchWidget.appex in Embed Watch App Extensions */ = {isa = PBXBuildFile; fileRef = AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AAAA0016AAAA0016AAAA0016 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -150,6 +152,13 @@
 			remoteGlobalIDString = F0A1002B2F9100010053280B;
 			remoteInfo = SauronWatch;
 		};
+		AAAA0013AAAA0013AAAA0013 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8411B820189FDB140019D2D6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AAAA0002AAAA0002AAAA0002;
+			remoteInfo = SauronWatchWidget;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -173,6 +182,17 @@
 				843A57AF24A9A4D700A5441B /* SauronIntents.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAAA0011AAAA0011AAAA0011 /* Embed Watch App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AAAA0012AAAA0012AAAA0012 /* SauronWatchWidget.appex in Embed Watch App Extensions */,
+			);
+			name = "Embed Watch App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -478,6 +498,8 @@
 		F0A100252F9100010053280B /* SauronWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SauronWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA1CA001FA1CA001FA1CA001 /* FriendMarkerAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendMarkerAnimator.h; sourceTree = "<group>"; };
 		FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendMarkerAnimator.m; sourceTree = "<group>"; };
+		AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SauronWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -495,11 +517,19 @@
 			);
 			target = F0A1002B2F9100010053280B /* SauronWatch */;
 		};
+		AAAA0007AAAA0007AAAA0007 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AAAA0002AAAA0002AAAA0002 /* SauronWatchWidget */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		22CE19B62F85686200532809 /* SauronTV */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (22CE19CD2F85686300532809 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SauronTV; sourceTree = "<group>"; };
 		F0A100262F9100010053280B /* SauronWatch */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (F0A100272F9100010053280B /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SauronWatch; sourceTree = "<group>"; };
+		AAAA0006AAAA0006AAAA0006 /* SauronWatchWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (AAAA0007AAAA0007AAAA0007 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SauronWatchWidget; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -560,6 +590,14 @@
 			files = (
 				F0A100332F9100010053280B /* CoreLocation.framework in Frameworks */,
 				F0A100342F9100010053280B /* WatchConnectivity.framework in Frameworks */,
+				AAAA0016AAAA0016AAAA0016 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAAA0004AAAA0004AAAA0004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -605,6 +643,7 @@
 				8456D0A22B55749E003A45D4 /* SauronTests.xctest */,
 				22CE19B52F85686200532809 /* SauronTV.app */,
 				F0A100252F9100010053280B /* SauronWatch.app */,
+				AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -612,6 +651,7 @@
 		8411B82A189FDB140019D2D6 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */,
 				84C3F45B2CEF904F004DB332 /* AssetsLibrary.framework */,
 				84C3F4592CEF891B004DB332 /* PhotosUI.framework */,
 				84C3F4572CEF8911004DB332 /* Photos.framework */,
@@ -995,6 +1035,26 @@
 			productReference = F0A100252F9100010053280B /* SauronWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AAAA0002AAAA0002AAAA0002 /* SauronWatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AAAA0010AAAA0010AAAA0010 /* Build configuration list for PBXNativeTarget "SauronWatchWidget" */;
+			buildPhases = (
+				AAAA0003AAAA0003AAAA0003 /* Sources */,
+				AAAA0004AAAA0004AAAA0004 /* Frameworks */,
+				AAAA0005AAAA0005AAAA0005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AAAA0006AAAA0006AAAA0006 /* SauronWatchWidget */,
+			);
+			name = SauronWatchWidget;
+			productName = SauronWatchWidget;
+			productReference = AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1077,6 +1137,7 @@
 				8456D0A12B55749E003A45D4 /* SauronTests */,
 				22CE19B42F85686200532809 /* SauronTV */,
 				F0A1002B2F9100010053280B /* SauronWatch */,
+				AAAA0002AAAA0002AAAA0002 /* SauronWatchWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -1129,6 +1190,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F0A1002D2F9100010053280B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAAA0005AAAA0005AAAA0005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1375,6 +1443,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AAAA0003AAAA0003AAAA0003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -1393,6 +1468,11 @@
 			isa = PBXTargetDependency;
 			target = F0A1002B2F9100010053280B /* SauronWatch */;
 			targetProxy = F0A100292F9100010053280B /* PBXContainerItemProxy */;
+		};
+		AAAA0014AAAA0014AAAA0014 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AAAA0002AAAA0002AAAA0002 /* SauronWatchWidget */;
+			targetProxy = AAAA0013AAAA0013AAAA0013 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -2050,6 +2130,79 @@
 			};
 			name = Release;
 		};
+		AAAA0008AAAA0008AAAA0008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 855;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
+				ENABLE_PREVIEWS = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SauronWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 19.2.8;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.laskatj.owntracksfork.watchkitapp.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		AAAA0009AAAA0009AAAA0009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 855;
+				DEVELOPMENT_TEAM = CFR426ZH5P;
+				ENABLE_PREVIEWS = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SauronWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 19.2.8;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.laskatj.owntracksfork.watchkitapp.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -2103,6 +2256,15 @@
 			buildConfigurations = (
 				F0A1002F2F9100010053280B /* Debug */,
 				F0A100302F9100010053280B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AAAA0010AAAA0010AAAA0010 /* Build configuration list for PBXNativeTarget "SauronWatchWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAAA0008AAAA0008AAAA0008 /* Debug */,
+				AAAA0009AAAA0009AAAA0009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
