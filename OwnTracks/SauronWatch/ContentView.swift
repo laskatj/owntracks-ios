@@ -22,9 +22,22 @@ struct ContentView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Sauron Watch")
-                    .font(.headline)
+            VStack(spacing: 10) {
+
+                Text("OwnTracks")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Picker("Mode", selection: $modeRaw) {
+                    Text("Passive").tag(WatchTrackingMode.passive.rawValue)
+                    Text("Active").tag(WatchTrackingMode.active.rawValue)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: modeRaw) { _, new in
+                    let m = WatchTrackingMode(rawValue: new) ?? .passive
+                    tracker.apply(mode: m)
+                }
 
                 Button {
                     sendNowHint = nil
@@ -39,7 +52,7 @@ struct ContentView: View {
                         await scheduler.flushQueueNow(configStore: config)
                     }
                 } label: {
-                    Text(sendNowBusy ? "Sending…" : "Send now")
+                    Text(sendNowBusy ? "Sending…" : "Send Now")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -49,64 +62,79 @@ struct ContentView: View {
                     Text(hint)
                         .font(.caption2)
                         .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Picker("Mode", selection: $modeRaw) {
-                    Text("Passive").tag(WatchTrackingMode.passive.rawValue)
-                    Text("Active").tag(WatchTrackingMode.active.rawValue)
-                }
-                .onChange(of: modeRaw) { _, new in
-                    let m = WatchTrackingMode(rawValue: new) ?? .passive
-                    tracker.apply(mode: m)
-                }
-
-                Group {
-                    Text("POST URL")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(displayPostURL(config.config))
-                        .font(.caption)
-                        .lineLimit(4)
-                }
-
-                LabeledContent("Auth") {
-                    Text(config.config.authBasic ? "Basic" : "Headers / Bearer")
-                        .font(.caption2)
-                }
-
-                LabeledContent("Queue") {
-                    Text("\(scheduler.queueDepth)")
-                }
-
-                if let last = scheduler.lastUpload {
-                    LabeledContent("Last upload") {
-                        Text(last, style: .relative)
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent {
+                        Text("\(scheduler.queueDepth)")
+                            .monospacedDigit()
+                    } label: {
+                        Text("Queue")
                             .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let last = scheduler.lastUpload {
+                        LabeledContent {
+                            Text(last, style: .relative)
+                                .font(.caption2)
+                        } label: {
+                            Text("Last")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let err = scheduler.lastUploadError {
+                        Text(err)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+
+                    if let le = tracker.lastError {
+                        Text(le)
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
 
-                if let err = scheduler.lastUploadError {
-                    Text(err)
+                Divider()
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(displayPostURL(config.config))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+
+                    HStack {
+                        Text("Auth")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(config.config.authBasic ? "Basic" : "Bearer")
+                            .font(.caption2)
+                    }
+
+                    HStack {
+                        Text("Sync")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(config.lastSyncMessage)
+                            .font(.caption2)
+                    }
+
+                    Text(authLabel(tracker.authorization))
                         .font(.caption2)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.secondary)
                 }
-
-                LabeledContent("WC") {
-                    Text(config.lastSyncMessage)
-                        .font(.caption2)
-                }
-
-                if let le = tracker.lastError {
-                    Text(le)
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-
-                Text("Location auth: \(authLabel(tracker.authorization))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
         .onAppear {
             tracker.apply(mode: mode)
