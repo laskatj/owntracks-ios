@@ -118,6 +118,7 @@
 		DD020002DD020002DD020002 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD020001DD020001DD020001 /* DeviceDetailView.swift */; };
 		DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */; };
 		DD040002DD040002DD040002 /* DeviceMetricsChartsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */; };
+		AE010100AE010100AE010100 /* OTLocalHeartRateTimeSeriesStore.m in Sources */ = {isa = PBXBuildFile; fileRef = AE010102AE010102AE010102 /* OTLocalHeartRateTimeSeriesStore.m */; };
 		E1E2E3E42F9100AA00532801 /* OTHeartRateMonitoring.m in Sources */ = {isa = PBXBuildFile; fileRef = E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */; };
 		F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F0A100212F9100010053280B /* OwnTracksWatchBridge.m */; };
 		F0A100242F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
@@ -467,6 +468,8 @@
 		DD020001DD020001DD020001 /* DeviceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailView.swift; sourceTree = "<group>"; };
 		DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailHostingController.swift; sourceTree = "<group>"; };
 		DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMetricsChartsSheet.swift; sourceTree = "<group>"; };
+		AE010101AE010101AE010101 /* OTLocalHeartRateTimeSeriesStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTLocalHeartRateTimeSeriesStore.h; sourceTree = "<group>"; };
+		AE010102AE010102AE010102 /* OTLocalHeartRateTimeSeriesStore.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTLocalHeartRateTimeSeriesStore.m; sourceTree = "<group>"; };
 		E1E2E3E42F9100A900532801 /* OTHeartRateMonitoring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTHeartRateMonitoring.h; sourceTree = "<group>"; };
 		E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTHeartRateMonitoring.m; sourceTree = "<group>"; };
 		F0A100202F9100010053280B /* OwnTracksWatchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksWatchBridge.h; sourceTree = "<group>"; };
@@ -676,6 +679,8 @@
 				C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */,
 				E1E2E3E42F9100A900532801 /* OTHeartRateMonitoring.h */,
 				E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */,
+				AE010101AE010101AE010101 /* OTLocalHeartRateTimeSeriesStore.h */,
+				AE010102AE010102AE010102 /* OTLocalHeartRateTimeSeriesStore.m */,
 				D4E5F6A1B2C30003AAAA0001 /* HealthKitHeartRateManager.h */,
 				D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */,
 				849D457B18CDACDF00201BF3 /* MQTT.plist */,
@@ -1331,6 +1336,7 @@
 				F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */,
 				C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */,
 				E1E2E3E42F9100AA00532801 /* OTHeartRateMonitoring.m in Sources */,
+				AE010100AE010100AE010100 /* OTLocalHeartRateTimeSeriesStore.m in Sources */,
 				D4E5F6A1B2C30001AAAA0001 /* HealthKitHeartRateManager.m in Sources */,
 				CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */,
 				CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */,

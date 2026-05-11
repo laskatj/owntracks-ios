@@ -13,3 +13,4 @@
 #import "Settings.h"
 #import "HealthKitHeartRateManager.h"
 #import "BluetoothHeartRateManager.h"
+#import "OTLocalHeartRateTimeSeriesStore.h"

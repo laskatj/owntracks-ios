@@ -23,6 +23,7 @@
 #import "OTInboxRealtimeContract.h"
 #import "OwnTracksWatchBridge.h"
 #import "OTHeartRateMonitoring.h"
+#import "OTLocalHeartRateTimeSeriesStore.h"
 #import <Sauron-Swift.h>
 
 #import "OwnTracksSendNowIntent.h"
@@ -330,6 +331,9 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     [[OwnTracksWatchBridge shared] activate];
 
     [OTHeartRateMonitoring applyCurrentPreference];
+
+    [OTLocalHeartRateTimeSeriesStore setupApplicationObservers];
+    [[OTLocalHeartRateTimeSeriesStore shared] trimRetainingLastSeconds:24 * 3600 maxEntries:10000];
 
     return YES;
 }

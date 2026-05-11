@@ -70,16 +70,53 @@ struct DeviceMetricsChartsSheet: View {
                         handlesScrubGesture: false
                     )
 
-                    AlignedMetricChart(
-                        title: NSLocalizedString("Heart rate", comment: "Chart title"),
-                        unit: "bpm",
-                        data: vm.metricsChartHeartRateHistory,
-                        timeDomain: timeDomain,
-                        color: .red,
-                        scrubTime: $scrubTime,
-                        yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                        handlesScrubGesture: false
-                    )
+                    if vm.showsDualHeartRateMetricsCharts {
+                        AlignedMetricChart(
+                            title: NSLocalizedString(
+                                "Heart rate (local + server)",
+                                comment: "Chart title: on-device HR log merged with backend route samples"
+                            ),
+                            unit: "bpm",
+                            data: vm.metricsChartLocalPlusApiHeartRateHistory,
+                            timeDomain: timeDomain,
+                            color: .red,
+                            scrubTime: $scrubTime,
+                            yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
+                            handlesScrubGesture: false,
+                            subtitle: NSLocalizedString(
+                                "Dense on-device samples with route API overlaid (server wins within ±30s).",
+                                comment: "Subtitle explaining local+server heart rate chart merge"
+                            )
+                        )
+                        AlignedMetricChart(
+                            title: NSLocalizedString(
+                                "Heart rate (Apple Health)",
+                                comment: "Chart title: HealthKit-only heart rate series"
+                            ),
+                            unit: "bpm",
+                            data: vm.metricsChartHealthKitOnlyHeartRateHistory,
+                            timeDomain: timeDomain,
+                            color: .pink,
+                            scrubTime: $scrubTime,
+                            yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
+                            handlesScrubGesture: false,
+                            subtitle: NSLocalizedString(
+                                "HealthKit samples only, for comparison.",
+                                comment: "Subtitle for HealthKit-only HR chart"
+                            )
+                        )
+                    } else {
+                        AlignedMetricChart(
+                            title: NSLocalizedString("Heart rate", comment: "Chart title"),
+                            unit: "bpm",
+                            data: vm.metricsChartHeartRateHistory,
+                            timeDomain: timeDomain,
+                            color: .red,
+                            scrubTime: $scrubTime,
+                            yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
+                            handlesScrubGesture: false
+                        )
+                    }
 
                     AlignedMetricChart(
                         title: NSLocalizedString("Battery", comment: "Chart title"),
@@ -117,6 +154,7 @@ struct DeviceMetricsChartsSheet: View {
             .onAppear {
                 vm.refreshRouteHistoryMetricsIfNeeded()
                 vm.refreshLiveHeartRateIfNeeded()
+                vm.refreshLocalPlusApiHeartRateMetricsIfNeeded()
             }
         }
         .presentationDetents([.large])
@@ -175,6 +213,7 @@ private struct AlignedMetricChart: View {
     let yAxisLabelColumnWidth: CGFloat
     /// Only one chart installs the drag overlay so vertical scrolling stays natural.
     let handlesScrubGesture: Bool
+    var subtitle: String? = nil
 
     /// Invisible anchor Y so edge `PointMark`s sit inside the (data-driven) Y domain.
     private var padYForXAxisAnchor: Double {
@@ -233,6 +272,11 @@ private struct AlignedMetricChart: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
 
             if let readout = scrubReadoutText {
                 Text(readout)

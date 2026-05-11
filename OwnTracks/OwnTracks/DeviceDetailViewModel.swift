@@ -75,8 +75,12 @@ enum DeviceDetailConnectionTransport: Int {
     @Published var metricsChartAltitudeHistory: [(date: Date, value: Double)] = []
     /// Battery fraction 0…1 (matches `Waypoint.batt` / OwnTracks JSON `batt` as percent/100).
     @Published var metricsChartBatteryHistory: [(date: Date, value: Double)] = []
-    /// Own device: HealthKit bpm in window; friend: sparse `heartRate` from waypoints in window.
+    /// Own device: legacy slot mirrors local+API merged series for the metrics sheet; friend: sparse waypoint or route API HR.
     @Published var metricsChartHeartRateHistory: [(date: Date, value: Double)] = []
+    /// Own device only: local disk samples merged with route API (`hr` / `heartRate`), API wins within ±30s.
+    @Published var metricsChartLocalPlusApiHeartRateHistory: [(date: Date, value: Double)] = []
+    /// Own device only: HealthKit samples for a second chart (comparison).
+    @Published var metricsChartHealthKitOnlyHeartRateHistory: [(date: Date, value: Double)] = []
     @Published var speedUnit: String = ""
     @Published var altitudeUnit: String = ""
 
@@ -101,6 +105,7 @@ enum DeviceDetailConnectionTransport: Int {
     private var liveFriendLocationObserver: NSObjectProtocol?
     private var oauthSensitiveObserver: NSObjectProtocol?
     private var userProfileObserver: NSObjectProtocol?
+    private var localHeartRateStoreObserver: NSObjectProtocol?
 
     /// Incremented only when a debounced route fetch actually starts; completions with a lower serial are ignored.
     private var routeMetricsRequestSerial: Int = 0
@@ -113,12 +118,15 @@ enum DeviceDetailConnectionTransport: Int {
     private static let routeMetricsMinimumRefetchInterval: TimeInterval = 120
     /// Bucket `end` to wall-clock minutes so `LocationAPISyncService` route cache keys match across rapid triggers.
     private static let routeMetricsUnixBucketSeconds: Int = 60
+    /// Route API HR samples for own-device merge (last successful `GET .../route` parse).
+    private var lastRouteApiHeartRateSamples: [(date: Date, value: Double)] = []
 
     /// When true, user may see MQTT topic and other sensitive fields (JWT location-admin; see `WebAppAuthHelper`).
     @Published var canViewSensitiveLocationDeviceFields: Bool = false
 
     private static let oauthTokenBecameAvailable = Notification.Name("OwnTracksOAuthAccessTokenBecameAvailable")
     private static let currentUserProfileUpdated = Notification.Name("OwnTracksCurrentUserProfileDidUpdate")
+    private static let localHeartRateSamplesDidUpdate = Notification.Name("OTLocalHeartRateSamplesDidUpdateNotification")
 
     init(waypoint: Waypoint) {
         let friend = waypoint.belongsTo
@@ -139,6 +147,7 @@ enum DeviceDetailConnectionTransport: Int {
         registerLiveFriendLocationObserverIfNeeded()
         registerOAuthSensitiveObserverIfNeeded()
         registerUserProfileObserverIfNeeded()
+        registerLocalHeartRateStoreObserverIfNeeded()
         currentWaypoint.addObserver(self, forKeyPath: "placemark", options: [.new], context: nil)
         if UserDefaults.standard.integer(forKey: "noRevgeo") > 0 {
             currentWaypoint.getReverseGeoCode()
@@ -164,6 +173,9 @@ enum DeviceDetailConnectionTransport: Int {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = userProfileObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = localHeartRateStoreObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         currentWaypoint.removeObserver(self, forKeyPath: "placemark")
@@ -276,6 +288,12 @@ enum DeviceDetailConnectionTransport: Int {
         }
     }
 
+    /// Re-read local HR store from disk (e.g. when opening metrics) so Chart A is current.
+    func refreshLocalPlusApiHeartRateMetricsIfNeeded() {
+        guard showsDualHeartRateMetricsCharts else { return }
+        recomputeOwnDeviceMetricsHeartRateCharts()
+    }
+
     /// Loads HealthKit samples for the chart (own device, last 12 hours). Clears history for friends.
     func refreshHeartRateHistoryFromHealthKit() {
         guard isOwnWaypoint else {
@@ -284,7 +302,8 @@ enum DeviceDetailConnectionTransport: Int {
         }
         guard HKHealthStore.isHealthDataAvailable() else {
             heartRateHistory = []
-            metricsChartHeartRateHistory = []
+            metricsChartHealthKitOnlyHeartRateHistory = []
+            recomputeOwnDeviceMetricsHeartRateCharts()
             return
         }
         let end = Date()
@@ -297,7 +316,7 @@ enum DeviceDetailConnectionTransport: Int {
                 return (date: date, value: bpm.doubleValue)
             }
             self.heartRateHistory = parsed
-            self.metricsChartHeartRateHistory = parsed
+            self.recomputeOwnDeviceMetricsHeartRateCharts()
         }
     }
 
@@ -307,6 +326,9 @@ enum DeviceDetailConnectionTransport: Int {
         let general = Settings.theGeneralTopic(inMOC: moc)
         return topic == general
     }
+
+    /// Own device metrics sheet shows two HR charts (local+API vs HealthKit only).
+    var showsDualHeartRateMetricsCharts: Bool { isOwnWaypoint }
 
     private func registerHeartRateObserverIfNeeded() {
         guard isOwnWaypoint, heartRateObserver == nil else { return }
@@ -407,6 +429,17 @@ enum DeviceDetailConnectionTransport: Int {
         ) { [weak self] _ in
             self?.refreshSensitiveDetailVisibility()
             self?.refreshRouteHistoryMetricsIfNeeded()
+        }
+    }
+
+    private func registerLocalHeartRateStoreObserverIfNeeded() {
+        guard localHeartRateStoreObserver == nil, isOwnWaypoint else { return }
+        localHeartRateStoreObserver = NotificationCenter.default.addObserver(
+            forName: Self.localHeartRateSamplesDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.recomputeOwnDeviceMetricsHeartRateCharts()
         }
     }
 
@@ -535,7 +568,7 @@ enum DeviceDetailConnectionTransport: Int {
             metricsChartAltitudeHistory = []
             metricsChartBatteryHistory = []
             if isOwnWaypoint {
-                metricsChartHeartRateHistory = heartRateHistory
+                recomputeOwnDeviceMetricsHeartRateCharts()
             } else {
                 metricsChartHeartRateHistory = []
             }
@@ -565,7 +598,7 @@ enum DeviceDetailConnectionTransport: Int {
         }
 
         if isOwnWaypoint {
-            metricsChartHeartRateHistory = heartRateHistory
+            recomputeOwnDeviceMetricsHeartRateCharts()
         } else {
             metricsChartHeartRateHistory = filtered.compactMap { wp in
                 guard let hr = wp.heartRate?.doubleValue, hr > 0 else { return nil }
@@ -667,9 +700,6 @@ enum DeviceDetailConnectionTransport: Int {
     }
 
     private func applyRouteHistoryPointsToMetricsCharts(_ points: [NSDictionary], useMetric: Bool) {
-        let preserveOwnHeartRate = isOwnWaypoint
-        let savedHeartRate = preserveOwnHeartRate ? metricsChartHeartRateHistory : []
-
         var speeds: [(date: Date, value: Double)] = []
         var alts: [(date: Date, value: Double)] = []
         var batts: [(date: Date, value: Double)] = []
@@ -694,7 +724,7 @@ enum DeviceDetailConnectionTransport: Int {
                     batts.append((date: date, value: min(1.0, max(0.0, frac))))
                 }
             }
-            if !preserveOwnHeartRate, let hr = Self.doubleValue(from: pt, keys: ["hr", "heartRate"]), hr > 0 {
+            if let hr = Self.doubleValue(from: pt, keys: ["hr", "heartRate"]), hr > 0 {
                 hrs.append((date: date, value: hr))
             }
         }
@@ -711,8 +741,9 @@ enum DeviceDetailConnectionTransport: Int {
             batts.sort { $0.date < $1.date }
             metricsChartBatteryHistory = batts
         }
-        if preserveOwnHeartRate {
-            metricsChartHeartRateHistory = savedHeartRate
+        if isOwnWaypoint {
+            hrs.sort { $0.date < $1.date }
+            lastRouteApiHeartRateSamples = hrs
         } else if hrs.count >= 2 {
             hrs.sort { $0.date < $1.date }
             metricsChartHeartRateHistory = hrs
@@ -721,6 +752,59 @@ enum DeviceDetailConnectionTransport: Int {
         let chartEnd = Date()
         metricsChartEnd = chartEnd
         metricsChartStart = chartEnd.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
+        if isOwnWaypoint {
+            recomputeOwnDeviceMetricsHeartRateCharts()
+        }
+    }
+
+    /// Local dense samples plus route API; API replaces local points within `mergeEpsilonSeconds`.
+    private static func mergedLocalPlusApiHeartRateSeries(
+        local: [(date: Date, value: Double)],
+        api: [(date: Date, value: Double)],
+        mergeEpsilonSeconds: TimeInterval
+    ) -> [(date: Date, value: Double)] {
+        let apiSorted = api.sorted { $0.date < $1.date }
+        var locals = local.sorted { $0.date < $1.date }
+        for apiPt in apiSorted {
+            locals.removeAll { abs($0.date.timeIntervalSince(apiPt.date)) <= mergeEpsilonSeconds }
+        }
+        var combined = locals + apiSorted
+        combined.sort { $0.date < $1.date }
+        var folded: [(date: Date, value: Double)] = []
+        for cur in combined {
+            if let last = folded.last {
+                let dt = cur.date.timeIntervalSince(last.date)
+                if dt < 1.0 && abs(cur.value - last.value) < 0.5 {
+                    continue
+                }
+            }
+            folded.append(cur)
+        }
+        return folded
+    }
+
+    private func recomputeOwnDeviceMetricsHeartRateCharts() {
+        guard isOwnWaypoint else { return }
+        let start = metricsChartStart
+        let end = metricsChartEnd
+        guard start != .distantPast, start <= end else { return }
+
+        let store = OTLocalHeartRateTimeSeriesStore.shared()
+        let localRows = store.samples(from: start, to: end) as? [NSDictionary] ?? []
+        let localTuples: [(date: Date, value: Double)] = localRows.compactMap { row in
+            guard let d = row["date"] as? Date,
+                  let bpm = row["bpm"] as? NSNumber,
+                  bpm.doubleValue > 0 else { return nil }
+            return (date: d, value: bpm.doubleValue)
+        }
+        let merged = Self.mergedLocalPlusApiHeartRateSeries(
+            local: localTuples,
+            api: lastRouteApiHeartRateSamples,
+            mergeEpsilonSeconds: 30
+        )
+        metricsChartLocalPlusApiHeartRateHistory = merged
+        metricsChartHealthKitOnlyHeartRateHistory = heartRateHistory
+        metricsChartHeartRateHistory = merged
     }
 
     private static func doubleValue(from dict: NSDictionary, keys: [String]) -> Double? {
