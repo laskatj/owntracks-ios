@@ -128,6 +128,7 @@
 		FA1CA003FA1CA003FA1CA003 /* FriendMarkerAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = FA1CA002FA1CA002FA1CA002 /* FriendMarkerAnimator.m */; };
 		AAAA0012AAAA0012AAAA0012 /* SauronWatchWidget.appex in Embed Watch App Extensions */ = {isa = PBXBuildFile; fileRef = AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAAA0016AAAA0016AAAA0016 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */; };
+		AAAA0017AAAA0017AAAA0017 /* WidgetKit.framework in Frameworks (SauronWatchWidget) */ = {isa = PBXBuildFile; fileRef = AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -598,6 +599,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAAA0017AAAA0017AAAA0017 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -629,6 +631,7 @@
 				8456D0A32B55749E003A45D4 /* OwnTracksTests */,
 				22CE19B62F85686200532809 /* SauronTV */,
 				F0A100262F9100010053280B /* SauronWatch */,
+				AAAA0006AAAA0006AAAA0006 /* SauronWatchWidget */,
 				8411B82A189FDB140019D2D6 /* Frameworks */,
 				8411B829189FDB140019D2D6 /* Products */,
 				4148677DEE4BDFE13E9AF63F /* Pods */,
