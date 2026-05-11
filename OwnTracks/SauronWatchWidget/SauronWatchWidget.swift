@@ -61,16 +61,20 @@ struct CircularView: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(isActive ? Color.blue.opacity(0.25) : Color.gray.opacity(0.15))
-            VStack(spacing: 1) {
-                Image(systemName: isActive ? "location.fill" : "location.slash")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isActive ? .blue : .secondary)
-                if entry.queueDepth > 0 {
+            Image("SauronIcon")
+                .resizable()
+                .scaledToFill()
+                .saturation(isActive ? 1 : 0)
+                .opacity(isActive ? 1 : 0.55)
+                .clipShape(Circle())
+
+            if entry.queueDepth > 0 {
+                VStack {
+                    Spacer()
                     Text("\(entry.queueDepth)")
                         .font(.system(size: 9, weight: .bold).monospacedDigit())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.white)
+                        .shadow(radius: 1)
                 }
             }
         }
@@ -82,8 +86,11 @@ struct CornerView: View {
     private var isActive: Bool { entry.mode == "active" }
 
     var body: some View {
-        Image(systemName: isActive ? "location.fill" : "location.slash")
-            .foregroundStyle(isActive ? .blue : .secondary)
+        Image("SauronIcon")
+            .resizable()
+            .scaledToFill()
+            .saturation(isActive ? 1 : 0)
+            .opacity(isActive ? 1 : 0.55)
             .widgetLabel {
                 Text(isActive ? "Active" : "Passive")
             }
@@ -96,8 +103,13 @@ struct RectangularView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: isActive ? "location.fill" : "location.slash")
-                .foregroundStyle(isActive ? .blue : .secondary)
+            Image("SauronIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+                .saturation(isActive ? 1 : 0)
+                .opacity(isActive ? 1 : 0.55)
             VStack(alignment: .leading, spacing: 1) {
                 Text(isActive ? "Active" : "Passive")
                     .font(.headline)
@@ -129,7 +141,7 @@ struct InlineView: View {
         Label {
             Text(isActive ? "Active" : "Passive")
         } icon: {
-            Image(systemName: isActive ? "location.fill" : "location.slash")
+            Image(systemName: isActive ? "eye.fill" : "eye.slash")
         }
     }
 }
