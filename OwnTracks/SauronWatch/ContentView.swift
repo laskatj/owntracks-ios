@@ -29,14 +29,24 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Picker("Mode", selection: $modeRaw) {
-                    Text("Passive").tag(WatchTrackingMode.passive.rawValue)
-                    Text("Active").tag(WatchTrackingMode.active.rawValue)
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: modeRaw) { _, new in
-                    let m = WatchTrackingMode(rawValue: new) ?? .passive
-                    tracker.apply(mode: m)
+                HStack(spacing: 4) {
+                    Button {
+                        modeRaw = WatchTrackingMode.passive.rawValue
+                        tracker.apply(mode: .passive)
+                    } label: {
+                        Text("Passive").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(mode == .passive ? .blue : nil)
+
+                    Button {
+                        modeRaw = WatchTrackingMode.active.rawValue
+                        tracker.apply(mode: .active)
+                    } label: {
+                        Text("Active").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(mode == .active ? .blue : nil)
                 }
 
                 Button {
