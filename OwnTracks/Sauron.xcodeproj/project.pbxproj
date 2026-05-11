@@ -1025,10 +1025,12 @@
 				F0A1002E2F9100010053280B /* Sources */,
 				F0A1002C2F9100010053280B /* Frameworks */,
 				F0A1002D2F9100010053280B /* Resources */,
+				AAAA0011AAAA0011AAAA0011 /* Embed Watch App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AAAA0014AAAA0014AAAA0014 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				F0A100262F9100010053280B /* SauronWatch */,
