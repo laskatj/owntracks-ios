@@ -57,17 +57,28 @@ struct SauronEntry: TimelineEntry {
 
 struct CircularView: View {
     let entry: SauronEntry
+    @Environment(\.widgetRenderingMode) var renderingMode
     private var isActive: Bool { entry.mode == "active" }
 
     var body: some View {
         ZStack {
-            Image("SauronIcon")
-                .resizable()
-                .scaledToFill()
-                .saturation(isActive ? 1 : 0)
-                .opacity(isActive ? 1 : 0.55)
-                .clipShape(Circle())
-
+            if renderingMode == .fullColor {
+                Image("SauronIcon")
+                    .resizable()
+                    .scaledToFill()
+                    .saturation(isActive ? 1 : 0)
+                    .opacity(isActive ? 1 : 0.55)
+                    .clipShape(Circle())
+            } else {
+                // Accented mode: mark the image so the system applies the face's tint color.
+                // Active = full opacity (vivid tinted eye), Passive = dimmed.
+                Image("SauronIcon")
+                    .resizable()
+                    .scaledToFill()
+                    .opacity(isActive ? 1 : 0.4)
+                    .clipShape(Circle())
+                    .widgetAccentable()
+            }
             if entry.queueDepth > 0 {
                 VStack {
                     Spacer()
@@ -83,33 +94,56 @@ struct CircularView: View {
 
 struct CornerView: View {
     let entry: SauronEntry
+    @Environment(\.widgetRenderingMode) var renderingMode
     private var isActive: Bool { entry.mode == "active" }
 
     var body: some View {
-        Image("SauronIcon")
-            .resizable()
-            .scaledToFill()
-            .saturation(isActive ? 1 : 0)
-            .opacity(isActive ? 1 : 0.55)
-            .widgetLabel {
-                Text(isActive ? "Active" : "Passive")
-            }
+        if renderingMode == .fullColor {
+            Image("SauronIcon")
+                .resizable()
+                .scaledToFill()
+                .saturation(isActive ? 1 : 0)
+                .opacity(isActive ? 1 : 0.55)
+                .widgetLabel {
+                    Text(isActive ? "Active" : "Passive")
+                }
+        } else {
+            Image("SauronIcon")
+                .resizable()
+                .scaledToFill()
+                .opacity(isActive ? 1 : 0.4)
+                .widgetAccentable()
+                .widgetLabel {
+                    Text(isActive ? "Active" : "Passive")
+                }
+        }
     }
 }
 
 struct RectangularView: View {
     let entry: SauronEntry
+    @Environment(\.widgetRenderingMode) var renderingMode
     private var isActive: Bool { entry.mode == "active" }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image("SauronIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 28, height: 28)
-                .clipShape(Circle())
-                .saturation(isActive ? 1 : 0)
-                .opacity(isActive ? 1 : 0.55)
+            if renderingMode == .fullColor {
+                Image("SauronIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .clipShape(Circle())
+                    .saturation(isActive ? 1 : 0)
+                    .opacity(isActive ? 1 : 0.55)
+            } else {
+                Image("SauronIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .clipShape(Circle())
+                    .opacity(isActive ? 1 : 0.4)
+                    .widgetAccentable()
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(isActive ? "Active" : "Passive")
                     .font(.headline)
