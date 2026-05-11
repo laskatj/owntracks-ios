@@ -6,6 +6,7 @@
 #import "OTLocalHeartRateTimeSeriesStore.h"
 #import "OTHeartRateMonitoring.h"
 #import "BluetoothHeartRateManager.h"
+#import "HealthKitHeartRateManager.h"
 #import <UIKit/UIKit.h>
 
 NSNotificationName const OTLocalHeartRateSamplesDidUpdateNotification = @"OTLocalHeartRateSamplesDidUpdateNotification";
@@ -15,16 +16,19 @@ static const NSTimeInterval kDefaultRetainSeconds = 24 * 3600;
 static const NSInteger kDefaultMaxEntries = 10000;
 static const NSTimeInterval kForegroundTimerInterval = 25.0;
 static NSString *const kSamplesKey = @"samples";
+static const NSTimeInterval kBLELiveWallThrottleSeconds = 10.0;
+static const NSTimeInterval kHealthKitSampleEndDedupeSeconds = 0.5;
 
 @interface OTLocalHeartRateTimeSeriesStore ()
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *samples;
-@property (nonatomic, strong) NSDate *lastAppendAt;
 @property (nonatomic, strong) NSURL *fileURL;
+@property (nonatomic, strong) dispatch_queue_t ioQueue;
+@property (nonatomic, strong, nullable) NSDate *lastLiveWallThrottleDate;
+@property (nonatomic, strong, nullable) NSDate *lastHealthKitLoggedSampleEndDate;
 @end
 
 static NSTimer *OTForegroundHRSampleTimer = nil;
 static BOOL OTLocalHRStoreObserversRegistered = NO;
-static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
 
 @implementation OTLocalHeartRateTimeSeriesStore
 
@@ -51,12 +55,13 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
             [OTLocalHeartRateTimeSeriesStore stopForegroundSampling];
         }
     }];
-    [nc addObserverForName:OTBluetoothHeartRateDidUpdateNotification object:nil queue:[NSOperationQueue mainQueue]
+    [nc addObserverForName:OTBluetoothHeartRateDidUpdateNotification object:nil queue:mainQ
                 usingBlock:^(__unused NSNotification *note) {
         if (![OTHeartRateMonitoring isMonitoringEnabled]) {
             return;
         }
-        if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) {
+        UIApplicationState st = [UIApplication sharedApplication].applicationState;
+        if (st != UIApplicationStateActive && st != UIApplicationStateBackground) {
             return;
         }
         NSNumber *hr = [BluetoothHeartRateManager sharedInstance].heartRate;
@@ -64,10 +69,13 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
             hr = [[BluetoothHeartRateManager sharedInstance] heartRateIfSampleWithin:15 * 60];
         }
         if (hr.integerValue > 0) {
-            [[OTLocalHeartRateTimeSeriesStore shared] appendSampleAtDate:[NSDate date]
-                                                                     bpm:hr.integerValue
-                                               throttleMinimumInterval:kBLEAppendThrottleSeconds];
+            [[OTLocalHeartRateTimeSeriesStore shared] appendLiveSampleWithBPM:hr.integerValue
+                                                        wallThrottleInterval:kBLELiveWallThrottleSeconds];
         }
+    }];
+    [nc addObserverForName:OTHealthKitHeartRateDidUpdateNotification object:nil queue:nil
+                usingBlock:^(NSNotification *note) {
+        [[OTLocalHeartRateTimeSeriesStore shared] handleHealthKitHeartRateDidUpdateNotification:note];
     }];
 }
 
@@ -83,17 +91,19 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
 - (instancetype)initPrivate {
     self = [super init];
     if (self) {
+        _ioQueue = dispatch_queue_create("org.owntracks.OTLocalHeartRateTimeSeriesStore", DISPATCH_QUEUE_SERIAL);
         _samples = [NSMutableArray array];
         NSURL *base = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                              inDomains:NSUserDomainMask].firstObject;
         NSString *folder = @"OwnTracks";
         NSURL *dir = [base URLByAppendingPathComponent:folder isDirectory:YES];
-        NSError *err = nil;
         [[NSFileManager defaultManager] createDirectoryAtURL:dir withIntermediateDirectories:YES
-                                                  attributes:nil error:&err];
+                                                  attributes:nil error:nil];
         _fileURL = [dir URLByAppendingPathComponent:kJSONFileName];
-        [self loadFromDisk];
-        [self trimRetainingLastSeconds:kDefaultRetainSeconds maxEntries:kDefaultMaxEntries];
+        dispatch_sync(self.ioQueue, ^{
+            [self loadFromDiskUnsafe];
+            [self trimUnsafeRetainingLastSeconds:kDefaultRetainSeconds maxEntries:kDefaultMaxEntries];
+        });
     }
     return self;
 }
@@ -103,7 +113,9 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
     return [self initPrivate];
 }
 
-- (void)loadFromDisk {
+#pragma mark - Disk (must run on ioQueue)
+
+- (void)loadFromDiskUnsafe {
     NSData *data = [NSData dataWithContentsOfURL:self.fileURL];
     if (!data.length) {
         return;
@@ -132,7 +144,7 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
     }
 }
 
-- (void)saveToDisk {
+- (void)saveToDiskUnsafe {
     NSMutableArray *jsonRows = [NSMutableArray arrayWithCapacity:self.samples.count];
     for (NSDictionary *row in self.samples) {
         NSDate *d = row[@"date"];
@@ -151,7 +163,7 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
     [data writeToURL:self.fileURL options:NSDataWritingAtomic error:nil];
 }
 
-- (void)trimRetainingLastSeconds:(NSTimeInterval)retainSeconds maxEntries:(NSInteger)maxEntries {
+- (void)trimUnsafeRetainingLastSeconds:(NSTimeInterval)retainSeconds maxEntries:(NSInteger)maxEntries {
     NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-retainSeconds];
     NSIndexSet *old = [self.samples indexesOfObjectsPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
         NSDate *d = obj[@"date"];
@@ -168,44 +180,98 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
     }
 }
 
+- (void)postSamplesDidUpdateOnMain {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:OTLocalHeartRateSamplesDidUpdateNotification
+                                                            object:nil];
+    });
+}
+
+#pragma mark - Public
+
 - (NSArray<NSDictionary *> *)samplesFromDate:(NSDate *)start toDate:(NSDate *)end {
     if (!start || !end || [start compare:end] == NSOrderedDescending) {
         return @[];
     }
-    NSMutableArray *out = [NSMutableArray array];
-    for (NSDictionary *row in self.samples) {
-        NSDate *d = row[@"date"];
-        if (![d isKindOfClass:[NSDate class]]) {
-            continue;
+    __block NSArray<NSDictionary *> *out = @[];
+    dispatch_sync(self.ioQueue, ^{
+        NSMutableArray *acc = [NSMutableArray array];
+        for (NSDictionary *row in self.samples) {
+            NSDate *d = row[@"date"];
+            if (![d isKindOfClass:[NSDate class]]) {
+                continue;
+            }
+            if ([d compare:start] == NSOrderedAscending) {
+                continue;
+            }
+            if ([d compare:end] == NSOrderedDescending) {
+                continue;
+            }
+            [acc addObject:@{ @"date": d, @"bpm": row[@"bpm"] ?: @0 }];
         }
-        if ([d compare:start] == NSOrderedAscending) {
-            continue;
-        }
-        if ([d compare:end] == NSOrderedDescending) {
-            continue;
-        }
-        [out addObject:@{ @"date": d, @"bpm": row[@"bpm"] ?: @0 }];
-    }
+        out = acc;
+    });
     return out;
 }
 
-- (void)appendSampleAtDate:(NSDate *)date bpm:(NSInteger)bpm throttleMinimumInterval:(NSTimeInterval)minInterval {
-    if (bpm <= 0 || !date) {
+- (void)trimRetainingLastSeconds:(NSTimeInterval)retainSeconds maxEntries:(NSInteger)maxEntries {
+    dispatch_sync(self.ioQueue, ^{
+        [self trimUnsafeRetainingLastSeconds:retainSeconds maxEntries:maxEntries];
+        [self saveToDiskUnsafe];
+    });
+}
+
+/// Foreground timer + BLE: sample time is wall clock; optional wall-clock throttle between writes.
+- (void)appendLiveSampleWithBPM:(NSInteger)bpm wallThrottleInterval:(NSTimeInterval)wallMin {
+    if (bpm <= 0) {
         return;
     }
-    if (minInterval > 0 && self.lastAppendAt) {
-        NSTimeInterval dt = [date timeIntervalSinceDate:self.lastAppendAt];
-        if (dt >= 0 && dt < minInterval) {
+    dispatch_async(self.ioQueue, ^{
+        if (![OTHeartRateMonitoring isMonitoringEnabled]) {
             return;
         }
+        NSDate *now = [NSDate date];
+        if (wallMin > 0 && self.lastLiveWallThrottleDate) {
+            if ([now timeIntervalSinceDate:self.lastLiveWallThrottleDate] < wallMin) {
+                return;
+            }
+        }
+        self.lastLiveWallThrottleDate = now;
+        [self.samples addObject:@{ @"date": now, @"bpm": @(bpm) }];
+        [self trimUnsafeRetainingLastSeconds:kDefaultRetainSeconds maxEntries:kDefaultMaxEntries];
+        [self saveToDiskUnsafe];
+        [self postSamplesDidUpdateOnMain];
+    });
+}
+
+- (void)handleHealthKitHeartRateDidUpdateNotification:(NSNotification *)note {
+    NSDictionary *ui = note.userInfo;
+    if (![ui isKindOfClass:[NSDictionary class]] || ui.count == 0) {
+        return;
     }
-    self.lastAppendAt = date;
-    [self.samples addObject:@{ @"date": date, @"bpm": @(bpm) }];
-    [self trimRetainingLastSeconds:kDefaultRetainSeconds maxEntries:kDefaultMaxEntries];
-    [self saveToDisk];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSNotificationCenter defaultCenter] postNotificationName:OTLocalHeartRateSamplesDidUpdateNotification
-                                                            object:nil];
+    id dObj = ui[OTHealthKitHeartRateUserInfoSampleEndDateKey];
+    id bObj = ui[OTHealthKitHeartRateUserInfoBPMKey];
+    if (![dObj isKindOfClass:[NSDate class]] || ![bObj isKindOfClass:[NSNumber class]]) {
+        return;
+    }
+    NSDate *endDate = (NSDate *)dObj;
+    NSInteger bpm = [(NSNumber *)bObj integerValue];
+    dispatch_async(self.ioQueue, ^{
+        if (![OTHeartRateMonitoring isMonitoringEnabled]) {
+            return;
+        }
+        if (bpm <= 0) {
+            return;
+        }
+        if (self.lastHealthKitLoggedSampleEndDate &&
+            fabs([endDate timeIntervalSinceDate:self.lastHealthKitLoggedSampleEndDate]) < kHealthKitSampleEndDedupeSeconds) {
+            return;
+        }
+        self.lastHealthKitLoggedSampleEndDate = endDate;
+        [self.samples addObject:@{ @"date": endDate, @"bpm": @(bpm) }];
+        [self trimUnsafeRetainingLastSeconds:kDefaultRetainSeconds maxEntries:kDefaultMaxEntries];
+        [self saveToDiskUnsafe];
+        [self postSamplesDidUpdateOnMain];
     });
 }
 
@@ -248,9 +314,7 @@ static const NSTimeInterval kBLEAppendThrottleSeconds = 10.0;
     }
     NSNumber *hr = [OTHeartRateMonitoring resolvedHeartRateBPMWithMaxSampleAge:15 * 60 outSource:NULL];
     if (hr.integerValue > 0) {
-        [[OTLocalHeartRateTimeSeriesStore shared] appendSampleAtDate:[NSDate date]
-                                                                 bpm:hr.integerValue
-                                           throttleMinimumInterval:0];
+        [[OTLocalHeartRateTimeSeriesStore shared] appendLiveSampleWithBPM:hr.integerValue wallThrottleInterval:0];
     }
 }
 

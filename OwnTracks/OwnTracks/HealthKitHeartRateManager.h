@@ -10,6 +10,10 @@
 
 FOUNDATION_EXPORT NSNotificationName _Nonnull const OTHealthKitHeartRateDidUpdateNotification;
 
+/// `userInfo` on \c OTHealthKitHeartRateDidUpdateNotification when a new HR \c HKQuantitySample was read (sample clinical time, not wake time).
+FOUNDATION_EXPORT NSString * const OTHealthKitHeartRateUserInfoSampleEndDateKey;
+FOUNDATION_EXPORT NSString * const OTHealthKitHeartRateUserInfoBPMKey;
+
 NS_ASSUME_NONNULL_BEGIN
 
 /// Reads the most recent heart rate sample from HealthKit (written there by Apple Watch).

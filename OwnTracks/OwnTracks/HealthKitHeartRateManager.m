@@ -10,6 +10,9 @@
 
 NSNotificationName const OTHealthKitHeartRateDidUpdateNotification = @"OTHealthKitHeartRateDidUpdateNotification";
 
+NSString *const OTHealthKitHeartRateUserInfoSampleEndDateKey = @"OTHR_sampleEndDate";
+NSString *const OTHealthKitHeartRateUserInfoBPMKey = @"OTHR_bpm";
+
 static const NSTimeInterval kHeartRateMaxAge = 30.0;
 
 @interface HealthKitHeartRateManager ()
@@ -203,6 +206,7 @@ static HealthKitHeartRateManager *theInstance = nil;
             }
 
             HKQuantitySample *sample = results.firstObject;
+            NSDictionary *hrUserInfo = nil;
             if (sample) {
                 HKUnit *bpmUnit = [[HKUnit countUnit] unitDividedByUnit:[HKUnit minuteUnit]];
                 double bpm = [sample.quantity doubleValueForUnit:bpmUnit];
@@ -210,13 +214,18 @@ static HealthKitHeartRateManager *theInstance = nil;
                 self._lastReadingDate = sample.endDate;
                 DDLogVerbose(@"[HKHRM] heart rate: %@ bpm (sample at %@)",
                              self._heartRate, sample.endDate);
+                hrUserInfo = @{
+                    OTHealthKitHeartRateUserInfoSampleEndDateKey: sample.endDate,
+                    OTHealthKitHeartRateUserInfoBPMKey: self._heartRate
+                };
             }
 
             if (completionHandler) {
                 completionHandler();
             }
             [[NSNotificationCenter defaultCenter] postNotificationName:OTHealthKitHeartRateDidUpdateNotification
-                                                                  object:self];
+                                                                  object:self
+                                                                userInfo:hrUserInfo];
             if (onFinished) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     onFinished();
