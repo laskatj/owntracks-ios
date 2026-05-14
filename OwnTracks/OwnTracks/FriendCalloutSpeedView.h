@@ -15,6 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Must be finite and >= 0 for a value; otherwise shows "—".
 - (void)updateSpeedKmH:(double)waypointSpeedKmH;
 
+/// Friend device heart rate from MQTT `hr` / waypoint; hides the row when `bpm` is nil or not positive.
+- (void)updateHeartRateBPM:(nullable NSNumber *)bpm;
+
 @end
 
 NS_ASSUME_NONNULL_END

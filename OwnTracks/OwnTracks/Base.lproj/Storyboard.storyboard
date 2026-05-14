@@ -805,7 +805,7 @@
                                     <tableViewCell tag="16" contentMode="scaleToFill" selectionStyle="blue" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" id="hx7-wj-39C">
                                         <rect key="frame" x="0.0" y="690.00000000000011" width="320" height="44"/>
                                         <autoresizingMask key="autoresizingMask"/>
-                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="hx7-wj-39C" id="VRP-Xg-36r">
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="NO" multipleTouchEnabled="YES" contentMode="center" tableViewCell="hx7-wj-39C" id="VRP-Xg-36r">
                                             <rect key="frame" x="0.0" y="0.0" width="320" height="44"/>
                                             <autoresizingMask key="autoresizingMask"/>
                                             <subviews>
@@ -829,12 +829,9 @@
                                                         <action selector="subTopicChanged:" destination="nAk-La-kdM" eventType="editingChanged" id="e6s-ol-dzj"/>
                                                     </connections>
                                                 </textField>
-                                                <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="effective subTopic" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="vUl-tT-Aw3">
+                                                <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="249" text="Active MQTT subscriptions" textAlignment="natural" lineBreakMode="wordWrapping" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="vUl-tT-Aw3">
                                                     <rect key="frame" x="20" y="30" width="280" height="14"/>
-                                                    <constraints>
-                                                        <constraint firstAttribute="height" constant="14" id="jaY-Df-qJa"/>
-                                                    </constraints>
-                                                    <fontDescription key="fontDescription" type="italicSystem" pointSize="10"/>
+                                                    <fontDescription key="fontDescription" type="italicSystem" pointSize="11"/>
                                                     <nil key="textColor"/>
                                                     <nil key="highlightedColor"/>
                                                     <attributedString key="userComments">
@@ -845,12 +842,13 @@
                                             <constraints>
                                                 <constraint firstAttribute="trailing" secondItem="vUl-tT-Aw3" secondAttribute="trailing" constant="20" symbolic="YES" id="59U-NC-hcW"/>
                                                 <constraint firstItem="vUl-tT-Aw3" firstAttribute="leading" secondItem="VRP-Xg-36r" secondAttribute="leading" constant="20" symbolic="YES" id="Bnb-Pv-Gi7"/>
-                                                <constraint firstAttribute="centerY" secondItem="suj-kA-G3U" secondAttribute="centerY" id="FzJ-KK-0Jf"/>
                                                 <constraint firstAttribute="trailing" secondItem="suj-kA-G3U" secondAttribute="trailing" constant="20" symbolic="YES" id="bhf-2Q-2PT"/>
                                                 <constraint firstItem="w8s-ld-3gB" firstAttribute="leading" secondItem="VRP-Xg-36r" secondAttribute="leading" constant="20" symbolic="YES" id="cmf-s3-w3y"/>
-                                                <constraint firstAttribute="bottom" secondItem="vUl-tT-Aw3" secondAttribute="bottom" id="gN1-Vk-ivH"/>
+                                                <constraint firstItem="VRP-Xg-36r" firstAttribute="bottom" secondItem="vUl-tT-Aw3" secondAttribute="bottom" constant="10" id="gN1-Vk-ivH"/>
                                                 <constraint firstItem="suj-kA-G3U" firstAttribute="leading" secondItem="w8s-ld-3gB" secondAttribute="trailing" constant="8" symbolic="YES" id="lD6-CO-pZb"/>
-                                                <constraint firstAttribute="centerY" secondItem="w8s-ld-3gB" secondAttribute="centerY" id="r54-zt-Qxn"/>
+                                                <constraint firstItem="w8s-ld-3gB" firstAttribute="top" secondItem="VRP-Xg-36r" secondAttribute="top" constant="10" id="OT-sub-lbl-top"/>
+                                                <constraint firstItem="suj-kA-G3U" firstAttribute="centerY" secondItem="w8s-ld-3gB" secondAttribute="centerY" id="OT-sub-field-centerY"/>
+                                                <constraint firstItem="vUl-tT-Aw3" firstAttribute="top" secondItem="suj-kA-G3U" secondAttribute="bottom" constant="8" id="OT-sub-effective-top"/>
                                             </constraints>
                                         </tableViewCellContentView>
                                     </tableViewCell>

@@ -17,6 +17,7 @@
 #import "WebAppAuthHelper.h"
 #import "WebAppViewController.h"
 #import "OwnTracksWatchBridge.h"
+#import "LocationAPISyncService.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 @interface SettingsTVC ()
@@ -182,6 +183,11 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
             options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
             context:nil];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(OT_locationMQTTAllowlistDidUpdateForSettings:)
+                                                 name:OwnTracksLocationMQTTAllowlistDidUpdateNotification
+                                               object:nil];
+
     [self updated];
     
     self.warningShown = FALSE;
@@ -201,6 +207,10 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [lm removeObserver:self
             forKeyPath:@"monitoring"
                context:nil];
+
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:OwnTracksLocationMQTTAllowlistDidUpdateNotification
+                                                  object:nil];
 
     [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
     [self reconnect];
@@ -469,6 +479,40 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
     [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
 }
 
+- (void)OT_locationMQTTAllowlistDidUpdateForSettings:(NSNotification *)notification {
+    (void)notification;
+    [self updated];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSIndexPath *subTopicPath = [NSIndexPath indexPathForRow:0 inSection:2];
+    if (![indexPath isEqual:subTopicPath]) {
+        return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    }
+    if ([Settings intForKey:@"mode" inMOC:CoreData.sharedInstance.mainMOC] != CONNECTION_MODE_MQTT) {
+        return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    }
+    if (![self isRowVisible:subTopicPath]) {
+        return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    }
+    UIFont *font = self.UIeffectiveSubTopic.font ?: [UIFont italicSystemFontOfSize:11];
+    NSString *text = self.UIeffectiveSubTopic.text ?: @"";
+    if (text.length == 0) {
+        return 52;
+    }
+    CGFloat w = CGRectGetWidth(tableView.bounds) - 40;
+    if (w < 120) {
+        w = CGRectGetWidth(UIScreen.mainScreen.bounds) - 40;
+    }
+    CGRect br = [text boundingRectWithSize:CGSizeMake(w, CGFLOAT_MAX)
+                                   options:(NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading)
+                                attributes:@{NSFontAttributeName: font}
+                                   context:nil];
+    CGFloat labelH = ceil(CGRectGetHeight(br)) + 4;
+    CGFloat topRow = 38;
+    return MAX(52, topRow + labelH + 12);
+}
+
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
                         change:(NSDictionary *)change
@@ -581,8 +625,33 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         self.UIsubTopic.enabled = !locked;
     }
     if (self.UIeffectiveSubTopic) {
-        self.UIeffectiveSubTopic.text =
-        [Settings theSubscriptionsInMOC:CoreData.sharedInstance.mainMOC];
+        self.UIeffectiveSubTopic.numberOfLines = 0;
+        self.UIeffectiveSubTopic.lineBreakMode = NSLineBreakByWordWrapping;
+        self.UIeffectiveSubTopic.textColor = [UIColor secondaryLabelColor];
+        NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+        if (![Settings boolForKey:@"sub_preference" inMOC:moc]) {
+            self.UIeffectiveSubTopic.text = NSLocalizedString(@"Off",
+                                                             @"Settings: MQTT Subscribe switch is off; effective subscription list is empty");
+        } else {
+            LocationAPISyncService *las = [LocationAPISyncService sharedInstance];
+            if ([las isLocationMQTTAllowlistFeatureAvailableForMOC:moc]) {
+                NSArray<NSString *> *filters = nil;
+                if ([las mqttFriendAllowlistHasLoadedFromLocationAPI]) {
+                    filters = [las mqttSubscriptionFiltersForAllowlistConnectWithMOC:moc];
+                } else {
+                    filters = [las mqttSubscriptionFiltersOwnDeviceOnlyForMOC:moc];
+                }
+                self.UIeffectiveSubTopic.text = [filters componentsJoinedByString:@"\n"];
+            } else {
+                self.UIeffectiveSubTopic.text = [Settings theSubscriptionsInMOC:moc];
+            }
+        }
+        NSIndexPath *subTopicPath = [NSIndexPath indexPathForRow:0 inSection:2];
+        if ([self isRowVisible:subTopicPath]) {
+            [UIView performWithoutAnimation:^{
+                [self.tableView reloadRowsAtIndexPaths:@[subTopicPath] withRowAnimation:UITableViewRowAnimationNone];
+            }];
+        }
     }
 
     if (self.UIUserID) {

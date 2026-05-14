@@ -26,6 +26,9 @@ FOUNDATION_EXPORT NSNotificationName const OwnTracksGeolocationCacheDidUpdateNot
 /// Posted on the main queue after `GET /api/authorization/user` payload is applied (or cleared on logout).
 FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksCurrentUserProfileDidUpdateNotification;
 
+/// Posted on the main queue when the MQTT friend-topic allowlist from `GET /api/location` changes or is cleared (OAuth invalidation).
+FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksLocationMQTTAllowlistDidUpdateNotification;
+
 @interface OTWebLocationItem : NSObject
 @property (nonatomic) NSInteger locationId;
 @property (nonatomic) double latitude;
@@ -67,6 +70,24 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksCurrentUserProfileD
 
 /// Registers for foreground/background notifications. Safe to call once from application:didFinishLaunchingWithOptions:.
 - (void)start;
+
+/// YES when a web-app origin + Keychain URL candidates exist and `GET /api/location` URL resolves (same gate as `fetchAndApply`).
+- (BOOL)isLocationMQTTAllowlistFeatureAvailableForMOC:(NSManagedObjectContext *)moc;
+
+/// YES after a successful `GET /api/location` apply (even if the allowlist is empty). Cleared on `invalidateOAuthCredentialCache`.
+- (BOOL)mqttFriendAllowlistHasLoadedFromLocationAPI;
+
+/// Friend device MQTT prefixes from the last successful location API apply (e.g. `owntracks/user/device`). Excludes own device.
+- (NSArray<NSString *> *)mqttAllowedFriendDeviceTopicPrefixes;
+
+/// Own-device + per-friend `topic`, `topic/event`, `topic/info` filters for MQTT subscribe when allowlist mode is active. Uses comma-free array assembly so topics may contain spaces.
+- (NSArray<NSString *> *)mqttSubscriptionFiltersForAllowlistConnectWithMOC:(NSManagedObjectContext *)moc;
+
+/// Own device only: `base`, `base/event`, `base/info`, `base/cmd` — used before the allowlist has loaded when allowlist feature is enabled.
+- (NSArray<NSString *> *)mqttSubscriptionFiltersOwnDeviceOnlyForMOC:(NSManagedObjectContext *)moc;
+
+/// When the location allowlist feature is enabled: own device always allowed; other devices only if the allowlist has loaded and contains `deviceTopicPrefix`. When the feature is disabled (MQTT-only), non-own devices are allowed (legacy).
+- (BOOL)friendMqttDeviceTopicPrefixAllowed:(NSString *)deviceTopicPrefix managedObjectContext:(NSManagedObjectContext *)moc;
 
 /// Triggers GET /api/location when not already in flight and the last successful fetch is older than a short debounce (e.g. Friends tab pull-to-refresh on appear).
 - (void)requestLocationRefreshIfAppropriate;

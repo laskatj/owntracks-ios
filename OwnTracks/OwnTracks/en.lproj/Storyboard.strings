@@ -525,7 +525,7 @@
 "vHW-Iv-6Q1.text" = "ignoreStaleLocations";
 
 /* Class = "UILabel"; text = "effective subTopic"; ObjectID = "vUl-tT-Aw3"; Note = "Don't translate, technical term"; */
-"vUl-tT-Aw3.text" = "effective subTopic";
+"vUl-tT-Aw3.text" = "Active MQTT subscriptions";
 
 /* Class = "UILabel"; text = "monitoring"; ObjectID = "vhk-Yh-d0n"; Note = "Don't translate, technical term"; */
 "vhk-Yh-d0n.text" = "monitoring";

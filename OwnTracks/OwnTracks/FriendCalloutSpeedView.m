@@ -24,6 +24,7 @@ static UIColor *OTGaugeFillColorForMph(double mph) {
 
 @interface FriendCalloutSpeedView ()
 @property (nonatomic, strong) UILabel *speedLabel;
+@property (nonatomic, strong) UILabel *heartRateLabel;
 /// Speed shown on label and gauge (mph); < 0 means invalid / placeholder.
 @property (nonatomic, assign) double displayMph;
 @property (nonatomic, strong) NSMeasurementFormatter *measurementFormatter;
@@ -39,11 +40,21 @@ static UIColor *OTGaugeFillColorForMph(double mph) {
         self.opaque = NO;
 
         _speedLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-        _speedLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        _speedLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption2]
+            scaledFontForFont:[UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium]];
         _speedLabel.textAlignment = NSTextAlignmentCenter;
         _speedLabel.textColor = [UIColor secondaryLabelColor];
         _speedLabel.numberOfLines = 1;
         [self addSubview:_speedLabel];
+
+        _heartRateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _heartRateLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption2]
+            scaledFontForFont:[UIFont systemFontOfSize:10.0 weight:UIFontWeightSemibold]];
+        _heartRateLabel.textAlignment = NSTextAlignmentCenter;
+        _heartRateLabel.textColor = [UIColor secondaryLabelColor];
+        _heartRateLabel.numberOfLines = 1;
+        _heartRateLabel.hidden = YES;
+        [self addSubview:_heartRateLabel];
 
         _measurementFormatter = [[NSMeasurementFormatter alloc] init];
         _measurementFormatter.unitOptions = NSMeasurementFormatterUnitOptionsProvidedUnit;
@@ -53,14 +64,22 @@ static UIColor *OTGaugeFillColorForMph(double mph) {
 }
 
 - (CGSize)intrinsicContentSize {
-    return CGSizeMake(132.0, 52.0);
+    CGFloat h = self.heartRateLabel.hidden ? 36.0 : 48.0;
+    return CGSizeMake(88.0, h);
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat w = CGRectGetWidth(self.bounds);
-    CGFloat labelH = 22.0;
-    self.speedLabel.frame = CGRectMake(4.0, 2.0, w - 8.0, labelH);
+    const CGFloat sideInset = 2.0;
+    const CGFloat speedH = 13.0;
+    self.speedLabel.frame = CGRectMake(sideInset, 0.0, w - 2.0 * sideInset, speedH);
+    if (self.heartRateLabel.hidden) {
+        self.heartRateLabel.frame = CGRectZero;
+    } else {
+        CGFloat hrTop = CGRectGetMaxY(self.speedLabel.frame);
+        self.heartRateLabel.frame = CGRectMake(sideInset, hrTop, w - 2.0 * sideInset, 12.0);
+    }
 }
 
 - (void)updateSpeedKmH:(double)waypointSpeedKmH {
@@ -83,14 +102,34 @@ static UIColor *OTGaugeFillColorForMph(double mph) {
     [self setNeedsDisplay];
 }
 
+- (void)updateHeartRateBPM:(nullable NSNumber *)bpm {
+    BOOL show = [bpm isKindOfClass:[NSNumber class]] && bpm.intValue > 0;
+    self.heartRateLabel.hidden = !show;
+    if (show) {
+        self.heartRateLabel.text =
+            [NSString stringWithFormat:NSLocalizedString(@"%d bpm", @"Beats per minute (friend device callout)"),
+                                       bpm.intValue];
+        self.heartRateLabel.textColor = [UIColor systemPinkColor];
+    } else {
+        self.heartRateLabel.text = nil;
+    }
+    [self invalidateIntrinsicContentSize];
+    [self setNeedsLayout];
+    [self setNeedsDisplay];
+}
+
 - (void)drawRect:(CGRect)rect {
     [super drawRect:rect];
 
     CGFloat w = CGRectGetWidth(rect);
-    CGFloat labelBottom = CGRectGetMaxY(self.speedLabel.frame) + 2.0;
-    CGFloat gaugeBottom = CGRectGetHeight(rect) - 3.0;
-    CGFloat radius = MIN((w - 12.0) / 2.0, (gaugeBottom - labelBottom) * 0.95);
-    if (radius < 8.0) {
+    CGFloat labelBottom = CGRectGetMaxY(self.speedLabel.frame);
+    if (!self.heartRateLabel.hidden) {
+        labelBottom = MAX(labelBottom, CGRectGetMaxY(self.heartRateLabel.frame));
+    }
+    labelBottom += 0.5;
+    CGFloat gaugeBottom = CGRectGetHeight(rect) - 1.0;
+    CGFloat radius = MIN((w - 4.0) / 2.0, (gaugeBottom - labelBottom) * 0.93);
+    if (radius < 5.5) {
         return;
     }
     CGPoint center = CGPointMake(w / 2.0, gaugeBottom);
@@ -104,7 +143,7 @@ static UIColor *OTGaugeFillColorForMph(double mph) {
                                                      startAngle:startAngle
                                                        endAngle:startAngle + fullSweep
                                                       clockwise:YES];
-    track.lineWidth = 3.0;
+    track.lineWidth = 2.0;
     [[UIColor tertiaryLabelColor] setStroke];
     [track stroke];
 

@@ -97,6 +97,7 @@ static const NSInteger kOTProvisionAPICodeBusy = 998;
 NSNotificationName const OwnTracksOAuthAccessTokenBecameAvailableNotification = @"OwnTracksOAuthAccessTokenBecameAvailable";
 NSNotificationName const OwnTracksGeolocationCacheDidUpdateNotification = @"OwnTracksGeolocationCacheDidUpdate";
 NSNotificationName const OwnTracksCurrentUserProfileDidUpdateNotification = @"OwnTracksCurrentUserProfileDidUpdate";
+NSNotificationName const OwnTracksLocationMQTTAllowlistDidUpdateNotification = @"OwnTracksLocationMQTTAllowlistDidUpdate";
 NSString * const OTLocationDeleteErrorCodeKey = @"OTLocationDeleteErrorCode";
 NSString * const OTLocationDeleteErrorReferenceCountKey = @"OTLocationDeleteErrorReferenceCount";
 NSString * const OTLocationDeleteErrorMessageKey = @"OTLocationDeleteErrorMessage";
@@ -252,6 +253,9 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
 @property (nonatomic, strong, nullable) NSNumber *authAPIHomeZoneId;
 @property (nonatomic, strong, nullable) NSNumber *authAPIWorkZoneId;
 @property (nonatomic, strong) NSCache<NSString *, NSArray<NSDictionary *> *> *routeHistoryPointsCache;
+/// Device-level MQTT topic prefixes from the last successful `GET /api/location` (excludes own device). Thread: reads/writes under `@synchronized(self)`.
+@property (nonatomic, copy) NSSet<NSString *> *mqttAllowedFriendDeviceTopics;
+@property (nonatomic) BOOL mqttFriendAllowlistLoadedFromLocationAPI;
 - (void)scheduleInteractiveOAuthIfNoTokenAfterFailure;
 /// OAuth stores refresh tokens under `keychainAccountForWebAppURL` using discovery `client_id` from `/.well-known/owntracks-app-auth`, not necessarily Settings `oauth_client_id_preference`. Try discovery id first, then settings, then nil lookup.
 - (void)trySilentRefreshWithCandidates:(NSArray<NSURL *> *)candidates
@@ -270,6 +274,7 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
                  transientAttempt:(NSUInteger)nextAttempt;
 - (void)oauthAccessTokenBecameAvailable:(NSNotification *)notification;
 - (void)attemptNativeProvisionAfterOAuthOrForegroundIfNeeded;
+- (void)OT_applyLocationMQTTAllowlistFromSortedDeviceTopics:(NSArray<NSString *> *)sortedDeviceTopics;
 - (void)performAuthenticatedRequestWithURL:(NSURL *)url
                                     method:(NSString *)method
                                   jsonBody:(nullable NSDictionary *)jsonBody
@@ -311,6 +316,8 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
                                                      object:nil];
         _routeHistoryPointsCache = [[NSCache alloc] init];
         _routeHistoryPointsCache.countLimit = 40;
+        _mqttAllowedFriendDeviceTopics = [NSSet set];
+        _mqttFriendAllowlistLoadedFromLocationAPI = NO;
     }
     return self;
 }
@@ -325,6 +332,112 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
 
 - (void)start {
     DDLogInfo(@"[LocationAPISyncService] start");
+}
+
+- (BOOL)isLocationMQTTAllowlistFeatureAvailableForMOC:(NSManagedObjectContext *)moc {
+    NSURL *apiURL = [WebAppURLResolver locationAPIRequestURLFromPreferenceInMOC:moc];
+    NSArray *candidates = [WebAppURLResolver webAppKeychainURLCandidatesFromPreferenceInMOC:moc];
+    return apiURL != nil && candidates.count > 0;
+}
+
+- (BOOL)mqttFriendAllowlistHasLoadedFromLocationAPI {
+    @synchronized (self) {
+        return self.mqttFriendAllowlistLoadedFromLocationAPI;
+    }
+}
+
+- (NSArray<NSString *> *)mqttAllowedFriendDeviceTopicPrefixes {
+    @synchronized (self) {
+        NSArray *arr = [self.mqttAllowedFriendDeviceTopics.allObjects sortedArrayUsingSelector:@selector(compare:)];
+        return arr ?: @[];
+    }
+}
+
+- (NSArray<NSString *> *)mqttSubscriptionFiltersOwnDeviceOnlyForMOC:(NSManagedObjectContext *)moc {
+    NSString *base = [Settings theGeneralTopicInMOC:moc];
+    if (!base.length) {
+        return @[];
+    }
+    return @[
+        base,
+        [base stringByAppendingString:@"/event"],
+        [base stringByAppendingString:@"/info"],
+        [base stringByAppendingString:@"/cmd"],
+    ];
+}
+
+- (NSArray<NSString *> *)mqttSubscriptionFiltersForAllowlistConnectWithMOC:(NSManagedObjectContext *)moc {
+    NSMutableOrderedSet *topics = [NSMutableOrderedSet orderedSet];
+    for (NSString *t in [self mqttSubscriptionFiltersOwnDeviceOnlyForMOC:moc]) {
+        if (t.length) {
+            [topics addObject:t];
+        }
+    }
+    NSString *own = [Settings theGeneralTopicInMOC:moc];
+    NSSet *friendsCopy = nil;
+    @synchronized (self) {
+        friendsCopy = [self.mqttAllowedFriendDeviceTopics copy];
+    }
+    for (NSString *friendRoot in friendsCopy) {
+        if (!friendRoot.length) {
+            continue;
+        }
+        if (own.length && [friendRoot isEqualToString:own]) {
+            continue;
+        }
+        [topics addObject:friendRoot];
+        [topics addObject:[friendRoot stringByAppendingString:@"/event"]];
+        [topics addObject:[friendRoot stringByAppendingString:@"/info"]];
+    }
+    return topics.array;
+}
+
+- (BOOL)friendMqttDeviceTopicPrefixAllowed:(NSString *)deviceTopicPrefix managedObjectContext:(NSManagedObjectContext *)moc {
+    if (!deviceTopicPrefix.length) {
+        return NO;
+    }
+    NSString *own = [Settings theGeneralTopicInMOC:moc];
+    if (own.length && [deviceTopicPrefix isEqualToString:own]) {
+        return YES;
+    }
+    if (![self isLocationMQTTAllowlistFeatureAvailableForMOC:moc]) {
+        return YES;
+    }
+    @synchronized (self) {
+        if (!self.mqttFriendAllowlistLoadedFromLocationAPI) {
+            return NO;
+        }
+        return [self.mqttAllowedFriendDeviceTopics containsObject:deviceTopicPrefix];
+    }
+}
+
+- (void)OT_applyLocationMQTTAllowlistFromSortedDeviceTopics:(NSArray<NSString *> *)sortedDeviceTopics {
+    NSSet *newSet = [NSSet setWithArray:sortedDeviceTopics ?: @[]];
+    BOOL shouldNotify = NO;
+    @synchronized (self) {
+        BOOL wasLoaded = self.mqttFriendAllowlistLoadedFromLocationAPI;
+        NSSet *old = self.mqttAllowedFriendDeviceTopics ?: [NSSet set];
+        BOOL same = (old.count == newSet.count);
+        if (same) {
+            for (NSString *x in newSet) {
+                if (![old containsObject:x]) {
+                    same = NO;
+                    break;
+                }
+            }
+        }
+        self.mqttAllowedFriendDeviceTopics = newSet;
+        self.mqttFriendAllowlistLoadedFromLocationAPI = YES;
+        shouldNotify = !wasLoaded || !same;
+    }
+    if (shouldNotify) {
+        DDLogInfo(@"[LocationAPISyncService] MQTT friend allowlist updated (%lu devices) — posting OwnTracksLocationMQTTAllowlistDidUpdate",
+                  (unsigned long)newSet.count);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksLocationMQTTAllowlistDidUpdateNotification
+                                                                  object:self];
+        });
+    }
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
@@ -630,6 +743,10 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
     self.provisionInFlight = NO;
     [self.routeHistoryPointsCache removeAllObjects];
     DDLogInfo(@"[LocationAPISyncService] invalidateOAuthCredentialCache");
+    @synchronized (self) {
+        self.mqttFriendAllowlistLoadedFromLocationAPI = NO;
+        self.mqttAllowedFriendDeviceTopics = [NSSet set];
+    }
     __weak typeof(self) wself = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         __strong typeof(wself) sself = wself;
@@ -642,6 +759,8 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
         sself.authAPIHomeZoneId = nil;
         sself.authAPIWorkZoneId = nil;
         [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksCurrentUserProfileDidUpdateNotification
+                                                              object:sself];
+        [[NSNotificationCenter defaultCenter] postNotificationName:OwnTracksLocationMQTTAllowlistDidUpdateNotification
                                                               object:sself];
     });
 }
@@ -988,6 +1107,12 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
         [CoreData.sharedInstance sync:queuedMOC];
         DDLogInfo(@"[LocationAPISyncService] applied location API payload (allowedTopics=%lu prunedFriends=%lu)",
                   (unsigned long)allowedTopics.count, (unsigned long)pruned);
+
+        NSArray<NSString *> *sortedAllowed = [[allowedTopics allObjects] sortedArrayUsingSelector:@selector(compare:)];
+        LocationAPISyncService *las = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [las OT_applyLocationMQTTAllowlistFromSortedDeviceTopics:sortedAllowed];
+        });
     }];
 }
 

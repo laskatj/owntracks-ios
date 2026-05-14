@@ -94,6 +94,9 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIDeviceBatteryStateDidChangeNotification
                                                   object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:OwnTracksLocationMQTTAllowlistDidUpdateNotification
+                                                  object:nil];
 }
 
 - (void)OT_applyHUDIdleTimerPolicy {
@@ -170,6 +173,10 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     id vel = dictionary[@"vel"];
     if ([vel isKindOfClass:[NSNumber class]]) {
         userInfo[@"vel"] = vel;
+    }
+    id hr = dictionary[@"hr"];
+    if ([hr isKindOfClass:[NSNumber class]] && [(NSNumber *)hr intValue] > 0) {
+        userInfo[@"hr"] = hr;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter]
@@ -396,6 +403,10 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     });
 
     [[LocationAPISyncService sharedInstance] start];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(OT_locationMQTTAllowlistDidUpdate:)
+                                                 name:OwnTracksLocationMQTTAllowlistDidUpdateNotification
+                                               object:nil];
     [[OTInboxRealtimeCoordinator shared] activate];
 
     [[OwnTracksWatchBridge shared] activate];
@@ -883,6 +894,19 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
                                                 @"Display when file processing succeeds")];
     DDLogInfo(@"[OwnTracksAppDelegate] processFile ok %@", self.processingMessage);
     return TRUE;
+}
+
+- (void)OT_locationMQTTAllowlistDidUpdate:(NSNotification *)notification {
+    (void)notification;
+    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
+    if ([Settings intForKey:@"mode" inMOC:moc] != CONNECTION_MODE_MQTT) {
+        return;
+    }
+    if (![Settings boolForKey:@"sub_preference" inMOC:moc]) {
+        return;
+    }
+    DDLogInfo(@"[OwnTracksAppDelegate] MQTT allowlist changed — reconnecting to refresh subscriptions");
+    [self reconnect];
 }
 
 - (void)applicationDidBecomeActive:(UIApplication *)application {
@@ -1418,6 +1442,26 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
         }
 
         DDLogVerbose(@"[OwnTracksAppDelegate] device %@ owndevice %d", device, ownDevice);
+
+        if (!ownDevice &&
+            ![[LocationAPISyncService sharedInstance] friendMqttDeviceTopicPrefixAllowed:device
+                                                                  managedObjectContext:CoreData.sharedInstance.queuedMOC]) {
+            Friend *disallowed = [Friend existsFriendWithTopic:device
+                                        inManagedObjectContext:CoreData.sharedInstance.queuedMOC];
+            if (disallowed) {
+                [CoreData.sharedInstance.queuedMOC deleteObject:disallowed];
+                [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+            }
+            @synchronized (strongSelf.inQueue) {
+                strongSelf.inQueue = @((strongSelf.inQueue).unsignedLongValue - 1);
+                if (strongSelf.inQueue.intValue == 0) {
+                    [CoreData.sharedInstance sync:CoreData.sharedInstance.queuedMOC];
+                }
+            }
+            DDLogVerbose(@"[OwnTracksAppDelegate] handleMessage dropped (MQTT allowlist) topic=%@ device=%@ inQueue=%@",
+                         topic, device, strongSelf.inQueue);
+            return;
+        }
 
         // Parse JSON once; used for both the short-circuit check and cmd handling.
         NSDictionary *dictionary = nil;
@@ -2314,9 +2358,26 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                                     inMOC:moc];
         NSArray *subscriptions = [[NSArray alloc] init];
         if ([Settings boolForKey:@"sub_preference" inMOC:moc]) {
-            subscriptions = [[Settings theSubscriptionsInMOC:moc] componentsSeparatedByString:@","];
+            LocationAPISyncService *las = [LocationAPISyncService sharedInstance];
+            if ([las isLocationMQTTAllowlistFeatureAvailableForMOC:moc]) {
+                if ([las mqttFriendAllowlistHasLoadedFromLocationAPI]) {
+                    subscriptions = [las mqttSubscriptionFiltersForAllowlistConnectWithMOC:moc];
+                } else {
+                    subscriptions = [las mqttSubscriptionFiltersOwnDeviceOnlyForMOC:moc];
+                }
+            } else {
+                NSString *raw = [Settings theSubscriptionsInMOC:moc];
+                NSMutableArray *subs = [NSMutableArray array];
+                for (NSString *part in [raw componentsSeparatedByString:@","]) {
+                    NSString *t = [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (t.length) {
+                        [subs addObject:t];
+                    }
+                }
+                subscriptions = subs;
+            }
         }
-        
+
         self.connection.subscriptions = subscriptions;
         self.connection.subscriptionQos = subscriptionQos;
         

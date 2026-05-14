@@ -15,7 +15,7 @@
 #import "OwnTracksAppDelegate.h"
 #import "coredata/Friend+CoreDataClass.h"
 
-@interface ViewController : UIViewController <MKMapViewDelegate, NSFetchedResultsControllerDelegate>
+@interface ViewController : UIViewController <MKMapViewDelegate, NSFetchedResultsControllerDelegate, UIGestureRecognizerDelegate>
 - (IBAction)actionPressed:(UIBarButtonItem *)sender;
 /// Called by FriendsTVC when a friend is selected from the list.
 /// Activates smooth map following for that friend (same as tapping the pin).

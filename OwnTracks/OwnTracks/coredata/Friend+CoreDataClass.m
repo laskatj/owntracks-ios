@@ -294,18 +294,13 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 }
 
 - (NSString *)title {
-    return self.name ? self.name : self.topic;
+    // Map callout omits the default title row; speed/HR live in `detailCalloutAccessoryView`.
+    // VoiceOver uses `MKAnnotationView.accessibilityLabel` set in `ViewController`.
+    return nil;
 }
 
 - (NSString *)subtitle {
-    Waypoint *waypoint = self.newestWaypoint;
-    if (waypoint) {
-        return [NSDateFormatter localizedStringFromDate:waypoint.tst
-                                              dateStyle:NSDateFormatterShortStyle
-                                              timeStyle:NSDateFormatterShortStyle];
-    } else {
-        return @"";
-    }
+    return nil;
 }
 
 - (Waypoint *)addWaypoint:(CLLocation *)location

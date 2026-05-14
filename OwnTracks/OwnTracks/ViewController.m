@@ -36,6 +36,7 @@
 #import "OwnTracksChangeMonitoringIntent.h"
 
 static NSString * const kMapRouteHistoryHoursKey = @"mapRouteHistoryHours";
+static NSString * const kOTFriendPinTapGRName = @"org.owntracks.OTFriendPinTap";
 
 static NSString * const kOTFollowUserPitchKey = @"OTFollowUserPitch";
 static NSString * const kOTFollowUserDistanceKey = @"OTFollowUserDistance";
@@ -154,11 +155,13 @@ static UIImage *OTRouteHistoryWindowClockImage(CGFloat side, NSInteger hours) {
     return [raw imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 }
 
-static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNumber *_Nullable liveVelKmH) {
+static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNumber *_Nullable liveVelKmH,
+                                     NSNumber *_Nullable liveHeartRateBPM) {
     UIView *detail = fv.detailCalloutAccessoryView;
     if (![detail isKindOfClass:[FriendCalloutSpeedView class]]) {
         return;
     }
+    FriendCalloutSpeedView *callout = (FriendCalloutSpeedView *)detail;
     double kmh = -1.0;
     if ([liveVelKmH isKindOfClass:[NSNumber class]] && isfinite(liveVelKmH.doubleValue)) {
         kmh = liveVelKmH.doubleValue;
@@ -171,7 +174,18 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
             }
         }
     }
-    [(FriendCalloutSpeedView *)detail updateSpeedKmH:kmh];
+    [callout updateSpeedKmH:kmh];
+
+    NSNumber *hr = nil;
+    if ([liveHeartRateBPM isKindOfClass:[NSNumber class]] && liveHeartRateBPM.intValue > 0) {
+        hr = liveHeartRateBPM;
+    } else {
+        Waypoint *wpHR = friend.newestWaypoint;
+        if (wpHR.heartRate != nil && wpHR.heartRate.intValue > 0) {
+            hr = wpHR.heartRate;
+        }
+    }
+    [callout updateHeartRateBPM:hr];
 }
 
 @interface ViewController ()
@@ -1460,7 +1474,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     friendAnnotationV.course = (waypoint.cog).doubleValue;
     friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
     [friendAnnotationV setNeedsDisplay];
-    VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil);
+    VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil, nil);
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -2092,7 +2106,19 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         friendAnnotationV.displayPriority = MKFeatureDisplayPriorityRequired;
         friendAnnotationV.zPriority = MKFeatureDisplayPriorityDefaultHigh;
         friendAnnotationV.canShowCallout = YES;
-        friendAnnotationV.rightCalloutAccessoryView = [UIButton buttonWithType:UIButtonTypeDetailDisclosure];
+        friendAnnotationV.rightCalloutAccessoryView = nil;
+        friendAnnotationV.accessibilityLabel = friend.nameOrTopic;
+
+        for (UIGestureRecognizer *gr in [friendAnnotationV.gestureRecognizers copy]) {
+            if ([gr.name isEqualToString:kOTFriendPinTapGRName]) {
+                [friendAnnotationV removeGestureRecognizer:gr];
+            }
+        }
+        UITapGestureRecognizer *pinTap = [[UITapGestureRecognizer alloc] initWithTarget:self
+                                                                                  action:@selector(OT_friendPinTapWhileSelected:)];
+        pinTap.name = kOTFriendPinTapGRName;
+        pinTap.delegate = self;
+        [friendAnnotationV addGestureRecognizer:pinTap];
 
         NSData *data = friend.image;
         UIImage *image = [UIImage imageWithData:data];
@@ -2104,15 +2130,8 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         [friendAnnotationV setNeedsDisplay];
 
         FriendCalloutSpeedView *speedCallout = [[FriendCalloutSpeedView alloc] initWithFrame:CGRectZero];
-        double velKmh = -1.0;
-        if (waypoint.vel != nil) {
-            double v = waypoint.vel.doubleValue;
-            if (isfinite(v) && v >= 0.0) {
-                velKmh = v;
-            }
-        }
-        [speedCallout updateSpeedKmH:velKmh];
         friendAnnotationV.detailCalloutAccessoryView = speedCallout;
+        VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil, nil);
 
         return friendAnnotationV;
 
@@ -2292,14 +2311,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (control == view.rightCalloutAccessoryView) {
         if ([view.annotation isKindOfClass:[Region class]]) {
             [self performSegueWithIdentifier:@"showRegionFromMap" sender:view];
-        } else if ([view.annotation isKindOfClass:[Friend class]]) {
-            Friend *friend = (Friend *)view.annotation;
-            Waypoint *wp = friend.newestWaypoint;
-            if (wp) {
-                DeviceDetailHostingController *vc =
-                    [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
-                [self.navigationController pushViewController:vc animated:YES];
-            }
         } else if ([view.annotation isKindOfClass:[Waypoint class]]) {
             Waypoint *wp = (Waypoint *)view.annotation;
             DeviceDetailHostingController *vc =
@@ -2307,6 +2318,40 @@ calloutAccessoryControlTapped:(UIControl *)control {
             [self.navigationController pushViewController:vc animated:YES];
         }
     }
+}
+
+- (void)OT_pushDeviceDetailForFriendIfPossible:(Friend *)friend {
+    Waypoint *wp = friend.newestWaypoint;
+    if (!wp || !self.navigationController) {
+        return;
+    }
+    DeviceDetailHostingController *vc = [[DeviceDetailHostingController alloc] initWithWaypoint:wp];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)OT_friendPinTapWhileSelected:(UITapGestureRecognizer *)gr {
+    if (gr.state != UIGestureRecognizerStateEnded) {
+        return;
+    }
+    if (![gr.view isKindOfClass:[FriendAnnotationV class]]) {
+        return;
+    }
+    FriendAnnotationV *fv = (FriendAnnotationV *)gr.view;
+    if (!fv.selected || ![fv.annotation isKindOfClass:[Friend class]]) {
+        return;
+    }
+    [self OT_pushDeviceDetailForFriendIfPossible:(Friend *)fv.annotation];
+}
+
+#pragma mark - UIGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    UIView *v = gestureRecognizer.view;
+    if (![v isKindOfClass:[FriendAnnotationV class]]) {
+        return YES;
+    }
+    FriendAnnotationV *fv = (FriendAnnotationV *)v;
+    return fv.selected && [fv.annotation isKindOfClass:[Friend class]];
 }
 
 - (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view {
@@ -2321,7 +2366,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         self.followTemporarilySuspendedByGesture = NO;
         [self applyFollowSelectionForMapFriend:friend mapView:mapView];
         if ([view isKindOfClass:[FriendAnnotationV class]]) {
-            VCSyncFriendCalloutSpeed((FriendAnnotationV *)view, friend, nil);
+            VCSyncFriendCalloutSpeed((FriendAnnotationV *)view, friend, nil, nil);
         }
     }
 }
@@ -2998,8 +3043,19 @@ calloutAccessoryControlTapped:(UIControl *)control {
     CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(lat, lon);
     if (!CLLocationCoordinate2DIsValid(coord) || (lat == 0.0 && lon == 0.0)) return;
 
-    // Smooth-animate the marker via CADisplayLink; no remove/readd, live track polyline is unaffected.
     NSTimeInterval tst = [note.userInfo[@"tst"] doubleValue];
+    NSTimeInterval tstSec = tst;
+    if (tstSec <= 0.0) {
+        tstSec = [[NSDate date] timeIntervalSince1970];
+    }
+
+    NSNumber *liveHRNum = nil;
+    id hrRaw = note.userInfo[@"hr"];
+    if ([hrRaw isKindOfClass:[NSNumber class]] && [(NSNumber *)hrRaw intValue] > 0) {
+        liveHRNum = (NSNumber *)hrRaw;
+    }
+
+    // Smooth-animate the marker via CADisplayLink; no remove/readd, live track polyline is unaffected.
     for (id<MKAnnotation> ann in self.mapView.annotations) {
         if ([ann isKindOfClass:[Friend class]]) {
             Friend *friend = (Friend *)ann;
@@ -3024,7 +3080,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                         fv.speed = velNum.doubleValue;
                     }
                     [fv setNeedsDisplay];
-                    VCSyncFriendCalloutSpeed(fv, friend, velNum);
+                    VCSyncFriendCalloutSpeed(fv, friend, velNum, liveHRNum);
                 }
                 break;
             }
@@ -3042,10 +3098,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self.liveTrackPointUnixByTopic[topic] addObject:[NSNull null]];
     }
     [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
-    NSTimeInterval tstSec = tst;
-    if (tstSec <= 0.0) {
-        tstSec = [[NSDate date] timeIntervalSince1970];
-    }
     [self.liveTrackPointUnixByTopic[topic] addObject:@(tstSec)];
 
     DDLogVerbose(@"[ViewController] live track for %@ now has %lu points", topic, (unsigned long)self.liveTrackPoints[topic].count);
