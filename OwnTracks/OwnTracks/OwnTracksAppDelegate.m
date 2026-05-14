@@ -262,6 +262,7 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
     [Settings migrateWebProvisioningFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
+    [Settings migrateProvisionedIdentityRepairFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
     
     [self setShortcutItems];
     
@@ -940,6 +941,9 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 
     [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
     
+    [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
+    [Settings migrateProvisionedIdentityRepairFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
+
     [self.connection connectToLast];
     
     if (self.disconnectTimer && self.disconnectTimer.isValid) {

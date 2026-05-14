@@ -17,6 +17,7 @@
 #import "Friend+CoreDataClass.h"
 #import <UIKit/UIKit.h>
 #import <AuthenticationServices/AuthenticationServices.h>
+#import <sys/utsname.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
@@ -52,6 +53,46 @@ static NSString *OTProvisionSanitizedDeviceName(void) {
         return @"Device";
     }
     return collapsed;
+}
+
+static NSString *OTProvisionHardwareMachine(void) {
+    static NSString *cached;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        struct utsname u;
+        if (uname(&u) == 0) {
+            cached = [[NSString stringWithUTF8String:u.machine] copy] ?: @"unknown";
+        } else {
+            cached = @"unknown";
+        }
+    });
+    return cached ?: @"unknown";
+}
+
+/// Non-authoritative hints for `POST /api/config/provision` (see `OwnTracks/docs/PROVISION_API_CONTRACT.md`).
+static NSDictionary *OTProvisionRequestBodyWithHints(NSManagedObjectContext *moc) {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    d[@"deviceName"] = OTProvisionSanitizedDeviceName();
+    NSUUID *idfv = [UIDevice currentDevice].identifierForVendor;
+    if (idfv) {
+        d[@"identifierForVendor"] = idfv.UUIDString;
+    }
+    d[@"hardwareMachine"] = OTProvisionHardwareMachine();
+    d[@"bundleIdentifier"] = NSBundle.mainBundle.bundleIdentifier ?: @"";
+    id ver = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"];
+    d[@"appVersionShort"] = [ver isKindOfClass:[NSString class]] ? ver : @"";
+    id build = NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"];
+    d[@"appBuild"] = [build isKindOfClass:[NSString class]] ? build : @"";
+
+    NSString *exDev = [Settings stringForKey:@"deviceid_preference" inMOC:moc];
+    if (exDev.length) {
+        d[@"existingDeviceId"] = exDev;
+    }
+    NSString *exTid = [Settings stringForKey:@"trackerid_preference" inMOC:moc];
+    if (exTid.length) {
+        d[@"existingTrackerId"] = exTid;
+    }
+    return [d copy];
 }
 
 static BOOL OTJSONBoolish(id _Nullable value, BOOL defaultValue) {
@@ -2017,7 +2058,7 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
     }
 
     NSError *jsonErr = nil;
-    NSDictionary *bodyDict = @{ @"deviceName": OTProvisionSanitizedDeviceName() };
+    NSDictionary *bodyDict = OTProvisionRequestBodyWithHints(moc);
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:bodyDict options:0 error:&jsonErr];
     if (!bodyData) {
         DDLogError(@"[ProvisionAPI] could not encode provision body: %@", jsonErr);
@@ -2120,8 +2161,26 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
                             completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:3 userInfo:nil]);
                             return;
                         }
+                        NSMutableDictionary *cfg = [NSMutableDictionary dictionaryWithDictionary:payload];
+                        NSError *validationError =
+                            [Settings validationErrorForRemoteProvisionConfiguration:cfg
+                                                                             inMOC:CoreData.sharedInstance.mainMOC];
+                        if (validationError) {
+                            [Settings applyLocalProvisionIdentityRepairToMutableConfiguration:cfg
+                                                                                        inMOC:CoreData.sharedInstance.mainMOC];
+                            validationError =
+                                [Settings validationErrorForRemoteProvisionConfiguration:cfg
+                                                                                 inMOC:CoreData.sharedInstance.mainMOC];
+                        }
+                        if (validationError) {
+                            DDLogWarn(@"[ProvisionAPI] configuration rejected by client validation: %@",
+                                      validationError.localizedDescription);
+                            sself4.provisionInFlight = NO;
+                            completion(NO, validationError);
+                            return;
+                        }
                         [ad terminateSession];
-                        [ad configFromDictionary:payload];
+                        [ad configFromDictionary:cfg];
                         ad.configLoad = [NSDate date];
                         [ad reconnect];
                         sself4.provisionInFlight = NO;

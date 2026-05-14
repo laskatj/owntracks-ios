@@ -10,8 +10,8 @@ Aligned with the iOS app’s HTTP POST behavior in `Connection.m` (`sendHTTP:dat
   - `Content-Type: application/json`
   - `Content-Length`
   - **Basic auth** (when enabled on phone): `Authorization: Basic base64(user:pass)` — same as iOS.
-  - `X-Limit-U`: user id string (default `user` from settings).
-  - `X-Limit-D`: device id string (from `clientid_preference` on phone, same as MQTT/device in `Connection`).
+  - `X-Limit-U`: user id string (default `user` from settings / MQTT username).
+  - `X-Limit-D`: device id string (same as iOS `theDeviceIdInMOC` / `deviceid_preference`; **not** MQTT `clientId`).
   - Extra headers from `httpheaders_preference` (newline-separated `Key: Value` lines on phone).
   - `X-Idempotency-Key`: see below (single location vs batch).
 
@@ -57,9 +57,9 @@ Required / typical fields for each location object (single POST or each entry in
 | `tst`               | number | Unix seconds                                                                         |
 | `acc`               | number | meters, if ≥ 0                                                                       |
 | `t`                 | string | trigger (`"w"` = watch)                                                              |
-| `tid`               | string | tracker id from phone `trackerid_preference` when set                                |
-| `deviceId`          | string | iOS device id (`theDeviceIdInMOC`), synced from phone; omitted if empty              |
-| `topic`             | string | iOS MQTT publish topic (`theGeneralTopicInMOC`), synced from phone; omitted if empty |
+| `tid`               | string | optional; display tracker id from phone `trackerid_preference` — **not** a unique device key     |
+| `deviceId`          | string | optional; canonical device id from phone `theDeviceIdInMOC` / `deviceid_preference`; omit if empty |
+| `topic`             | string | optional; canonical publish topic from phone `theGeneralTopicInMOC`; omit if empty                 |
 | `ver`               | string | watch app `CFBundleVersion`                                                          |
 | `batt`              | int    | 0–100 when available                                                                 |
 | `bs`                | int    | battery state when available                                                         |
@@ -73,3 +73,8 @@ Required / typical fields for each location object (single POST or each entry in
 - **429 / 5xx:** keep queue unchanged (no partial dequeue on batch failure), apply backoff on the client.
 
 The iPhone continues to send **one location per POST**; batching is **watch-only** for faster backlog drain.
+
+## Identity (topic, deviceId, tid)
+
+- **`topic`** (when present) and **`deviceId`** reflect the phone’s canonical publish identity: `theGeneralTopicInMOC` and `theDeviceIdInMOC` from Core Data settings. Ingest and routing should treat these as the stable device key (scoped by your backend user).
+- **`tid`** comes from `trackerid_preference` when set. It is a **short display label** only; it is **not** guaranteed unique and must **not** be used for authorization or “same device” equivalence in server logic.

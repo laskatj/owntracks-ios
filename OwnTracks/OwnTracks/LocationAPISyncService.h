@@ -151,7 +151,8 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksLocationMQTTAllowli
                      completion:(void (^)(NSError * _Nullable error))completion;
 
 /// When the app still needs remote device configuration, POST `/api/config/provision` with Bearer auth
-/// and apply the JSON response via `OwnTracksAppDelegate configFromDictionary:` on the main queue.
+/// (JSON body includes device hints per `OwnTracks/docs/PROVISION_API_CONTRACT.md`) and apply the JSON response
+/// via `OwnTracksAppDelegate configFromDictionary:` on the main queue after `Settings validationErrorForRemoteProvisionConfiguration:` passes.
 /// Completion is called on an arbitrary background thread: `applied` YES if configuration was applied.
 - (void)provisionRemoteDeviceConfigurationIfNeededWithCompletion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
 

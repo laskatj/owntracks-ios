@@ -19,6 +19,7 @@ Use this prompt (or adapt it) when implementing your React web app so it is awar
 
 2. **Expose a way to send configuration to the app**
    - When the user is authenticated (e.g. after OIDC login), if `needs_provision=1` is in the URL (or the user taps “Send config to app” / “Provision device”), fetch the provisioning JSON from your backend (the same format the app expects: `_type: "configuration"`, plus `mode`, `host`, `deviceId`, `tid`, `clientId`, `subTopic`, `pubTopicBase`, `sub`, etc.).
+   - **Identity:** `deviceId` / MQTT topic segments must be **unique per authenticated user** (not a shared string like `iPhone`). `tid` is a short display label only. See `PROVISION_API_CONTRACT.md` in this folder for the contract also used by the native `POST /api/config/provision` flow.
    - **Strict native contract:** The object you pass as `configuration` in `postMessage` is passed verbatim to iOS `Settings.fromDictionary`. That API **requires** top-level `"_type": "configuration"`. The native app does **not** add or fix `_type` for you. Omitting it surfaces a configuration error in the app. The same object (including `_type`) must be used for the redirect fallback’s `JSON.stringify(provisioningJson)` / `inline` payload. If you use a hook such as `useEmbeddedProvisioning`, ensure tests cover both the happy path and missing `_type` (should not ship).
    - Send that config to the native app in one of two ways:
      - **Preferred (in-app):**  

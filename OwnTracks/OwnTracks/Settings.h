@@ -97,6 +97,24 @@ typedef NS_ENUM(int, ConnectionMode) {
 /// One-line summary for logs: UserDefaults flag, legacy placeholder host, and `theHostInMOC`.
 + (NSString * _Nonnull)webProvisioningDebugSummaryInMOC:(NSManagedObjectContext * _Nonnull)moc;
 
+/// Validates JSON from `POST /api/config/provision` before applying. Identity must be server-issued and unambiguous; returns nil if OK.
++ (NSError * _Nullable)validationErrorForRemoteProvisionConfiguration:(NSDictionary * _Nonnull)payload
+                                                               inMOC:(NSManagedObjectContext * _Nonnull)moc;
+
+/// YES when persisted identity looks like a bad dynamic-provision outcome (generic `deviceId`, ambiguous `tid`, suspect MQTT `clientId`, etc.). Does not use publish topic tail as a trigger so legacy `topic_preference` stays stable. `reasonOut` optional.
++ (BOOL)currentProvisionedIdentityNeedsRepairInMOC:(NSManagedObjectContext * _Nonnull)moc
+                                            reason:(NSString * _Nullable * _Nullable)reasonOut;
+
+/// One-time: if `currentProvisionedIdentityNeedsRepairInMOC:` is YES, sets `needs_web_provisioning` so native/Web provision can run again.
++ (void)migrateProvisionedIdentityRepairFlagIfNeededInMOC:(NSManagedObjectContext * _Nonnull)moc;
+
+/// If `currentProvisionedIdentityNeedsRepairInMOC:` is YES, builds a configuration snapshot, runs `applyLocalProvisionIdentityRepairToMutableConfiguration:`, validates, and persists with `fromDictionary:`. Posts `reload` and reconnects MQTT when a connection exists.
++ (BOOL)applyPersistedIdentitySelfHealIfNeededInMOC:(NSManagedObjectContext * _Nonnull)moc;
+
+/// When provision JSON fails `validationErrorForRemoteProvisionConfiguration:`, rewrite identity fields (`username`, `deviceId`, `clientId`, `tid`) for client-side compatibility. Does not change `pubTopicBase` so the backend publish topic remains unchanged (no server change required for topic).
++ (void)applyLocalProvisionIdentityRepairToMutableConfiguration:(NSMutableDictionary * _Nonnull)payload
+                                                         inMOC:(NSManagedObjectContext * _Nonnull)moc;
+
 + (Settings * _Nonnull)sharedInstance;
 
 @end

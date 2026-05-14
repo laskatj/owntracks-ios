@@ -122,6 +122,11 @@ enum DeviceDetailConnectionTransport: Int {
     private var lastRouteApiHeartRateSamples: [(date: Date, value: Double)] = []
     /// Route API HR samples for a friend device (last successful `GET .../route` parse); merged with waypoint for the HR tile.
     private var lastFriendRouteApiHeartRateSamples: [(date: Date, value: Double)] = []
+    /// Last successful route `GET …/route` overlay for speed/alt/battery (display units). Preserved when
+    /// `rebuildMetricsChartSeries()` finds sparse Core Data in the 12h window so charts do not flash empty.
+    private var lastRouteAppliedSpeedHistory: [(date: Date, value: Double)] = []
+    private var lastRouteAppliedAltitudeHistory: [(date: Date, value: Double)] = []
+    private var lastRouteAppliedBatteryHistory: [(date: Date, value: Double)] = []
 
     /// When true, user may see MQTT topic and other sensitive fields (JWT location-admin; see `WebAppAuthHelper`).
     @Published var canViewSensitiveLocationDeviceFields: Bool = false
@@ -369,21 +374,10 @@ enum DeviceDetailConnectionTransport: Int {
         }
     }
 
-    /// Mirrors `ViewController` `isSelectedFriendEquivalentToOwnDeviceForLiveTopic` for own-device topic alias.
+    /// Live location notifications apply only when the notification topic matches this detail screen's friend topic (`tid` is display-only).
     private func liveNotificationTopicMatches(_ noteTopic: String?) -> Bool {
         guard let noteTopic, !noteTopic.isEmpty else { return false }
-        if noteTopic == friendTopic { return true }
-        guard let moc = currentWaypoint.managedObjectContext ?? CoreData.sharedInstance()?.mainMOC else {
-            return false
-        }
-        let general = Settings.theGeneralTopic(inMOC: moc)
-        guard !general.isEmpty, noteTopic == general else { return false }
-        if friendTopic == general { return true }
-        let ownTid = Settings.string(forKey: "trackerid_preference", inMOC: moc) ?? ""
-        guard !ownTid.isEmpty, let oid = friendObjectID else { return false }
-        guard let friend = try? moc.existingObject(with: oid) as? Friend else { return false }
-        let tid = friend.effectiveTid
-        return !tid.isEmpty && tid == ownTid
+        return noteTopic == friendTopic
     }
 
     private func refreshFromLiveFriendLocation() {
@@ -609,6 +603,9 @@ enum DeviceDetailConnectionTransport: Int {
             metricsChartSpeedHistory = []
             metricsChartAltitudeHistory = []
             metricsChartBatteryHistory = []
+            lastRouteAppliedSpeedHistory = []
+            lastRouteAppliedAltitudeHistory = []
+            lastRouteAppliedBatteryHistory = []
             if isOwnWaypoint {
                 recomputeOwnDeviceMetricsHeartRateCharts()
             } else {
@@ -623,23 +620,42 @@ enum DeviceDetailConnectionTransport: Int {
             .filter { $0.effectiveTimestamp >= start && $0.effectiveTimestamp <= end }
             .sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
 
-        metricsChartSpeedHistory = filtered.compactMap { wp in
+        let cdSpeeds: [(date: Date, value: Double)] = filtered.compactMap { wp in
             guard let vel = wp.vel?.doubleValue, vel >= 0 else { return nil }
             let displayValue = useMetric ? vel : vel * 0.621371
             return (date: wp.effectiveTimestamp, value: displayValue)
         }
-        metricsChartAltitudeHistory = filtered.compactMap { wp in
+        let cdAlts: [(date: Date, value: Double)] = filtered.compactMap { wp in
             guard let alt = wp.alt?.doubleValue else { return nil }
             let displayValue = useMetric ? alt : alt * 3.28084
             return (date: wp.effectiveTimestamp, value: displayValue)
         }
-        metricsChartBatteryHistory = filtered.compactMap { wp in
+        let cdBatts: [(date: Date, value: Double)] = filtered.compactMap { wp in
             guard let raw = wp.batt?.doubleValue, raw >= 0 else { return nil }
             let frac = raw > 1.0 ? raw / 100.0 : raw
             guard frac <= 1.001 else { return nil }
             let clamped = min(1.0, max(0.0, frac))
             return (date: wp.effectiveTimestamp, value: clamped)
         }
+
+        metricsChartSpeedHistory = Self.metricsSeriesPreferringRouteWhenCdSparse(
+            cd: cdSpeeds,
+            route: lastRouteAppliedSpeedHistory,
+            windowStart: start,
+            windowEnd: end
+        )
+        metricsChartAltitudeHistory = Self.metricsSeriesPreferringRouteWhenCdSparse(
+            cd: cdAlts,
+            route: lastRouteAppliedAltitudeHistory,
+            windowStart: start,
+            windowEnd: end
+        )
+        metricsChartBatteryHistory = Self.metricsSeriesPreferringRouteWhenCdSparse(
+            cd: cdBatts,
+            route: lastRouteAppliedBatteryHistory,
+            windowStart: start,
+            windowEnd: end
+        )
 
         if isOwnWaypoint {
             recomputeOwnDeviceMetricsHeartRateCharts()
@@ -774,14 +790,17 @@ enum DeviceDetailConnectionTransport: Int {
         if speeds.count >= 2 {
             speeds.sort { $0.date < $1.date }
             metricsChartSpeedHistory = speeds
+            lastRouteAppliedSpeedHistory = speeds
         }
         if alts.count >= 2 {
             alts.sort { $0.date < $1.date }
             metricsChartAltitudeHistory = alts
+            lastRouteAppliedAltitudeHistory = alts
         }
         if batts.count >= 2 {
             batts.sort { $0.date < $1.date }
             metricsChartBatteryHistory = batts
+            lastRouteAppliedBatteryHistory = batts
         }
         hrs.sort { $0.date < $1.date }
         if isOwnWaypoint {
@@ -790,9 +809,11 @@ enum DeviceDetailConnectionTransport: Int {
             lastFriendRouteApiHeartRateSamples = hrs
         }
         // Keep chart X domain aligned to “now” once when overlay applies (not on every OAuth/profile ping).
+        // Assign start before end so we never publish the transient pair (distantPast … now) from @Published defaults.
         let chartEnd = Date()
+        let chartStart = chartEnd.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
+        metricsChartStart = chartStart
         metricsChartEnd = chartEnd
-        metricsChartStart = chartEnd.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
         if isOwnWaypoint {
             recomputeOwnDeviceMetricsHeartRateCharts()
         } else {
@@ -804,6 +825,35 @@ enum DeviceDetailConnectionTransport: Int {
             }
             applyFriendHeartRateTileFromMergedSources()
         }
+    }
+
+    /// Prefer waypoint-derived series when it reasonably fills the 12h window; otherwise keep the route API overlay
+    /// so `rebuildMetricsChartSeries()` after live MQTT / FRC does not replace a dense 12h route with a short CD tail.
+    private static func metricsSeriesPreferringRouteWhenCdSparse(
+        cd: [(date: Date, value: Double)],
+        route: [(date: Date, value: Double)],
+        windowStart: Date,
+        windowEnd: Date
+    ) -> [(date: Date, value: Double)] {
+        let baseSpan = max(60, windowEnd.timeIntervalSince(windowStart))
+        guard route.count >= 2 else {
+            return cd
+        }
+        guard cd.count >= 2 else {
+            return route
+        }
+        let cdSorted = cd.sorted { $0.date < $1.date }
+        let routeSorted = route.sorted { $0.date < $1.date }
+        let cdSpan = cdSorted.last!.date.timeIntervalSince(cdSorted.first!.date)
+        let routeSpan = routeSorted.last!.date.timeIntervalSince(routeSorted.first!.date)
+        let routeCoversWindow = routeSpan >= baseSpan * 0.38
+        let cdUnderfillsWindow = cdSpan < baseSpan * 0.42
+        let routeMuchDenser = routeSorted.count > max(48, cdSorted.count * 3) && routeSpan >= cdSpan * 1.08
+        let routeClearlyWiderTimeline = routeSpan > cdSpan + 12 * 60
+        if routeCoversWindow && (cdUnderfillsWindow || routeMuchDenser || routeClearlyWiderTimeline) {
+            return routeSorted
+        }
+        return cdSorted
     }
 
     /// Local dense samples plus route API; API replaces local points within `mergeEpsilonSeconds`.

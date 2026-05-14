@@ -3015,27 +3015,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
     [self.mapView setCamera:cam animated:NO];
 }
 
-- (BOOL)isSelectedFriendEquivalentToOwnDeviceForLiveTopic:(NSString *)topic selectedFriend:(Friend *)selected {
-    if (!selected || !topic.length) {
-        return NO;
-    }
-    NSManagedObjectContext *moc = CoreData.sharedInstance.mainMOC;
-    NSString *generalTopic = [Settings theGeneralTopicInMOC:moc];
-    if (!generalTopic.length || ![topic isEqualToString:generalTopic]) {
-        return NO;
-    }
-    if ([selected.topic isEqualToString:generalTopic]) {
-        return YES;
-    }
-    NSString *ownTrackerId = [Settings stringForKey:@"trackerid_preference" inMOC:moc];
-    if (ownTrackerId.length && [selected.effectiveTid isEqualToString:ownTrackerId]) {
-        DDLogInfo(@"[Follow] treating selected topic=%@ as own-device alias for incoming topic=%@",
-                  selected.topic ?: @"(nil)", topic);
-        return YES;
-    }
-    return NO;
-}
-
 - (void)liveFriendLocationUpdate:(NSNotification *)note {
     NSString *topic = note.userInfo[@"topic"];
     double lat = [note.userInfo[@"lat"] doubleValue];
@@ -3107,8 +3086,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (!selected) {
         return;
     }
-    if (![selected.topic isEqualToString:topic] &&
-        ![self isSelectedFriendEquivalentToOwnDeviceForLiveTopic:topic selectedFriend:selected]) {
+    if (![selected.topic isEqualToString:topic]) {
         return;
     }
     [self rebuildLiveTrackForTopic:topic];
@@ -3121,10 +3099,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         double heading = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
         [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
 
-        BOOL topicMatchesFollow =
-            self.followFriend &&
-            ([self.followFriend.topic isEqualToString:topic] ||
-             [self isSelectedFriendEquivalentToOwnDeviceForLiveTopic:topic selectedFriend:self.followFriend]);
+        BOOL topicMatchesFollow = self.followFriend && [self.followFriend.topic isEqualToString:topic];
         if (self.followEnabled && topicMatchesFollow && !self.followTemporarilySuspendedByGesture) {
             if (heading == heading) {
                 self.followHeadingTargetNumber = @(OTNormalizeHeadingDegrees(heading));

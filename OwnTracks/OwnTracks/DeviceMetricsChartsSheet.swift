@@ -1,25 +1,127 @@
 import SwiftUI
 import Charts
 
+// MARK: - Shared metrics chart time window (12h base, optional zoom)
+
+private enum MetricsChartDomainMath {
+    /// Minimum visible window when zoomed (10 minutes).
+    static let minZoomSpan: TimeInterval = 10 * 60
+
+    static func effectiveVisible(visible: ClosedRange<Date>?, base: ClosedRange<Date>) -> ClosedRange<Date> {
+        guard let v = visible else { return base }
+        return clampInside(v, base: base)
+    }
+
+    static func clampInside(_ inner: ClosedRange<Date>, base: ClosedRange<Date>) -> ClosedRange<Date> {
+        let blo = base.lowerBound
+        let bhi = base.upperBound
+        let lo = max(inner.lowerBound, blo)
+        let hi = min(inner.upperBound, bhi)
+        if hi <= lo {
+            return base
+        }
+        let maxSpan = bhi.timeIntervalSince(blo)
+        let span = hi.timeIntervalSince(lo)
+        if span > maxSpan {
+            return base
+        }
+        return lo...hi
+    }
+
+    /// `nil` when the window is effectively the full base span (reset zoom binding).
+    static func normalizedVisible(domain: ClosedRange<Date>, base: ClosedRange<Date>) -> ClosedRange<Date>? {
+        let maxSpan = base.upperBound.timeIntervalSince(base.lowerBound)
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        if span >= maxSpan * 0.995 { return nil }
+        return clampInside(domain, base: base)
+    }
+
+    static func domainByPinch(
+        domain: ClosedRange<Date>,
+        base: ClosedRange<Date>,
+        magnification: CGFloat,
+        anchor: Date
+    ) -> ClosedRange<Date> {
+        let mag = max(0.01, Double(magnification))
+        let span0 = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        let maxSpan = base.upperBound.timeIntervalSince(base.lowerBound)
+        var span = span0 / mag
+        span = min(max(span, minZoomSpan), maxSpan)
+        let anchorFrac = anchor.timeIntervalSince(domain.lowerBound) / max(span0, 1e-9)
+        let clampedAnchor = min(max(anchor, base.lowerBound), base.upperBound)
+        var lo = clampedAnchor.addingTimeInterval(-span * anchorFrac)
+        var hi = lo.addingTimeInterval(span)
+        if hi > base.upperBound {
+            hi = base.upperBound
+            lo = hi.addingTimeInterval(-span)
+            lo = max(lo, base.lowerBound)
+            hi = min(lo.addingTimeInterval(span), base.upperBound)
+        }
+        if lo < base.lowerBound {
+            lo = base.lowerBound
+            hi = min(lo.addingTimeInterval(span), base.upperBound)
+        }
+        if hi <= lo { return base }
+        return lo...hi
+    }
+
+    static func domainByPan(domain: ClosedRange<Date>, base: ClosedRange<Date>, deltaTime: TimeInterval) -> ClosedRange<Date> {
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        var lo = domain.lowerBound.addingTimeInterval(deltaTime)
+        var hi = lo.addingTimeInterval(span)
+        if hi > base.upperBound {
+            hi = base.upperBound
+            lo = hi.addingTimeInterval(-span)
+        }
+        if lo < base.lowerBound {
+            lo = base.lowerBound
+            hi = lo.addingTimeInterval(span)
+        }
+        if hi <= lo { return base }
+        return lo...hi
+    }
+}
+
 /// Full-screen sheet: speed, altitude, heart rate, and battery over the same 12-hour window.
-/// Shared scrub time + vertical `RuleMark` per chart. Touch or drag any chart plot to scrub;
-/// vertical scrolling works best starting outside chart plot areas. Double-tap a chart or Clear to reset.
+/// Shared scrub time + vertical `RuleMark` per chart. Pinch zooms the visible time slice (all charts);
+/// when zoomed, drag horizontally to pan. Touch or drag to scrub when not panning.
+/// Double-tap a chart or Clear to reset scrub (and zoom). Vertical scrolling works best outside plot areas.
 struct DeviceMetricsChartsSheet: View {
     @ObservedObject var vm: DeviceDetailViewModel
     @Environment(\.dismiss) private var dismiss
 
-    /// Shared X position for vertical rules across all charts (same `Date` in `timeDomain`).
+    /// Shared X position for vertical rules across all charts (same `Date` in `chartXDomain`).
     @State private var scrubTime: Date?
+    /// Optional subrange of `baseTimeDomain`; `nil` means show the full 12h base window on all charts.
+    @State private var visibleXDomain: ClosedRange<Date>? = nil
 
-    private var timeDomain: ClosedRange<Date> {
+    /// VM-backed 12h window (validated); pinch/pan never extend outside this range.
+    private var baseTimeDomain: ClosedRange<Date> {
         let a = vm.metricsChartStart
         let b = vm.metricsChartEnd
-        if a <= b {
-            let span = b.timeIntervalSince(a)
-            if span >= 60 { return a...b }
-        }
         let now = Date()
-        return now.addingTimeInterval(-12 * 3600)...now
+        let fallback = now.addingTimeInterval(-12 * 3600)...now
+        if a == .distantPast || b == .distantPast || a > b {
+            return fallback
+        }
+        let span = b.timeIntervalSince(a)
+        if span < 60 || span > 25 * 3600 {
+            return fallback
+        }
+        return a...b
+    }
+
+    /// Effective X-axis domain for every chart (shared zoom/pan).
+    private var chartXDomain: ClosedRange<Date> {
+        MetricsChartDomainMath.effectiveVisible(visible: visibleXDomain, base: baseTimeDomain)
+    }
+
+    private var isZoomedBelowBase: Bool {
+        let base = baseTimeDomain
+        let cur = chartXDomain
+        let baseSpan = base.upperBound.timeIntervalSince(base.lowerBound)
+        let curSpan = cur.upperBound.timeIntervalSince(cur.lowerBound)
+        return curSpan < baseSpan * 0.995
     }
 
     /// Fixed width for leading Y value labels so plot areas line up and scrub `RuleMark`s align visually.
@@ -61,8 +163,8 @@ struct DeviceMetricsChartsSheet: View {
 
                     Text(
                         NSLocalizedString(
-                            "Tap any chart to place the time line, drag to scrub. Double-tap a chart or tap Clear to remove.",
-                            comment: "Hint for metrics scrubbing on any chart"
+                            "Pinch on any chart to zoom the time window (all charts). Drag horizontally to pan when zoomed. Tap or drag to scrub.",
+                            comment: "Hint for metrics pinch zoom, pan, and scrub"
                         )
                     )
                     .font(.caption2)
@@ -72,7 +174,10 @@ struct DeviceMetricsChartsSheet: View {
                         title: NSLocalizedString("Speed", comment: "Chart title"),
                         unit: vm.speedUnit,
                         data: vm.metricsChartSpeedHistory,
-                        timeDomain: timeDomain,
+                        baseDomain: baseTimeDomain,
+                        chartXDomain: chartXDomain,
+                        visibleChartXDomain: $visibleXDomain,
+                        isZoomedBelowBase: isZoomedBelowBase,
                         color: .blue,
                         scrubTime: $scrubTime,
                         yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
@@ -83,7 +188,10 @@ struct DeviceMetricsChartsSheet: View {
                         title: NSLocalizedString("Altitude", comment: "Chart title"),
                         unit: vm.altitudeUnit,
                         data: vm.metricsChartAltitudeHistory,
-                        timeDomain: timeDomain,
+                        baseDomain: baseTimeDomain,
+                        chartXDomain: chartXDomain,
+                        visibleChartXDomain: $visibleXDomain,
+                        isZoomedBelowBase: isZoomedBelowBase,
                         color: .indigo,
                         scrubTime: $scrubTime,
                         yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
@@ -98,7 +206,10 @@ struct DeviceMetricsChartsSheet: View {
                             ),
                             unit: "bpm",
                             data: vm.metricsChartLocalPlusApiHeartRateHistory,
-                            timeDomain: timeDomain,
+                            baseDomain: baseTimeDomain,
+                            chartXDomain: chartXDomain,
+                            visibleChartXDomain: $visibleXDomain,
+                            isZoomedBelowBase: isZoomedBelowBase,
                             color: .red,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
@@ -115,7 +226,10 @@ struct DeviceMetricsChartsSheet: View {
                             ),
                             unit: "bpm",
                             data: vm.metricsChartHealthKitOnlyHeartRateHistory,
-                            timeDomain: timeDomain,
+                            baseDomain: baseTimeDomain,
+                            chartXDomain: chartXDomain,
+                            visibleChartXDomain: $visibleXDomain,
+                            isZoomedBelowBase: isZoomedBelowBase,
                             color: .pink,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
@@ -130,7 +244,10 @@ struct DeviceMetricsChartsSheet: View {
                             title: NSLocalizedString("Heart rate", comment: "Chart title"),
                             unit: "bpm",
                             data: vm.metricsChartHeartRateHistory,
-                            timeDomain: timeDomain,
+                            baseDomain: baseTimeDomain,
+                            chartXDomain: chartXDomain,
+                            visibleChartXDomain: $visibleXDomain,
+                            isZoomedBelowBase: isZoomedBelowBase,
                             color: .red,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
@@ -142,7 +259,10 @@ struct DeviceMetricsChartsSheet: View {
                         title: NSLocalizedString("Battery", comment: "Chart title"),
                         unit: "%",
                         data: vm.metricsChartBatteryHistory,
-                        timeDomain: timeDomain,
+                        baseDomain: baseTimeDomain,
+                        chartXDomain: chartXDomain,
+                        visibleChartXDomain: $visibleXDomain,
+                        isZoomedBelowBase: isZoomedBelowBase,
                         color: .green,
                         valueScale: { $0 * 100 },
                         scrubTime: $scrubTime,
@@ -159,9 +279,10 @@ struct DeviceMetricsChartsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if scrubTime != nil {
+                    if scrubTime != nil || visibleXDomain != nil {
                         Button(NSLocalizedString("Clear", comment: "Clear scrub line on metrics charts")) {
                             scrubTime = nil
+                            visibleXDomain = nil
                         }
                     }
                 }
@@ -176,6 +297,8 @@ struct DeviceMetricsChartsSheet: View {
                 vm.refreshLiveHeartRateIfNeeded()
                 vm.refreshLocalPlusApiHeartRateMetricsIfNeeded()
             }
+            .onChange(of: vm.metricsChartStart) { _ in visibleXDomain = nil }
+            .onChange(of: vm.metricsChartEnd) { _ in visibleXDomain = nil }
         }
         .presentationDetents([.large])
     }
@@ -230,13 +353,22 @@ private struct CombinedScrubReadout: View {
     let speedUnit: String
     let altitudeUnit: String
 
+    @Environment(\.calendar) private var calendar
+
+    private var scrubTimeFormat: Date.FormatStyle {
+        if calendar.isDate(scrubTime, inSameDayAs: Date()) {
+            return .dateTime.hour().minute().second()
+        }
+        return .dateTime.month(.abbreviated).day().hour().minute().second()
+    }
+
     private var emDash: String {
         NSLocalizedString("—", comment: "Placeholder when a metric has no sample at scrub time")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(scrubTime, format: .dateTime.hour().minute().second())
+            Text(scrubTime, format: scrubTimeFormat)
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
@@ -290,13 +422,16 @@ private struct AlignedMetricChart: View {
     let title: String
     let unit: String
     let data: [(date: Date, value: Double)]
-    let timeDomain: ClosedRange<Date>
+    let baseDomain: ClosedRange<Date>
+    let chartXDomain: ClosedRange<Date>
+    @Binding var visibleChartXDomain: ClosedRange<Date>?
+    let isZoomedBelowBase: Bool
     let color: Color
     /// Display values on Y axis labels (e.g. battery fraction → percent).
     var valueScale: (Double) -> Double = { $0 }
     @Binding var scrubTime: Date?
     let yAxisLabelColumnWidth: CGFloat
-    /// When true, chart plot accepts touch / drag scrub gestures (shared `scrubTime`).
+    /// When true, chart plot accepts pinch, pan, and scrub (shared zoom + `scrubTime`).
     let handlesScrubGesture: Bool
     var subtitle: String? = nil
 
@@ -389,6 +524,7 @@ private struct AlignedMetricChart: View {
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
         .onTapGesture(count: 2) {
             scrubTime = nil
+            visibleChartXDomain = nil
         }
     }
 
@@ -396,12 +532,12 @@ private struct AlignedMetricChart: View {
         Chart {
             if data.count >= 2 {
                 PointMark(
-                    x: .value("Time", timeDomain.lowerBound),
+                    x: .value("Time", chartXDomain.lowerBound),
                     y: .value(unit, padYForXAxisAnchor)
                 )
                 .opacity(0)
                 PointMark(
-                    x: .value("Time", timeDomain.upperBound),
+                    x: .value("Time", chartXDomain.upperBound),
                     y: .value(unit, padYForXAxisAnchor)
                 )
                 .opacity(0)
@@ -417,14 +553,14 @@ private struct AlignedMetricChart: View {
                     )
                     .foregroundStyle(color.opacity(0.12))
                 }
-                if let t = scrubTime, t >= timeDomain.lowerBound, t <= timeDomain.upperBound {
+                if let t = scrubTime, t >= chartXDomain.lowerBound, t <= chartXDomain.upperBound {
                     RuleMark(x: .value("Scrub", t))
                         .foregroundStyle(Color.primary.opacity(0.55))
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                 }
             }
         }
-        .chartXScale(domain: timeDomain)
+        .chartXScale(domain: chartXDomain)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 7)) { value in
                 AxisGridLine()
@@ -462,56 +598,162 @@ private struct AlignedMetricChart: View {
     @ViewBuilder
     private var chartWithOptionalScrubOverlay: some View {
         if handlesScrubGesture, data.count >= 2 {
-            chartCore.chartScrubOverlay(timeDomain: timeDomain, scrubTime: $scrubTime)
+            chartCore.chartMetricsPlotInteractions(
+                baseDomain: baseDomain,
+                chartXDomain: chartXDomain,
+                visibleDomain: $visibleChartXDomain,
+                scrubTime: $scrubTime,
+                isZoomedBelowBase: isZoomedBelowBase
+            )
         } else {
             chartCore
         }
     }
 }
 
-// MARK: - Scrub overlay (ChartProxy)
+// MARK: - Chart overlay (pinch zoom, pan, scrub)
+
+private struct MetricsChartOverlayHost: View {
+    let proxy: ChartProxy
+    let baseDomain: ClosedRange<Date>
+    let chartXDomain: ClosedRange<Date>
+    @Binding var visibleDomain: ClosedRange<Date>?
+    @Binding var scrubTime: Date?
+    let isZoomedBelowBase: Bool
+
+    @State private var pinchStartDomain: ClosedRange<Date>?
+    @State private var pinchAnchorDate: Date?
+    @State private var dragMode: DragIntent = .undecided
+    @State private var panDomainAtLock: ClosedRange<Date>?
+    @State private var panTranslationAtLock: CGFloat = 0
+
+    private enum DragIntent {
+        case undecided
+        case pan
+        case scrub
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .simultaneousGesture(magnifyGesture(geo: geo))
+                .simultaneousGesture(mainDragGesture(geo: geo))
+                .simultaneousGesture(
+                    TapGesture(count: 2)
+                        .onEnded {
+                            scrubTime = nil
+                            visibleDomain = nil
+                        }
+                )
+        }
+    }
+
+    private func plotFrame(in geo: GeometryProxy) -> CGRect {
+        geo[proxy.plotAreaFrame]
+    }
+
+    private func anchorAtPlotCenter(geo: GeometryProxy) -> Date? {
+        let pf = plotFrame(in: geo)
+        let loc = CGPoint(x: pf.midX - pf.origin.x, y: pf.midY - pf.origin.y)
+        return proxy.value(at: loc, as: (Date, Double).self)?.0
+    }
+
+    private func magnifyGesture(geo: GeometryProxy) -> some Gesture {
+        MagnificationGesture()
+            .onChanged { mag in
+                if pinchStartDomain == nil {
+                    let d0 = MetricsChartDomainMath.effectiveVisible(
+                        visible: visibleDomain,
+                        base: baseDomain
+                    )
+                    pinchStartDomain = d0
+                    pinchAnchorDate = anchorAtPlotCenter(geo: geo)
+                        ?? d0.lowerBound.addingTimeInterval(d0.upperBound.timeIntervalSince(d0.lowerBound) / 2)
+                }
+                guard let d0 = pinchStartDomain, let anch = pinchAnchorDate else { return }
+                let d1 = MetricsChartDomainMath.domainByPinch(
+                    domain: d0,
+                    base: baseDomain,
+                    magnification: mag,
+                    anchor: anch
+                )
+                visibleDomain = MetricsChartDomainMath.normalizedVisible(domain: d1, base: baseDomain)
+            }
+            .onEnded { _ in
+                pinchStartDomain = nil
+                pinchAnchorDate = nil
+            }
+    }
+
+    private func mainDragGesture(geo: GeometryProxy) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let t = value.translation
+                let dist = hypot(t.width, t.height)
+                let pf = plotFrame(in: geo)
+                let plotW = max(Double(pf.width), 1)
+
+                if dragMode == .undecided && dist > 14 {
+                    if isZoomedBelowBase && abs(t.width) > abs(t.height) + 6 {
+                        dragMode = .pan
+                        panDomainAtLock = MetricsChartDomainMath.effectiveVisible(
+                            visible: visibleDomain,
+                            base: baseDomain
+                        )
+                        panTranslationAtLock = t.width
+                    } else {
+                        dragMode = .scrub
+                    }
+                }
+
+                switch dragMode {
+                case .pan:
+                    guard let dLock = panDomainAtLock else { return }
+                    let deltaW = value.translation.width - panTranslationAtLock
+                    let span = dLock.upperBound.timeIntervalSince(dLock.lowerBound)
+                    let dt = -Double(deltaW) / plotW * span
+                    let d1 = MetricsChartDomainMath.domainByPan(domain: dLock, base: baseDomain, deltaTime: dt)
+                    visibleDomain = MetricsChartDomainMath.normalizedVisible(domain: d1, base: baseDomain)
+
+                case .scrub, .undecided:
+                    let loc = CGPoint(
+                        x: value.location.x - pf.origin.x,
+                        y: value.location.y - pf.origin.y
+                    )
+                    if let pair = proxy.value(at: loc, as: (Date, Double).self) {
+                        scrubTime = clampedDate(pair.0, to: chartXDomain)
+                    }
+                }
+            }
+            .onEnded { _ in
+                dragMode = .undecided
+                panDomainAtLock = nil
+                panTranslationAtLock = 0
+            }
+    }
+}
 
 private extension View {
-    /// Tap places the scrub line immediately; drag updates it. Double-tap clears. Plot area does not scroll the sheet vertically.
-    func chartScrubOverlay(timeDomain: ClosedRange<Date>, scrubTime: Binding<Date?>) -> some View {
+    /// Pinch zooms time axis (shared `visibleDomain`); when zoomed, dominant horizontal drag pans; otherwise drag scrubs.
+    /// Double-tap clears scrub and zoom.
+    func chartMetricsPlotInteractions(
+        baseDomain: ClosedRange<Date>,
+        chartXDomain: ClosedRange<Date>,
+        visibleDomain: Binding<ClosedRange<Date>?>,
+        scrubTime: Binding<Date?>,
+        isZoomedBelowBase: Bool
+    ) -> some View {
         chartOverlay { proxy in
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        SpatialTapGesture()
-                            .onEnded { event in
-                                let origin = geo[proxy.plotAreaFrame].origin
-                                let loc = CGPoint(
-                                    x: event.location.x - origin.x,
-                                    y: event.location.y - origin.y
-                                )
-                                if let pair = proxy.value(at: loc, as: (Date, Double).self) {
-                                    scrubTime.wrappedValue = clampedDate(pair.0, to: timeDomain)
-                                }
-                            }
-                    )
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                let origin = geo[proxy.plotAreaFrame].origin
-                                let loc = CGPoint(
-                                    x: value.location.x - origin.x,
-                                    y: value.location.y - origin.y
-                                )
-                                if let pair = proxy.value(at: loc, as: (Date, Double).self) {
-                                    scrubTime.wrappedValue = clampedDate(pair.0, to: timeDomain)
-                                }
-                            }
-                    )
-                    .simultaneousGesture(
-                        TapGesture(count: 2)
-                            .onEnded {
-                                scrubTime.wrappedValue = nil
-                            }
-                    )
-            }
+            MetricsChartOverlayHost(
+                proxy: proxy,
+                baseDomain: baseDomain,
+                chartXDomain: chartXDomain,
+                visibleDomain: visibleDomain,
+                scrubTime: scrubTime,
+                isZoomedBelowBase: isZoomedBelowBase
+            )
         }
     }
 }
