@@ -20,6 +20,12 @@ double OTNormalizeHeadingDegrees(double degrees);
 /// Initial bearing from `from` to `to` (clockwise from true north), or NAN if undefined.
 double OTBearingDegreesBetween(CLLocationCoordinate2D from, CLLocationCoordinate2D to);
 
+/// Signed shortest rotation from `fromDeg` to `toDeg` in degrees (−180, 180].
+double OTSignedHeadingDeltaDegrees(double fromDeg, double toDeg);
+
+/// Clamp `value` to `[minValue, maxValue]`.
+double OTClampDouble(double value, double minValue, double maxValue);
+
 /*
  Effective map heading for MKMapCamera while following.
 

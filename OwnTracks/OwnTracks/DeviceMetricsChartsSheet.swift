@@ -2,8 +2,8 @@ import SwiftUI
 import Charts
 
 /// Full-screen sheet: speed, altitude, heart rate, and battery over the same 12-hour window.
-/// Shared scrub time + vertical `RuleMark` per chart (Strava-style). Drag on the **speed** chart
-/// plot to scrub (avoids fighting `ScrollView`); double-tap any chart or use Clear to reset.
+/// Shared scrub time + vertical `RuleMark` per chart. Touch or drag any chart plot to scrub;
+/// vertical scrolling works best starting outside chart plot areas. Double-tap a chart or Clear to reset.
 struct DeviceMetricsChartsSheet: View {
     @ObservedObject var vm: DeviceDetailViewModel
     @Environment(\.dismiss) private var dismiss
@@ -25,11 +25,31 @@ struct DeviceMetricsChartsSheet: View {
     /// Fixed width for leading Y value labels so plot areas line up and scrub `RuleMark`s align visually.
     private static let yAxisLabelColumnWidth: CGFloat = 56
 
+    /// Primary heart rate series for combined scrub readout (matches dominant HR chart).
+    private var combinedReadoutHeartRateHistory: [(date: Date, value: Double)] {
+        if vm.showsDualHeartRateMetricsCharts {
+            return vm.metricsChartLocalPlusApiHeartRateHistory
+        }
+        return vm.metricsChartHeartRateHistory
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 // Leading label width is fixed across charts so vertical RuleMarks at the same Date share one X.
                 VStack(alignment: .leading, spacing: 16) {
+                    if let t = scrubTime {
+                        CombinedScrubReadout(
+                            scrubTime: t,
+                            speed: nearestPoint(in: vm.metricsChartSpeedHistory, to: t),
+                            altitude: nearestPoint(in: vm.metricsChartAltitudeHistory, to: t),
+                            heartRate: nearestPoint(in: combinedReadoutHeartRateHistory, to: t),
+                            batteryFraction: nearestPoint(in: vm.metricsChartBatteryHistory, to: t),
+                            speedUnit: vm.speedUnit,
+                            altitudeUnit: vm.altitudeUnit
+                        )
+                    }
+
                     Text(
                         NSLocalizedString(
                             "Last 12 hours",
@@ -41,8 +61,8 @@ struct DeviceMetricsChartsSheet: View {
 
                     Text(
                         NSLocalizedString(
-                            "Drag on the speed chart to scrub. Double-tap a chart or tap Clear to remove the line.",
-                            comment: "Hint for Strava-style metrics scrubbing"
+                            "Tap any chart to place the time line, drag to scrub. Double-tap a chart or tap Clear to remove.",
+                            comment: "Hint for metrics scrubbing on any chart"
                         )
                     )
                     .font(.caption2)
@@ -67,7 +87,7 @@ struct DeviceMetricsChartsSheet: View {
                         color: .indigo,
                         scrubTime: $scrubTime,
                         yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                        handlesScrubGesture: false
+                        handlesScrubGesture: true
                     )
 
                     if vm.showsDualHeartRateMetricsCharts {
@@ -82,7 +102,7 @@ struct DeviceMetricsChartsSheet: View {
                             color: .red,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                            handlesScrubGesture: false,
+                            handlesScrubGesture: true,
                             subtitle: NSLocalizedString(
                                 "Dense on-device samples with route API overlaid (server wins within ±30s).",
                                 comment: "Subtitle explaining local+server heart rate chart merge"
@@ -99,7 +119,7 @@ struct DeviceMetricsChartsSheet: View {
                             color: .pink,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                            handlesScrubGesture: false,
+                            handlesScrubGesture: true,
                             subtitle: NSLocalizedString(
                                 "HealthKit samples only, for comparison.",
                                 comment: "Subtitle for HealthKit-only HR chart"
@@ -114,7 +134,7 @@ struct DeviceMetricsChartsSheet: View {
                             color: .red,
                             scrubTime: $scrubTime,
                             yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                            handlesScrubGesture: false
+                            handlesScrubGesture: true
                         )
                     }
 
@@ -127,7 +147,7 @@ struct DeviceMetricsChartsSheet: View {
                         valueScale: { $0 * 100 },
                         scrubTime: $scrubTime,
                         yAxisLabelColumnWidth: Self.yAxisLabelColumnWidth,
-                        handlesScrubGesture: false
+                        handlesScrubGesture: true
                     )
                 }
                 .padding(16)
@@ -199,6 +219,71 @@ private func nearestPoint(in data: [(date: Date, value: Double)], to target: Dat
     return dtBefore <= dtAfter ? before : after
 }
 
+// MARK: - Combined scrub readout
+
+private struct CombinedScrubReadout: View {
+    let scrubTime: Date
+    let speed: (date: Date, value: Double)?
+    let altitude: (date: Date, value: Double)?
+    let heartRate: (date: Date, value: Double)?
+    let batteryFraction: (date: Date, value: Double)?
+    let speedUnit: String
+    let altitudeUnit: String
+
+    private var emDash: String {
+        NSLocalizedString("—", comment: "Placeholder when a metric has no sample at scrub time")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(scrubTime, format: .dateTime.hour().minute().second())
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    chip(
+                        title: NSLocalizedString("Speed", comment: "Combined scrub: speed column title"),
+                        value: speed.map { "\(Int($0.value.rounded())) \(speedUnit)" } ?? emDash
+                    )
+                    Text("·").foregroundStyle(.tertiary)
+                    chip(
+                        title: NSLocalizedString("Alt", comment: "Combined scrub: short altitude label"),
+                        value: altitude.map { "\(Int($0.value.rounded())) \(altitudeUnit)" } ?? emDash
+                    )
+                    Text("·").foregroundStyle(.tertiary)
+                    chip(
+                        title: NSLocalizedString("HR", comment: "Combined scrub: short heart rate label"),
+                        value: heartRate.map { "\(Int($0.value.rounded())) bpm" } ?? emDash
+                    )
+                    Text("·").foregroundStyle(.tertiary)
+                    chip(
+                        title: NSLocalizedString("Bat", comment: "Combined scrub: short battery label"),
+                        value: batteryFraction.map { "\(Int(($0.value * 100).rounded()))%" } ?? emDash
+                    )
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .cornerRadius(12)
+    }
+
+    private func chip(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospacedDigit())
+                .fontWeight(.semibold)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
 // MARK: - AlignedMetricChart
 
 private struct AlignedMetricChart: View {
@@ -211,7 +296,7 @@ private struct AlignedMetricChart: View {
     var valueScale: (Double) -> Double = { $0 }
     @Binding var scrubTime: Date?
     let yAxisLabelColumnWidth: CGFloat
-    /// Only one chart installs the drag overlay so vertical scrolling stays natural.
+    /// When true, chart plot accepts touch / drag scrub gestures (shared `scrubTime`).
     let handlesScrubGesture: Bool
     var subtitle: String? = nil
 
@@ -296,15 +381,15 @@ private struct AlignedMetricChart: View {
             }
 
             chartWithOptionalScrubOverlay
-                .onTapGesture(count: 2) {
-                    scrubTime = nil
-                }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .systemBackground))
         .cornerRadius(14)
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .onTapGesture(count: 2) {
+            scrubTime = nil
+        }
     }
 
     private var chartCore: some View {
@@ -387,7 +472,7 @@ private struct AlignedMetricChart: View {
 // MARK: - Scrub overlay (ChartProxy)
 
 private extension View {
-    /// Horizontal scrub: `minimumDistance` reduces accidental picks while scrolling the sheet.
+    /// Tap places the scrub line immediately; drag updates it. Double-tap clears. Plot area does not scroll the sheet vertically.
     func chartScrubOverlay(timeDomain: ClosedRange<Date>, scrubTime: Binding<Date?>) -> some View {
         chartOverlay { proxy in
             GeometryReader { geo in
@@ -395,10 +480,21 @@ private extension View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 14)
+                        SpatialTapGesture()
+                            .onEnded { event in
+                                let origin = geo[proxy.plotAreaFrame].origin
+                                let loc = CGPoint(
+                                    x: event.location.x - origin.x,
+                                    y: event.location.y - origin.y
+                                )
+                                if let pair = proxy.value(at: loc, as: (Date, Double).self) {
+                                    scrubTime.wrappedValue = clampedDate(pair.0, to: timeDomain)
+                                }
+                            }
+                    )
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                let trans = value.translation
-                                guard abs(trans.width) >= abs(trans.height) - 2 else { return }
                                 let origin = geo[proxy.plotAreaFrame].origin
                                 let loc = CGPoint(
                                     x: value.location.x - origin.x,
@@ -407,6 +503,12 @@ private extension View {
                                 if let pair = proxy.value(at: loc, as: (Date, Double).self) {
                                     scrubTime.wrappedValue = clampedDate(pair.0, to: timeDomain)
                                 }
+                            }
+                    )
+                    .simultaneousGesture(
+                        TapGesture(count: 2)
+                            .onEnded {
+                                scrubTime.wrappedValue = nil
                             }
                     )
             }

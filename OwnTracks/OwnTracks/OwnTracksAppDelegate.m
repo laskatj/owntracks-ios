@@ -1354,7 +1354,8 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
 
         NSString *type = dictionary[@"_type"];
 
-        // Short-circuit: friend location messages are live UI signals only — no Core Data write.
+        // Friend location: persist via OwnTracking (Friend/Waypoint) then mirror to the map with
+        // OTLiveFriendLocation so Device Detail and Friends list stay consistent with MQTT.
         BOOL isFriendLocation = (!ownDevice &&
                                   [type isKindOfClass:[NSString class]] &&
                                   [type isEqualToString:@"location"] &&
@@ -1362,6 +1363,10 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
                                   [dictionary[@"lon"] isKindOfClass:[NSNumber class]]);
 
         if (isFriendLocation) {
+            (void)[[OwnTracking sharedInstance] processMessage:topic
+                                                          data:data
+                                                      retained:retained
+                                                       context:CoreData.sharedInstance.queuedMOC];
             [strongSelf postLiveFriendLocationForTopic:device dictionary:dictionary];
         } else {
             // All other messages (cards, own-device messages, etc.) go through the normal path.

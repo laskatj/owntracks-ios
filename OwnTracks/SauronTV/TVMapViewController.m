@@ -23,15 +23,6 @@ static NSString * const kPinId = @"FriendPin";
 /// Same notification name as iOS OwnTracksAppDelegate / TVAppDelegate.
 static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocation";
 
-static double OTSignedHeadingDeltaDegrees(double fromDeg, double toDeg) {
-    double delta = fmod((toDeg - fromDeg + 540.0), 360.0) - 180.0;
-    return delta;
-}
-
-static double OTClampDouble(double value, double minValue, double maxValue) {
-    return MIN(MAX(value, minValue), maxValue);
-}
-
 // Carries the MQTT topic on the annotation so viewForAnnotation: can look up the image.
 @interface TVFriendAnnotation : MKPointAnnotation
 @property (copy, nonatomic) NSString *topic;
