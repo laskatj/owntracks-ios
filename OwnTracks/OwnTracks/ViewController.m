@@ -2146,10 +2146,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
     if (self.followEnabled && self.followFriend) {
-        DDLogInfo(@"[Follow] user gesture — suspend follow recenter; pause course-up; keep selection + route");
+        DDLogInfo(@"[Follow] user gesture — suspend follow recenter; keep selection + route (heading unchanged for pinch/tilt)");
         [self stopFollowLink];
         self.followTemporarilySuspendedByGesture = YES;
-        self.followHeadingLockPausedByUserGesture = YES;
     }
 }
 

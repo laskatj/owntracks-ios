@@ -225,6 +225,26 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     };
 }
 
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    // Fallback when focus / internal MapKit routing does not deliver presses to `TVInteractiveMapView`.
+    if (self.selectedTopic.length) {
+        BOOL handled = NO;
+        for (UIPress *p in presses) {
+            if (p.type == UIPressTypeUpArrow) {
+                [self adjustZoom:YES];
+                handled = YES;
+            } else if (p.type == UIPressTypeDownArrow) {
+                [self adjustZoom:NO];
+                handled = YES;
+            }
+        }
+        if (handled) {
+            return;
+        }
+    }
+    [super pressesBegan:presses withEvent:event];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.annotations = [NSMutableDictionary dictionary];
@@ -269,7 +289,8 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
             NSLog(@"[zoomfix] window GR: %@", name);
             if ([name containsString:@"Focus"] || [name containsString:@"TabBar"]) {
                 [gr requireGestureRecognizerToFail:self.mapView.swipeUpGR];
-                NSLog(@"[zoomfix] LINKED: %@ must wait for swipeUpGR to fail first", name);
+                [gr requireGestureRecognizerToFail:self.mapView.swipeDownGR];
+                NSLog(@"[zoomfix] LINKED: %@ must wait for swipeUpGR/swipeDownGR to fail first", name);
             }
         }
         // UILayoutContainerView-level GRs (includes _UITabBarTouchDetectionGestureRecognizer)
@@ -280,7 +301,8 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
                 for (UIGestureRecognizer *gr in v.gestureRecognizers) {
                     NSString *name = NSStringFromClass([gr class]);
                     [gr requireGestureRecognizerToFail:self.mapView.swipeUpGR];
-                    NSLog(@"[zoomfix] LINKED: %@ (on %@) must wait for swipeUpGR to fail first", name, viewName);
+                    [gr requireGestureRecognizerToFail:self.mapView.swipeDownGR];
+                    NSLog(@"[zoomfix] LINKED: %@ (on %@) must wait for swipeUpGR/swipeDownGR to fail first", name, viewName);
                 }
             }
             v = v.superview;
@@ -978,8 +1000,10 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         d = MAX(120.0, MIN(d * factor, 4000000.0));
         cam.centerCoordinateDistance = d;
         cam.pitch = OTMaxFollowMapCameraPitch();
-        double heading = self.followHeadingDegreesNumber.doubleValue;
-        cam.heading = (self.followHeadingDegreesNumber && isfinite(heading)) ? heading : 0.0;
+        if (self.followHeadingDegreesNumber && isfinite(self.followHeadingDegreesNumber.doubleValue)) {
+            cam.heading = OTNormalizeHeadingDegrees(self.followHeadingDegreesNumber.doubleValue);
+        }
+        // else: keep `cam.heading` from the camera copy so zoom never snaps to north-up.
         [self.mapView setCamera:cam animated:YES];
         return;
     }
