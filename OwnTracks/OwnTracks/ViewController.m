@@ -28,6 +28,7 @@
 #import "SettingsTVC.h"
 #import "Settings.h"
 #import "OTMapFollowHeading.h"
+#import <math.h>
 #import "OTHeartRateMonitoring.h"
 #import "BluetoothHeartRateManager.h"
 #import "HealthKitHeartRateManager.h"
@@ -227,8 +228,17 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, strong) NSMutableDictionary<NSString *, MKPolyline *> *liveTrackPolylines;
 /// Per-friend smooth marker animators, keyed by friend.topic.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, FriendMarkerAnimator *> *friendAnimators;
-/// CADisplayLink that re-centers the map on the selected friend every frame.
+/// CADisplayLink: smooth camera center/heading toward the followed friend (`TVMapViewController` pattern).
 @property (nonatomic, strong, nullable) CADisplayLink *followLink;
+/// Latest finite course-up heading from `OTLiveFriendLocation` (nil = keep smoothing toward current render heading).
+@property (strong, nonatomic, nullable) NSNumber *followHeadingTargetNumber;
+/// Throttled / smoothed follow camera state (mirrors `TVMapViewController` follow tick).
+@property (assign, nonatomic) CFAbsoluteTime followCameraLastTickTime;
+@property (assign, nonatomic) CFAbsoluteTime followCameraLastApplyTime;
+@property (assign, nonatomic) CLLocationCoordinate2D followCameraTargetCenterCoord;
+@property (assign, nonatomic) CLLocationCoordinate2D followCameraRenderCenterCoord;
+@property (assign, nonatomic) double followCameraRenderHeadingDeg;
+@property (assign, nonatomic) BOOL followCameraHasSmootherState;
 /// Direct reference to the friend currently selected on the map/list.
 @property (nonatomic, weak, nullable) Friend *selectedFriend;
 /// Direct reference to the friend currently being followed (weak — Friend is owned by Core Data).
@@ -1278,6 +1288,8 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     }
     if (!self.followEnabled) {
         self.followFriend = nil;
+        self.followHeadingTargetNumber = nil;
+        [self stopFollowLink];
         return;
     }
     self.followFriend = f;
@@ -1287,9 +1299,15 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     if (wpHeading.cog && OTHeadingDegreesValid(wpHeading.cog.doubleValue)) {
         initialHeading = OTNormalizeHeadingDegrees(wpHeading.cog.doubleValue);
     }
+    if (initialHeading == initialHeading) {
+        self.followHeadingTargetNumber = @(initialHeading);
+    } else {
+        self.followHeadingTargetNumber = nil;
+    }
     [self applyFollow3DCameraToCoordinate:f.coordinate
                                   heading:initialHeading
                        preserveUserAltitude:YES];
+    [self startFollowLink];
 }
 
 /// Removes live-track `MKPolyline` overlays for all topics except `topic` (nil = remove all).
@@ -2128,10 +2146,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
     if (self.followEnabled && self.followFriend) {
-        DDLogInfo(@"[Follow] user gesture — suspend follow recenter; pause course-up; keep selection + route");
+        DDLogInfo(@"[Follow] user gesture — suspend follow recenter; keep selection + route (heading unchanged for pinch/tilt)");
         [self stopFollowLink];
         self.followTemporarilySuspendedByGesture = YES;
-        self.followHeadingLockPausedByUserGesture = YES;
     }
 }
 
@@ -2150,6 +2167,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
                                   heading:NAN
                        preserveUserAltitude:YES];
     DDLogInfo(@"[Follow] gesture ended — persisted follow zoom/pitch; resumed follow");
+    [self startFollowLink];
 }
 
 - (void)mapView:(MKMapView *)mapView didDeselectAnnotationView:(MKAnnotationView *)view {
@@ -2158,6 +2176,7 @@ calloutAccessoryControlTapped:(UIControl *)control {
         NSString *topic = friend.topic;
         DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
         [self stopFollowLink];
+        self.followHeadingTargetNumber = nil;
         self.selectedFriend = nil;
         self.followFriend = nil;
         self.followEnabled = YES;
@@ -2229,9 +2248,15 @@ calloutAccessoryControlTapped:(UIControl *)control {
         initialHeading = OTNormalizeHeadingDegrees(wpHeading.cog.doubleValue);
     }
     if (self.followEnabled) {
+        if (initialHeading == initialHeading) {
+            self.followHeadingTargetNumber = @(initialHeading);
+        } else {
+            self.followHeadingTargetNumber = nil;
+        }
         [self applyFollow3DCameraToCoordinate:friend.coordinate
                                       heading:initialHeading
                            preserveUserAltitude:NO];
+        [self startFollowLink];
     }
     if ([self.routeFetchedTopics containsObject:friend.topic]
             && self.liveTrackPoints[friend.topic].count >= 2) {
@@ -2240,6 +2265,15 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self fetchRouteForFriend:friend mapView:mapView];
     }
     [self updateRouteHistoryToggleVisibility];
+}
+
+- (void)resetFollowCameraSmootherState {
+    self.followCameraLastTickTime = 0;
+    self.followCameraLastApplyTime = 0;
+    self.followCameraTargetCenterCoord = kCLLocationCoordinate2DInvalid;
+    self.followCameraRenderCenterCoord = kCLLocationCoordinate2DInvalid;
+    self.followCameraRenderHeadingDeg = 0.0;
+    self.followCameraHasSmootherState = NO;
 }
 
 - (void)followFriendFromList:(Friend *)friend {
@@ -2280,6 +2314,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
 - (void)startFollowLink {
     [self stopFollowLink];
+    if (!self.followEnabled || !self.followFriend) {
+        return;
+    }
     DDLogInfo(@"[Follow] startFollowLink for topic=%@", self.followFriend.topic);
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:self
                                                       selector:@selector(followTick:)];
@@ -2288,30 +2325,113 @@ calloutAccessoryControlTapped:(UIControl *)control {
 }
 
 - (void)stopFollowLink {
-    if (self.followLink) DDLogInfo(@"[Follow] stopFollowLink");
+    if (self.followLink) {
+        DDLogInfo(@"[Follow] stopFollowLink");
+    }
     [self.followLink invalidate];
     self.followLink = nil;
+    [self resetFollowCameraSmootherState];
 }
 
 - (void)followTick:(CADisplayLink *)link {
     Friend *f = self.followEnabled ? self.followFriend : nil;
-    if (!f) { [self stopFollowLink]; return; }
+    if (!f) {
+        [self stopFollowLink];
+        return;
+    }
     if (self.followTemporarilySuspendedByGesture) {
         return;
     }
     CLLocationCoordinate2D coord = f.coordinate;
-    // Log every ~60 frames (≈1 s) so the console stays readable.
+    if (!CLLocationCoordinate2DIsValid(coord)) {
+        return;
+    }
+
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    CFTimeInterval dt = (self.followCameraLastTickTime > 0) ? (now - self.followCameraLastTickTime) : 0.0;
+    self.followCameraLastTickTime = now;
+    dt = OTClampDouble(dt, 1.0 / 120.0, 0.5);
+
+    const CFTimeInterval kCameraApplyMinInterval = 0.12;
+    const CLLocationDistance kCenterApplyMinDriftM = 2.0;
+    const double kHeadingApplyMinDeltaDeg = 2.0;
+    const double kCenterSmoothingTauSec = 0.30;
+    const double kHeadingSmoothingTauSec = 0.22;
+    const double kHeadingMaxStepDegPerSec = 120.0;
+
+    MKMapCamera *currentCam = self.mapView.camera;
+    if (!self.followCameraHasSmootherState) {
+        CLLocationCoordinate2D center = currentCam.centerCoordinate;
+        if (!CLLocationCoordinate2DIsValid(center)) {
+            center = coord;
+        }
+        self.followCameraRenderCenterCoord = center;
+        self.followCameraTargetCenterCoord = coord;
+        self.followCameraRenderHeadingDeg = OTNormalizeHeadingDegrees(currentCam.heading);
+        self.followCameraHasSmootherState = YES;
+    } else {
+        self.followCameraTargetCenterCoord = coord;
+    }
+
+    double targetHeadingDeg = self.followCameraRenderHeadingDeg;
+    if (self.followHeadingLockPausedByUserGesture) {
+        targetHeadingDeg = 0.0;
+    } else if (self.followHeadingTargetNumber && isfinite(self.followHeadingTargetNumber.doubleValue)) {
+        targetHeadingDeg = OTNormalizeHeadingDegrees(self.followHeadingTargetNumber.doubleValue);
+    }
+
+    double centerAlpha = 1.0 - exp(-dt / kCenterSmoothingTauSec);
+    double headingAlpha = 1.0 - exp(-dt / kHeadingSmoothingTauSec);
+    centerAlpha = OTClampDouble(centerAlpha, 0.0, 1.0);
+    headingAlpha = OTClampDouble(headingAlpha, 0.0, 1.0);
+
+    double latDelta = self.followCameraTargetCenterCoord.latitude - self.followCameraRenderCenterCoord.latitude;
+    double lonDelta = self.followCameraTargetCenterCoord.longitude - self.followCameraRenderCenterCoord.longitude;
+    self.followCameraRenderCenterCoord = CLLocationCoordinate2DMake(
+        self.followCameraRenderCenterCoord.latitude + latDelta * centerAlpha,
+        self.followCameraRenderCenterCoord.longitude + lonDelta * centerAlpha);
+
+    double headingDelta = OTSignedHeadingDeltaDegrees(self.followCameraRenderHeadingDeg, targetHeadingDeg);
+    double desiredHeadingStep = headingDelta * headingAlpha;
+    double maxHeadingStep = kHeadingMaxStepDegPerSec * dt;
+    desiredHeadingStep = OTClampDouble(desiredHeadingStep, -maxHeadingStep, maxHeadingStep);
+    self.followCameraRenderHeadingDeg =
+        OTNormalizeHeadingDegrees(self.followCameraRenderHeadingDeg + desiredHeadingStep);
+
+    if ((now - self.followCameraLastApplyTime) < kCameraApplyMinInterval) {
+        return;
+    }
+
+    CLLocationCoordinate2D camCenter = currentCam.centerCoordinate;
+    CLLocationDistance centerDrift = 0.0;
+    if (CLLocationCoordinate2DIsValid(camCenter) && CLLocationCoordinate2DIsValid(self.followCameraRenderCenterCoord)) {
+        CLLocation *from = [[CLLocation alloc] initWithLatitude:camCenter.latitude longitude:camCenter.longitude];
+        CLLocation *to = [[CLLocation alloc] initWithLatitude:self.followCameraRenderCenterCoord.latitude
+                                                    longitude:self.followCameraRenderCenterCoord.longitude];
+        centerDrift = [from distanceFromLocation:to];
+    }
+    double headingDrift = fabs(OTSignedHeadingDeltaDegrees(currentCam.heading, self.followCameraRenderHeadingDeg));
+    if (centerDrift < kCenterApplyMinDriftM && headingDrift < kHeadingApplyMinDeltaDeg) {
+        return;
+    }
+
+    self.followCameraLastApplyTime = now;
+    MKMapCamera *cam = [currentCam copy];
+    cam.centerCoordinate = self.followCameraRenderCenterCoord;
+    cam.pitch = OTFollowUserPitch();
+    double d = cam.centerCoordinateDistance;
+    if (!isfinite(d) || d <= 0.0) {
+        cam.centerCoordinateDistance = OTFollowUserDistance();
+    }
+    cam.heading = OTNormalizeHeadingDegrees(self.followCameraRenderHeadingDeg);
+    [self.mapView setCamera:cam animated:NO];
+
     static NSUInteger sFollowTickCount = 0;
     if (++sFollowTickCount % 60 == 0) {
-        CLLocationCoordinate2D center = self.mapView.centerCoordinate;
-        DDLogInfo(@"[Follow] tick#%lu friend=(%g,%g) mapCenter=(%g,%g) coordValid=%d",
+        DDLogInfo(@"[Follow] tick#%lu friend=(%g,%g) centerDrift=%.2fm headingDrift=%.2fdeg",
                   (unsigned long)sFollowTickCount,
                   coord.latitude, coord.longitude,
-                  center.latitude, center.longitude,
-                  CLLocationCoordinate2DIsValid(coord));
-    }
-    if (CLLocationCoordinate2DIsValid(coord)) {
-        [self.mapView setCenterCoordinate:coord animated:NO];
+                  centerDrift, headingDrift);
     }
 }
 
@@ -2736,7 +2856,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
         return;
     }
     [self rebuildLiveTrackForTopic:topic];
-    // Center map on the followed friend; rotate course-up when moving (unless user panned).
     if (CLLocationCoordinate2DIsValid(coord)) {
         NSValue *prevBox = self.followMapPrevCoordByTopic[topic];
         CLLocationCoordinate2D prev = kCLLocationCoordinate2DInvalid;
@@ -2746,10 +2865,14 @@ calloutAccessoryControlTapped:(UIControl *)control {
         double heading = OTEffectiveFollowMapHeading(note.userInfo, coord, &prev);
         [self.followMapPrevCoordByTopic setObject:[NSValue valueWithMKCoordinate:prev] forKey:topic];
 
-        if (self.followEnabled && !self.followTemporarilySuspendedByGesture) {
-            [self applyFollow3DCameraToCoordinate:coord
-                                          heading:heading
-                               preserveUserAltitude:YES];
+        BOOL topicMatchesFollow =
+            self.followFriend &&
+            ([self.followFriend.topic isEqualToString:topic] ||
+             [self isSelectedFriendEquivalentToOwnDeviceForLiveTopic:topic selectedFriend:self.followFriend]);
+        if (self.followEnabled && topicMatchesFollow && !self.followTemporarilySuspendedByGesture) {
+            if (heading == heading) {
+                self.followHeadingTargetNumber = @(OTNormalizeHeadingDegrees(heading));
+            }
         }
     }
     [self updateRouteHistoryToggleVisibility];

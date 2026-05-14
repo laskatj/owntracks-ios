@@ -1070,6 +1070,14 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
         d[@"conn"] = conn;
     }
 
+    id hr = device[@"hr"];
+    if (![hr isKindOfClass:[NSNumber class]]) {
+        hr = device[@"heartRate"];
+    }
+    if ([hr isKindOfClass:[NSNumber class]]) {
+        d[@"hr"] = hr;
+    }
+
     id zoneName = device[@"zoneName"];
     if ([zoneName isKindOfClass:[NSString class]] && [(NSString *)zoneName length] > 0) {
         d[@"zonename"] = zoneName;

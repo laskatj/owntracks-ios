@@ -28,7 +28,7 @@ enum WatchTrackingPolicy {
     static let activeDistanceFilter: CLLocationDistance = 35
 
     /// Active mode: do not enqueue a new point unless this many **seconds** have passed **or** moved ≥ `activeMinDisplacementMeters` (reduces sitting-still spam).
-    static let activeMinEnqueueInterval: TimeInterval = 120
+    static let activeMinEnqueueInterval: TimeInterval = 30
 
     /// Active mode: always enqueue if moved this far from last **enqueued** point (meters).
     static let activeMinDisplacementMeters: CLLocationDistance = 35

@@ -120,6 +120,8 @@ enum DeviceDetailConnectionTransport: Int {
     private static let routeMetricsUnixBucketSeconds: Int = 60
     /// Route API HR samples for own-device merge (last successful `GET .../route` parse).
     private var lastRouteApiHeartRateSamples: [(date: Date, value: Double)] = []
+    /// Route API HR samples for a friend device (last successful `GET .../route` parse); merged with waypoint for the HR tile.
+    private var lastFriendRouteApiHeartRateSamples: [(date: Date, value: Double)] = []
 
     /// When true, user may see MQTT topic and other sensitive fields (JWT location-admin; see `WebAppAuthHelper`).
     @Published var canViewSensitiveLocationDeviceFields: Bool = false
@@ -466,12 +468,7 @@ enum DeviceDetailConnectionTransport: Int {
         heartRateLastSampleDate = nil
 
         if !isOwnWaypoint {
-            if let hr = currentWaypoint.heartRate, hr.intValue > 0 {
-                heartRateText = Self.formattedBPM(hr.intValue)
-                heartRateLastSampleDate = currentWaypoint.effectiveTimestamp
-            } else {
-                heartRateText = "-"
-            }
+            applyFriendHeartRateTileFromMergedSources()
             return
         }
 
@@ -509,6 +506,51 @@ enum DeviceDetailConnectionTransport: Int {
         }
         heartRateText = Self.formattedBPM(best.bpm)
         heartRateLastSampleDate = best.date
+    }
+
+    /// Friend / non-own device: BPM tile from newest of `currentWaypoint` HR and last route API HR samples.
+    private func applyFriendHeartRateTileFromMergedSources() {
+        guard !isOwnWaypoint else { return }
+        var candidates: [(bpm: Int, date: Date)] = []
+        if let hr = currentWaypoint.heartRate, hr.intValue > 0 {
+            candidates.append((hr.intValue, currentWaypoint.effectiveTimestamp))
+        }
+        if let newestRoute = lastFriendRouteApiHeartRateSamples.max(by: { $0.date < $1.date }) {
+            let bpm = Int(newestRoute.value.rounded())
+            if bpm > 0 {
+                candidates.append((bpm, newestRoute.date))
+            }
+        }
+        guard let best = candidates.max(by: { $0.date < $1.date }) else {
+            heartRateText = "-"
+            heartRateLastSampleDate = nil
+            return
+        }
+        heartRateText = Self.formattedBPM(best.bpm)
+        heartRateLastSampleDate = best.date
+    }
+
+    /// Friend: rebuild `metricsChartHeartRateHistory` and `heartRateHistory` from Core Data waypoints in `metricsChartStart`…`metricsChartEnd`.
+    private func applyFriendWaypointHeartRateSeriesForCurrentWindow() {
+        guard !isOwnWaypoint else { return }
+        let start = metricsChartStart
+        let end = metricsChartEnd
+        guard start != .distantPast, start <= end,
+              let friend = currentWaypoint.belongsTo,
+              let allSet = friend.hasWaypoints else {
+            metricsChartHeartRateHistory = []
+            heartRateHistory = []
+            return
+        }
+        let filtered = Array(allSet)
+            .filter { $0.effectiveTimestamp >= start && $0.effectiveTimestamp <= end }
+            .sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
+        let series = filtered.compactMap { wp -> (date: Date, value: Double)? in
+            guard let hr = wp.heartRate?.doubleValue, hr > 0 else { return nil }
+            return (date: wp.effectiveTimestamp, value: hr)
+        }
+        metricsChartHeartRateHistory = series
+        heartRateHistory = series
     }
 
     private static func formattedBPM(_ value: Int) -> String {
@@ -555,7 +597,7 @@ enum DeviceDetailConnectionTransport: Int {
 
     /// Refreshes waypoint-derived series and the shared 12h domain for the metrics sheet. Heart rate
     /// for the **own** device is updated asynchronously by `refreshHeartRateHistoryFromHealthKit`;
-    /// this copies the current `heartRateHistory` when available and rebuilds waypoint HR for friends.
+    /// for friends, waypoint HR in the window is copied to `metricsChartHeartRateHistory` and `heartRateHistory`.
     func rebuildMetricsChartSeries() {
         let end = Date()
         let start = end.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
@@ -571,6 +613,8 @@ enum DeviceDetailConnectionTransport: Int {
                 recomputeOwnDeviceMetricsHeartRateCharts()
             } else {
                 metricsChartHeartRateHistory = []
+                heartRateHistory = []
+                applyFriendHeartRateTileFromMergedSources()
             }
             return
         }
@@ -600,10 +644,8 @@ enum DeviceDetailConnectionTransport: Int {
         if isOwnWaypoint {
             recomputeOwnDeviceMetricsHeartRateCharts()
         } else {
-            metricsChartHeartRateHistory = filtered.compactMap { wp in
-                guard let hr = wp.heartRate?.doubleValue, hr > 0 else { return nil }
-                return (date: wp.effectiveTimestamp, value: hr)
-            }
+            applyFriendWaypointHeartRateSeriesForCurrentWindow()
+            applyFriendHeartRateTileFromMergedSources()
         }
     }
 
@@ -741,12 +783,11 @@ enum DeviceDetailConnectionTransport: Int {
             batts.sort { $0.date < $1.date }
             metricsChartBatteryHistory = batts
         }
+        hrs.sort { $0.date < $1.date }
         if isOwnWaypoint {
-            hrs.sort { $0.date < $1.date }
             lastRouteApiHeartRateSamples = hrs
-        } else if hrs.count >= 2 {
-            hrs.sort { $0.date < $1.date }
-            metricsChartHeartRateHistory = hrs
+        } else {
+            lastFriendRouteApiHeartRateSamples = hrs
         }
         // Keep chart X domain aligned to “now” once when overlay applies (not on every OAuth/profile ping).
         let chartEnd = Date()
@@ -754,6 +795,14 @@ enum DeviceDetailConnectionTransport: Int {
         metricsChartStart = chartEnd.addingTimeInterval(-Self.heartRateHistoryLookbackSeconds)
         if isOwnWaypoint {
             recomputeOwnDeviceMetricsHeartRateCharts()
+        } else {
+            if hrs.isEmpty {
+                applyFriendWaypointHeartRateSeriesForCurrentWindow()
+            } else {
+                metricsChartHeartRateHistory = hrs
+                heartRateHistory = hrs
+            }
+            applyFriendHeartRateTileFromMergedSources()
         }
     }
 

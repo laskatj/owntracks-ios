@@ -30,6 +30,14 @@ double OTNormalizeHeadingDegrees(double degrees) {
     return x;
 }
 
+double OTSignedHeadingDeltaDegrees(double fromDeg, double toDeg) {
+    return fmod((toDeg - fromDeg + 540.0), 360.0) - 180.0;
+}
+
+double OTClampDouble(double value, double minValue, double maxValue) {
+    return MIN(MAX(value, minValue), maxValue);
+}
+
 double OTBearingDegreesBetween(CLLocationCoordinate2D from, CLLocationCoordinate2D to) {
     if (!CLLocationCoordinate2DIsValid(from) || !CLLocationCoordinate2DIsValid(to)) {
         return NAN;

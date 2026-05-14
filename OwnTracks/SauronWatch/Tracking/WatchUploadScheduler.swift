@@ -20,6 +20,7 @@ final class WatchUploadScheduler: ObservableObject {
     private let client = WatchHTTPIngestClient()
     private let refresher = WatchOAuthRefresher()
     private var nextAttempt: Date = .distantPast
+    private var isFlushing = false
 
     func start(configStore: WatchConfigStore) {
         timer?.cancel()
@@ -29,7 +30,12 @@ final class WatchUploadScheduler: ObservableObject {
         enqueueObserver = NotificationCenter.default.publisher(for: .watchDidUpdateLocation)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.refreshQueueDepth()
+                guard let self else { return }
+                self.refreshQueueDepth()
+                let mode = UserDefaults.standard.string(forKey: "watch_tracking_mode")
+                    .flatMap { WatchTrackingMode(rawValue: $0) } ?? .passive
+                guard mode == .active, !self.isFlushing else { return }
+                Task { await self.flushQueueNow(configStore: configStore) }
             }
 
         timer = Timer.publish(every: 15, on: .main, in: .common)
@@ -53,6 +59,11 @@ final class WatchUploadScheduler: ObservableObject {
 
     /// Upload until the queue is empty or a request fails (same backoff as periodic tick).
     func flushQueueNow(configStore: WatchConfigStore) async {
+        let alreadyFlushing = await MainActor.run { self.isFlushing }
+        guard !alreadyFlushing else { return }
+        await MainActor.run { self.isFlushing = true }
+        defer { Task { @MainActor in self.isFlushing = false } }
+
         nextAttempt = .distantPast
 
         let cfg = configStore.config
@@ -75,12 +86,15 @@ final class WatchUploadScheduler: ObservableObject {
 
             do {
                 _ = try await uploadNextFromQueue(config: cfg, bearerToken: tokenForUpload)
+                let now = Date()
+                let depth = PendingLocationQueue.shared.load().count
                 await MainActor.run {
-                    self.lastUpload = Date()
+                    self.lastUpload = now
                     self.lastUploadError = nil
                     self.consecutiveFailures = 0
-                    self.queueDepth = PendingLocationQueue.shared.load().count
+                    self.queueDepth = depth
                 }
+                WatchWidgetSync.push(queueDepth: depth, lastUpload: now)
 
                 let remaining = PendingLocationQueue.shared.load().count
                 if remaining == 0 { return }
