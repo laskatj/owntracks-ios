@@ -34,5 +34,15 @@ import UIKit
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.navigationBar.prefersLargeTitles = false
+        if let ad = UIApplication.shared.delegate as? OwnTracksAppDelegate {
+            ad.requestHUDAwakeWhileCharging(withReason: OTHUDIdleTimerReasonDeviceDetail)
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        if let ad = UIApplication.shared.delegate as? OwnTracksAppDelegate {
+            ad.releaseHUDAwakeWhileCharging(withReason: OTHUDIdleTimerReasonDeviceDetail)
+        }
+        super.viewWillDisappear(animated)
     }
 }

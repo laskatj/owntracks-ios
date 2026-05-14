@@ -33,6 +33,9 @@
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
 
+NSString * const OTHUDIdleTimerReasonMap = @"map";
+NSString * const OTHUDIdleTimerReasonDeviceDetail = @"deviceDetail";
+
 static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     id v = userInfo[OTInboxPushEnvelopeTypeKey];
     if ([v isKindOfClass:[NSString class]] &&
@@ -73,6 +76,9 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
 // +follow geofence center behind the user's actual position.
 @property (strong, nonatomic) NSDate *wakeupBestPublishedAt;
 
+/// Ref-counted HUD reasons; when non-empty and device is charging/full while active, idle timer is disabled.
+@property (strong, nonatomic) NSCountedSet *hudIdleTimerReasonCounts;
+
 @end
 
 @implementation OwnTracksAppDelegate
@@ -80,7 +86,65 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
 - (instancetype)init {
     self = [super init];
     self.inQueue = @(0);
+    _hudIdleTimerReasonCounts = [[NSCountedSet alloc] init];
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIDeviceBatteryStateDidChangeNotification
+                                                  object:nil];
+}
+
+- (void)OT_applyHUDIdleTimerPolicy {
+    UIApplication *app = [UIApplication sharedApplication];
+    BOOL hasHUD = NO;
+    for (id obj in self.hudIdleTimerReasonCounts) {
+        if ([self.hudIdleTimerReasonCounts countForObject:obj] > 0) {
+            hasHUD = YES;
+            break;
+        }
+    }
+    UIDeviceBatteryState bs = [UIDevice currentDevice].batteryState;
+    BOOL powerOK = (bs == UIDeviceBatteryStateCharging || bs == UIDeviceBatteryStateFull);
+    BOOL active = (app.applicationState == UIApplicationStateActive);
+    BOOL disable = active && hasHUD && powerOK;
+    if ([app isIdleTimerDisabled] != disable) {
+        DDLogInfo(@"[OwnTracksAppDelegate] HUD idleTimerDisabled=%d (hasHUD=%d powerOK=%d active=%d bs=%ld)",
+                  (int)disable, (int)hasHUD, (int)powerOK, (int)active, (long)bs);
+        app.idleTimerDisabled = disable;
+    }
+}
+
+- (void)OT_hudBatteryStateDidChange:(NSNotification *)notification {
+    (void)notification;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self OT_applyHUDIdleTimerPolicy];
+    });
+}
+
+- (void)requestHUDAwakeWhileChargingWithReason:(NSString *)reason {
+    if (!reason.length) {
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.hudIdleTimerReasonCounts addObject:reason];
+        [self OT_applyHUDIdleTimerPolicy];
+    });
+}
+
+- (void)releaseHUDAwakeWhileChargingWithReason:(NSString *)reason {
+    if (!reason.length) {
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([self.hudIdleTimerReasonCounts countForObject:reason] > 0) {
+            [self.hudIdleTimerReasonCounts removeObject:reason];
+        } else {
+            DDLogWarn(@"[OwnTracksAppDelegate] HUD idle release imbalance for %@", reason);
+        }
+        [self OT_applyHUDIdleTimerPolicy];
+    });
 }
 
 // Mirror location payloads into map-follow live updates for both friend and own-device topics.
@@ -275,6 +339,12 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     [self connectForcingCleanSession:FALSE];
     
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:TRUE];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(OT_hudBatteryStateDidChange:)
+                                                 name:UIDeviceBatteryStateDidChangeNotification
+                                               object:nil];
+    [self OT_applyHUDIdleTimerPolicy];
     
     LocationManager *locationManager = [LocationManager sharedInstance];
     locationManager.delegate = self;
@@ -397,6 +467,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 - (void)applicationWillResignActive:(UIApplication *)application {
     DDLogInfo(@"[OwnTracksAppDelegate] applicationWillResignActive");
     [[OwnTracking sharedInstance] publishStatus:NO];
+    application.idleTimerDisabled = NO;
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
@@ -407,6 +478,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
               [LocationManager sharedInstance].backgroundWakeup
                   ? @"already in background-wakeup passive mode"
                   : @"transitioning from active/foreground to background");
+    application.idleTimerDisabled = NO;
     [self background];
     if ([LocationManager sharedInstance].monitoring != LocationMonitoringMove) {
         [self.connection disconnect];
@@ -871,6 +943,8 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
         
         [NavigationController alert:@"Settings" message:message];
     }
+
+    [self OT_applyHUDIdleTimerPolicy];
 }
 
 - (void)doRefresh {

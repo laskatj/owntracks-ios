@@ -264,6 +264,10 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (nonatomic, assign) BOOL followHeadingLockPausedByUserGesture;
 /// Temporarily pause camera recenter while user pinch-zooms/pitches; resume on gesture end.
 @property (nonatomic, assign) BOOL followTemporarilySuspendedByGesture;
+/// User panned/zoomed, followed a device, or otherwise took map control before the first-location startup frame — skip auto local viewport.
+@property (nonatomic, assign) BOOL skipInitialLocalMapViewport;
+/// Suppress treating `regionWillChange` as user gesture while applying the one-shot launch viewport.
+@property (nonatomic, assign) BOOL applyingInitialLocalViewport;
 @end
 
 
@@ -289,6 +293,56 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
         return nil;
     }
     return [UIImage imageWithData:decoded];
+}
+
+/// Local cluster radius for startup map framing (~metro area).
+static const CLLocationDistance kOTInitialViewportLocalRadiusM = 80000.0;
+static const NSUInteger kOTInitialViewportNearestFriendFallback = 6;
+static const CLLocationDistance kOTInitialViewportMinRadiusM = 2000.0;
+/// When no friends fall inside the local radius, include up to N nearest if within this cap.
+static const CLLocationDistance kOTInitialViewportFallbackRemoteCapM = 400000.0;
+/// Grow the tight bbox slightly so edge markers are not flush with the visible rect before padding.
+static const double kOTInitialViewportMapRectOutsetFraction = 0.10;
+
+static BOOL OTInitialViewportCoordinateUsable(CLLocationCoordinate2D c) {
+    if (!CLLocationCoordinate2DIsValid(c)) {
+        return NO;
+    }
+    if (fabs(c.latitude) < 1e-9 && fabs(c.longitude) < 1e-9) {
+        return NO;
+    }
+    return YES;
+}
+
+static MKMapRect OTMapRectUnionCoordinate(MKMapRect rect, CLLocationCoordinate2D c) {
+    if (!OTInitialViewportCoordinateUsable(c)) {
+        return rect;
+    }
+    MKMapPoint pt = MKMapPointForCoordinate(c);
+    MKMapRect one = MKMapRectMake(pt.x, pt.y, 1.0, 1.0);
+    return MKMapRectIsNull(rect) ? one : MKMapRectUnion(rect, one);
+}
+
+static MKMapRect OTMapRectExpandedToMinRadiusAroundCenter(MKMapRect rect, CLLocationDistance minRadiusM) {
+    if (MKMapRectIsNull(rect) || minRadiusM <= 0.0) {
+        return rect;
+    }
+    MKMapPoint mid = MKMapPointMake(MKMapRectGetMidX(rect), MKMapRectGetMidY(rect));
+    CLLocationCoordinate2D center = MKCoordinateForMapPoint(mid);
+    double r = minRadiusM * MKMapPointsPerMeterAtLatitude(center.latitude);
+    MKMapRect minAround = MKMapRectMake(mid.x - r, mid.y - r, 2.0 * r, 2.0 * r);
+    return MKMapRectUnion(rect, minAround);
+}
+
+static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
+    if (MKMapRectIsNull(rect) || fraction <= 0.0) {
+        return rect;
+    }
+    double w = rect.size.width * (1.0 + fraction);
+    double h = rect.size.height * (1.0 + fraction);
+    double dx = (w - rect.size.width) * 0.5;
+    double dy = (h - rect.size.height) * 0.5;
+    return MKMapRectMake(rect.origin.x - dx, rect.origin.y - dy, w, h);
 }
 
 - (void)viewDidLoad {
@@ -1647,6 +1701,10 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    id<UIApplicationDelegate> del = [UIApplication sharedApplication].delegate;
+    if ([del isKindOfClass:[OwnTracksAppDelegate class]]) {
+        [(OwnTracksAppDelegate *)del requestHUDAwakeWhileChargingWithReason:OTHUDIdleTimerReasonMap];
+    }
     [self configureTopNavigationBar];
     [self refreshBellUnreadBadge];
     [self fetchCurrentUserProfileIfSignedIn];
@@ -1694,7 +1752,18 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     }
 }
 
+- (void)viewWillDisappear:(BOOL)animated {
+    id<UIApplicationDelegate> del = [UIApplication sharedApplication].delegate;
+    if ([del isKindOfClass:[OwnTracksAppDelegate class]]) {
+        [(OwnTracksAppDelegate *)del releaseHUDAwakeWhileChargingWithReason:OTHUDIdleTimerReasonMap];
+    }
+    [super viewWillDisappear:animated];
+}
+
 - (void)setCenter:(id<MKAnnotation>)annotation {
+    if (!self.initialCenter) {
+        [self OT_noteUserMapControlDuringInitialViewportWindow];
+    }
     if (self.noMap > 0) {
         CLLocationCoordinate2D coordinate = annotation.coordinate;
         if (CLLocationCoordinate2DIsValid(coordinate)) {
@@ -1749,6 +1818,108 @@ static UIImage *OTImageFromDataURLString(NSString *candidate) {
     rect.size.height = 2*r;
     
     return rect;
+}
+
+- (UIEdgeInsets)OT_initialLocalViewportEdgeInsets {
+    return UIEdgeInsetsMake(104.0, 22.0, 36.0, 22.0);
+}
+
+- (void)OT_noteUserMapControlDuringInitialViewportWindow {
+    if (self.initialCenter) {
+        return;
+    }
+    self.skipInitialLocalMapViewport = YES;
+    DDLogInfo(@"[ViewController] initial local viewport: suppressed (user map control before first GPS frame)");
+}
+
+- (void)OT_applyInitialLocalMapViewportForUserLocation:(CLLocation *)userLocation {
+    (void)[self frcFriends];
+
+    CLLocationCoordinate2D userCoord = userLocation.coordinate;
+    MKMapRect rect = MKMapRectNull;
+    rect = OTMapRectUnionCoordinate(rect, userCoord);
+
+    NSUInteger localFriendCount = 0;
+    for (Friend *f in self.frcFriends.fetchedObjects) {
+        if (![f isKindOfClass:[Friend class]]) {
+            continue;
+        }
+        CLLocationCoordinate2D fc = f.coordinate;
+        if (!OTInitialViewportCoordinateUsable(fc)) {
+            continue;
+        }
+        CLLocation *fl = [[CLLocation alloc] initWithLatitude:fc.latitude longitude:fc.longitude];
+        if ([userLocation distanceFromLocation:fl] <= kOTInitialViewportLocalRadiusM) {
+            localFriendCount++;
+            rect = OTMapRectUnionCoordinate(rect, fc);
+        }
+    }
+
+    NSUInteger remoteFallbackCount = 0;
+    if (localFriendCount == 0) {
+        NSMutableArray<Friend *> *candidates = [NSMutableArray array];
+        for (Friend *f in self.frcFriends.fetchedObjects) {
+            if (![f isKindOfClass:[Friend class]]) {
+                continue;
+            }
+            CLLocationCoordinate2D fc = f.coordinate;
+            if (!OTInitialViewportCoordinateUsable(fc)) {
+                continue;
+            }
+            [candidates addObject:f];
+        }
+        [candidates sortUsingComparator:^NSComparisonResult(Friend *a, Friend *b) {
+            CLLocationCoordinate2D ca = a.coordinate;
+            CLLocationCoordinate2D cb = b.coordinate;
+            CLLocation *la = [[CLLocation alloc] initWithLatitude:ca.latitude longitude:ca.longitude];
+            CLLocation *lb = [[CLLocation alloc] initWithLatitude:cb.latitude longitude:cb.longitude];
+            CLLocationDistance da = [userLocation distanceFromLocation:la];
+            CLLocationDistance db = [userLocation distanceFromLocation:lb];
+            if (da < db) {
+                return NSOrderedAscending;
+            }
+            if (da > db) {
+                return NSOrderedDescending;
+            }
+            return NSOrderedSame;
+        }];
+        NSUInteger n = MIN((NSUInteger)kOTInitialViewportNearestFriendFallback, (NSUInteger)candidates.count);
+        for (NSUInteger i = 0; i < n; i++) {
+            Friend *f = candidates[i];
+            CLLocationCoordinate2D fc = f.coordinate;
+            CLLocation *fl = [[CLLocation alloc] initWithLatitude:fc.latitude longitude:fc.longitude];
+            CLLocationDistance d = [userLocation distanceFromLocation:fl];
+            if (d > kOTInitialViewportFallbackRemoteCapM) {
+                break;
+            }
+            rect = OTMapRectUnionCoordinate(rect, fc);
+            remoteFallbackCount++;
+        }
+    }
+
+    rect = OTMapRectExpandedToMinRadiusAroundCenter(rect, kOTInitialViewportMinRadiusM);
+    if (MKMapRectIsNull(rect)) {
+        rect = [self centeredRect:userCoord];
+    }
+    rect = OTMapRectOutsetFraction(rect, kOTInitialViewportMapRectOutsetFraction);
+
+    UIEdgeInsets pad = [self OT_initialLocalViewportEdgeInsets];
+    MKMapRect fit = [self.mapView mapRectThatFits:rect edgePadding:pad];
+    self.applyingInitialLocalViewport = YES;
+    @try {
+        [self.mapView setVisibleMapRect:fit animated:YES];
+    } @finally {
+        self.applyingInitialLocalViewport = NO;
+    }
+    self.mapView.userTrackingMode = MKUserTrackingModeNone;
+
+    DDLogInfo(@"[ViewController] initial local viewport: localFriends=%lu remoteFallback=%lu fitRect=(%.0f %.0f %.0f %.0f)",
+              (unsigned long)localFriendCount,
+              (unsigned long)remoteFallbackCount,
+              fit.origin.x,
+              fit.origin.y,
+              fit.size.width,
+              fit.size.height);
 }
 
 - (IBAction)mapModeChanged:(UISegmentedControl *)sender {
@@ -1875,10 +2046,31 @@ didChangeDragState:(MKAnnotationViewDragState)newState
 }
 
 - (void)mapView:(MKMapView *)mapView didUpdateUserLocation:(MKUserLocation *)userLocation {
-    if (!self.initialCenter) {
-        self.initialCenter = TRUE;
-        [self.mapView setCenterCoordinate:userLocation.location.coordinate animated:TRUE];
+    if (self.initialCenter) {
+        return;
     }
+    CLLocation *loc = userLocation.location;
+    if (!loc || !OTInitialViewportCoordinateUsable(loc.coordinate)) {
+        return;
+    }
+    if (self.skipInitialLocalMapViewport
+        || mapView.userTrackingMode != MKUserTrackingModeNone
+        || self.selectedFriend != nil
+        || self.followFriend != nil)
+    {
+        self.initialCenter = TRUE;
+        DDLogInfo(@"[ViewController] initial local viewport: skipped (user control / follow / tracking); skip=%d mode=%ld",
+                  self.skipInitialLocalMapViewport,
+                  (long)mapView.userTrackingMode);
+        return;
+    }
+    if (self.noMap <= 0) {
+        [self.mapView setCenterCoordinate:loc.coordinate animated:YES];
+        self.initialCenter = TRUE;
+        return;
+    }
+    [self OT_applyInitialLocalMapViewportForUserLocation:loc];
+    self.initialCenter = TRUE;
 }
 
 - (MKAnnotationView *)mapView:(MKMapView *)mapView
@@ -2060,6 +2252,9 @@ didChangeDragState:(MKAnnotationViewDragState)newState
     if (!CLLocationCoordinate2DIsValid(coordinate)) {
         return;
     }
+    if (!self.initialCenter) {
+        [self OT_noteUserMapControlDuringInitialViewportWindow];
+    }
     CLLocationDistance effectiveRadius = radius > 0.0 ? radius : 35.0;
 
     if (self.selectedLocationZoneOverlay) {
@@ -2116,6 +2311,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
 
 - (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view {
     if ([view.annotation isKindOfClass:[Friend class]]) {
+        if (!self.initialCenter) {
+            [self OT_noteUserMapControlDuringInitialViewportWindow];
+        }
         Friend *friend = (Friend *)view.annotation;
         DDLogInfo(@"[Follow] didSelectAnnotationView: topic=%@ coord=(%g,%g)",
                   friend.topic, friend.coordinate.latitude, friend.coordinate.longitude);
@@ -2141,6 +2339,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
             anyActiveGesture = YES;
             break;
         }
+    }
+    if (anyActiveGesture && !self.initialCenter && !self.applyingInitialLocalViewport) {
+        [self OT_noteUserMapControlDuringInitialViewportWindow];
     }
     if (!anyActiveGesture) {
         return;
@@ -2280,6 +2481,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
     if (!friend.topic.length) {
         DDLogWarn(@"[Follow] followFriendFromList: missing topic");
         return;
+    }
+    if (!self.initialCenter) {
+        [self OT_noteUserMapControlDuringInitialViewportWindow];
     }
     Friend *mapFriend = [self friendAnnotationOnMapForTopic:friend.topic] ?: friend;
     DDLogInfo(@"[Follow] followFriendFromList: topic=%@ mapFriend==argFriend %d",

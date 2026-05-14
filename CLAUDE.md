@@ -1,6 +1,6 @@
 # CLAUDE.md — OwnTracks iOS (Sauron Fork)
 
-This file is the canonical reference for AI assistants working in this repository. It supersedes `Claude.md`.
+This file is the canonical reference for AI assistants working in this repository.
 
 ---
 
@@ -14,8 +14,8 @@ This file is the canonical reference for AI assistants working in this repositor
 | Keychain group | `org.mqttitude.MQTTitude` (legacy) |
 | App group | `group.org.owntracks.OwnTracks` |
 | Version | 19.2.7 |
-| Deployment target | iOS 16.0+ / tvOS 16.0+ |
-| Language | **Objective-C** (no Swift in main app) |
+| Deployment target | iOS 16.0+ / tvOS 16.0+ / watchOS 10.0+ |
+| Language | **Objective-C** main app; **SwiftUI** watchOS companion |
 | Dev team | `CFR426ZH5P` |
 | Build number | `git rev-list --count HEAD` |
 | Xcode workspace | `OwnTracks/Sauron.xcworkspace` |
@@ -39,10 +39,11 @@ owntracks-ios/
 │   │   └── OwnTracks-Info.plist    # App bundle info
 │   ├── OwnTracksIntents/           # Siri Shortcuts extension
 │   ├── OwnTracksTests/             # Unit tests
+│   ├── SauronWatch/                # SwiftUI watchOS companion app
+│   ├── SauronWatchWidget/          # WidgetKit complication extension
 │   └── SauronTV/                   # tvOS application
 ├── ImageSources/                   # SVG originals for icons/assets
 ├── CLAUDE.md                       # This file
-├── Claude.md                       # Legacy state doc (superseded)
 ├── README.md                       # Setup instructions
 ├── CHANGELOG.md                    # Version history
 ├── essential_features_extract.md   # Feature extraction notes
@@ -62,7 +63,11 @@ owntracks-ios/
 | `Sauron` | iOS | Main application |
 | `SauronIntents` | iOS | Siri Shortcuts extension |
 | `SauronTV` | tvOS | TV companion app |
+| `SauronWatch` | watchOS | SwiftUI watch companion app |
+| `SauronWatchWidget` | watchOS | WidgetKit complication extension |
 | `SauronTests` | iOS | Unit tests |
+
+The iOS `Sauron` target embeds `SauronWatch.app` under **Embed Watch Content**. The watch app embeds `SauronWatchWidget.appex`. The checked-in schemes may not include a dedicated watch scheme; use the targets from `OwnTracks/Sauron.xcworkspace` if needed.
 
 ### CocoaPods Dependencies
 
@@ -159,6 +164,23 @@ All under `OwnTracks/OwnTracks/` (flat directory, no subdirectories except `core
 | `NavigationController.m/.h` | Navigation controller subclass |
 | `ConnType.m/.h` | Connection mode enum |
 | `NSNumber+decimals.m/.h` | Number formatting category |
+
+### watchOS Companion
+
+| File | Role |
+|---|---|
+| `SauronWatch/SauronWatchApp.swift` | SwiftUI watch app entry point; wires `WatchLocationTracker`, `WatchUploadScheduler`, and `WatchConfigStore` |
+| `SauronWatch/ContentView.swift` | Watch UI for Passive/Active modes, Send Now, queue depth, upload status, and synced auth/config state |
+| `SauronWatch/WatchSync/WatchConfigStore.swift` | `WCSessionDelegate`; receives iPhone HTTP config and persists `WatchHTTPConfig` |
+| `SauronWatch/Tracking/WatchLocationTracker.swift` | Core Location tracking and Send Now one-shot location capture |
+| `SauronWatch/Tracking/WatchTrackingPolicy.swift` | Passive/active sampling, upload cadence, queue limits, and optional ingest URL override |
+| `SauronWatch/Tracking/WatchUploadScheduler.swift` | Drains the persisted watch location queue via HTTP with retry/backoff |
+| `SauronWatch/Networking/WatchHTTPIngestClient.swift` | HTTP POST client mirroring iOS HTTP headers/auth behavior |
+| `SauronWatch/Networking/LocationPayload.swift` | OwnTracks-compatible single and batch location JSON payload builder |
+| `SauronWatch/Persistence/PendingLocationQueue.swift` | File-backed JSON queue at Application Support |
+| `SauronWatch/WatchWidgetSync.swift` | Publishes queue/upload state to WidgetKit timelines |
+| `SauronWatchWidget/SauronWatchWidget.swift` | WidgetKit complication for tracking mode, queue depth, and last upload |
+| `OwnTracksWatchBridge.m/.h` | iOS-side WatchConnectivity bridge that pushes HTTP settings to the watch |
 
 ---
 
@@ -307,6 +329,60 @@ If `"BACKGROUND WAKEUP"` never appears after `Location#1`, the location was drop
 - Auto-provisioning: app fetches `/.well-known/owntracks-app-auth` from origin to populate HTTP config
 - Native OIDC tokens are injected into the WKWebView JS context on load
 - `LocationAPISyncService` polls `GET /api/location` with OAuth bearer token for friend data
+
+---
+
+## watchOS Companion
+
+The watch implementation is a standalone-capable SwiftUI app, not a WatchKit extension of the legacy app UI. Its primary purpose is direct watch-originated location publishing over HTTP, with the phone used to bootstrap configuration.
+
+### Targets and Files
+
+- `SauronWatch` — watchOS app at `OwnTracks/SauronWatch/`, bundle ID `org.laskatj.owntracksfork.watchkitapp`.
+- `SauronWatchWidget` — WidgetKit complication extension at `OwnTracks/SauronWatchWidget/`, bundle ID `org.laskatj.owntracksfork.watchkitapp.widget`.
+- Watch docs live under `docs/watch/`; start with `docs/watch/README.md`, then `TRACKING_MODES.md`, `HTTP_INGEST_CONTRACT.md`, `WATCH_AUTH_API.md`, and `FIELD_TEST_CHECKLIST.md`.
+- `SauronWatch/Info.plist` sets `WKRunsIndependentlyOfCompanionApp = true` and declares background location mode.
+- `SauronWatch/SauronWatch.entitlements` is currently empty. Do not assume App Group storage exists for watch code unless the entitlement is added.
+
+### Phone to Watch Config Flow
+
+```mermaid
+flowchart LR
+  Settings["iOS Settings/CoreData"] --> Bridge["OwnTracksWatchBridge"]
+  Bridge -->|"WCSession applicationContext or userInfo"| Store["WatchConfigStore"]
+  Store --> Defaults["UserDefaults.standard watch_http_config_json"]
+  Defaults --> Scheduler["WatchUploadScheduler"]
+  Scheduler --> Client["WatchHTTPIngestClient"]
+```
+
+- `OwnTracksWatchBridge` activates `WCSession` during app launch and pushes config on session activation, watch state changes, and settings updates.
+- The payload includes `httpURL`, Basic auth flag/user/password, `X-Limit-U`, `X-Limit-D`, custom HTTP header lines, device ID, publish topic, tracker ID, extended-data flag, and OAuth client ID.
+- `oauthRefreshURL` is stripped today because the phone sends it as null; the watch OAuth refresher is present but depends on a future refresh endpoint/token bootstrap.
+- `WatchConfigStore` persists config in `UserDefaults.standard` under `watch_http_config_json`.
+- `WatchTrackingPolicy.ingestURLOverride` can override the synced iPhone HTTP URL. Check this before assuming watch uploads use `url_preference`.
+
+### Tracking and Upload Flow
+
+- The watch supports `passive` and `active` modes stored in `@AppStorage("watch_tracking_mode")`.
+- watchOS does not support iOS significant-location APIs in the same way; both modes use `CLLocationManager.startUpdatingLocation()` with different desired accuracy and distance filters.
+- Passive mode enqueues every delivered valid location. Active mode throttles stationary drift using `activeMinEnqueueInterval` or `activeMinDisplacementMeters`.
+- `Send Now` uses a one-shot `requestLocation()`, enqueues the result, then immediately asks the scheduler to flush the queue.
+- `PendingLocationQueue` stores up to `WatchTrackingPolicy.maxQueuedPoints` in `sauron_watch_location_queue.json` under Application Support.
+- `WatchUploadScheduler` runs a 15-second timer, flushes immediately in active mode when a point is enqueued, supports single and batch POSTs, and uses exponential backoff on failures.
+- `WatchHTTPIngestClient` sends OwnTracks-compatible JSON over HTTP, including `X-Idempotency-Key`, `X-Limit-U`, `X-Limit-D`, optional Basic/Bearer auth, and custom header lines.
+
+### Widget Data Flow
+
+- `WatchWidgetSync` writes `widget_queue_depth` and `widget_last_upload` to `UserDefaults.standard`, then reloads WidgetKit timelines.
+- `SauronWatchWidget` reads `watch_tracking_mode`, queue depth, and last upload to render circular, corner, rectangular, and inline complication families.
+- The widget currently relies on standard defaults, not an App Group suite.
+
+### watchOS Caveats
+
+- The root `README.md` may be stale for this fork; prefer `CLAUDE.md` and `docs/watch/` for watch work.
+- The Podfile does not define a watch pod target. Treat legacy `Pods-OwnTracksWrist WatchKit` project references as historical unless verified in Xcode.
+- New files under `SauronWatch/` and `SauronWatchWidget/` are attached through Xcode file-system-synchronized root groups.
+- Be careful when changing watch auth: Keychain helpers and `WatchOAuthRefresher` exist, but the current bridge does not provide a refresh URL or complete token bootstrap.
 
 ---
 

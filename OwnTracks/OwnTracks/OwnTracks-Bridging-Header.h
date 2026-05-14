@@ -14,3 +14,4 @@
 #import "HealthKitHeartRateManager.h"
 #import "BluetoothHeartRateManager.h"
 #import "OTLocalHeartRateTimeSeriesStore.h"
+#import "OwnTracksAppDelegate.h"

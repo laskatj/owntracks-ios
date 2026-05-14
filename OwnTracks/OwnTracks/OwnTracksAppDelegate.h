@@ -23,6 +23,10 @@
 
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
+/// Reasons for `requestHUDAwakeWhileChargingWithReason:` / `releaseHUDAwakeWhileChargingWithReason:`.
+FOUNDATION_EXPORT NSString * _Nonnull const OTHUDIdleTimerReasonMap;
+FOUNDATION_EXPORT NSString * _Nonnull const OTHUDIdleTimerReasonDeviceDetail;
+
 @interface OwnTracksAppDelegate : UIResponder <UIApplicationDelegate, ConnectionDelegate, LocationManagerDelegate, UNUserNotificationCenterDelegate>
 
 @property (strong, nonatomic) UIWindow * _Nullable window;
@@ -58,5 +62,9 @@
 - (BOOL)processNSURL:(NSURL * _Nonnull)url;
 /// Handles `owntracks://` and `sauron://` URLs (beacon, config, auth callback). Used from `application:openURL:` and from `WebAppViewController` when WKWebView navigates to those schemes.
 - (BOOL)handleOwnTracksSchemeURL:(NSURL * _Nonnull)url;
+
+/// Map / friend-detail HUD: keep the screen awake while plugged in or full, only when the app is active.
+- (void)requestHUDAwakeWhileChargingWithReason:(NSString * _Nonnull)reason;
+- (void)releaseHUDAwakeWhileChargingWithReason:(NSString * _Nonnull)reason;
 
 @end
