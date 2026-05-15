@@ -262,7 +262,6 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
     [Settings migrateWebProvisioningFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
-    [Settings migrateProvisionedIdentityRepairFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
     
     [self setShortcutItems];
     
@@ -942,9 +941,23 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
     [[OwnTracksWatchBridge shared] pushConfigToWatchIfNeeded];
     
     [CoreData.sharedInstance sync:CoreData.sharedInstance.mainMOC];
-    [Settings migrateProvisionedIdentityRepairFlagIfNeededInMOC:CoreData.sharedInstance.mainMOC];
 
     [self.connection connectToLast];
+
+    // Publish current config at QoS 2 so the server can audit and push corrections via setConfiguration cmd if needed.
+    // Skip in background wakeup and HTTP mode / placeholder broker.
+    NSManagedObjectContext *activeMoc = CoreData.sharedInstance.mainMOC;
+    if ([Settings intForKey:@"mode" inMOC:activeMoc] == CONNECTION_MODE_MQTT &&
+        ![Settings legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:activeMoc]) {
+        __weak typeof(self) wself = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __strong typeof(wself) sself = wself;
+            if (!sself || [LocationManager sharedInstance].backgroundWakeup) {
+                return;
+            }
+            [sself dumpWithQoS:2];
+        });
+    }
     
     if (self.disconnectTimer && self.disconnectTimer.isValid) {
         DDLogVerbose(@"[OwnTracksAppDelegate] disconnectTimer invalidate %@",
@@ -1619,14 +1632,23 @@ performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completio
 }
 
 - (void)dump {
+    NSInteger qos = [Settings intForKey:@"qos_preference" inMOC:CoreData.sharedInstance.mainMOC];
+    [self dumpWithQoS:qos];
+}
+
+- (void)dumpWithQoS:(NSInteger)qos {
+    if (qos < 0) {
+        qos = 0;
+    } else if (qos > 2) {
+        qos = 2;
+    }
     NSMutableDictionary *json = [[NSMutableDictionary alloc] init];
     json[@"_type"] = @"dump";
     json[@"configuration"] = [Settings toDictionaryInMOC:CoreData.sharedInstance.mainMOC];
     [self.connection sendData:[self jsonToData:json]
                         topic:[[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC] stringByAppendingString:@"/dump"]
                    topicAlias:@(4)
-                          qos:[Settings intForKey:@"qos_preference"
-                                            inMOC:CoreData.sharedInstance.mainMOC]
+                          qos:qos
                        retain:NO];
 }
 

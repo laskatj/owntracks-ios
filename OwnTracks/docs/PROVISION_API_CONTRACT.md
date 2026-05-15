@@ -1,6 +1,25 @@
 # POST `/api/config/provision` — identity contract (Sauron / dynamic provision)
 
-This repository’s iOS app calls `POST /api/config/provision` with a **Bearer access token** and expects a JSON **OwnTracks configuration** object (same shape as `Settings.fromDictionary:` / `_type: "configuration"`).
+The iOS app prefers a **two-step guided** flow when the server supports `POST /api/config/provision/options`; otherwise it uses a **legacy** single `POST /api/config/provision`. Both ultimately apply a JSON **OwnTracks configuration** (`_type: "configuration"`, same shape as `Settings.fromDictionary:`).
+
+## Guided native provision (preferred)
+
+1. **`POST /api/config/provision/options`** — JSON body: `{ "deviceName": "<sanitized visible device name>" }` (`^[a-zA-Z0-9 ]+$`). Response (example shape):
+   - `user`: `{ "id", "displayName", "topicUser" }` (for UI context).
+   - `existingDevices`: array of `{ "trackedDeviceId", "displayName", "deviceId", "pubTopicBase", "lastSeenAt" (ISO-8601), "lastTrackerId" }`.
+   - `newDevice`: optional preview only — **not** applied by the client; final settings come from step 2.
+
+2. **Device choice (iOS)** — If `existingDevices` is non-empty, the app shows an alert: “Is this one of your existing Sauron devices?” with a numbered summary (topic, last seen). The user picks an existing row, **This is a new device**, or **Cancel** (aborts native provision; embedded web may continue).
+
+3. **`POST /api/config/provision`** — Body = same **hints** as the legacy flow (`deviceName`, `identifierForVendor`, `hardwareMachine`, …) **plus**:
+   - `mode`: `"new"` or `"existing"`.
+   - `trackedDeviceId`: server id (number) when `mode` is `"existing"`; omitted for `"new"`.
+
+4. **Apply response** — Only the final `_type: "configuration"` JSON from step 3 is applied. When `mode` was sent, the client **does not** run `applyLocalProvisionIdentityRepairToMutableConfiguration:` on validation failure (server identity is authoritative). If `POST /options` returns **404**, the app uses the **legacy** single `POST /provision` without `mode` and may still apply client-side repair on failed validation.
+
+## Legacy single-step `POST /api/config/provision`
+
+If `/api/config/provision/options` is unavailable (404), the app POSTs hints-only JSON to `/api/config/provision` as before.
 
 ## Server responsibilities
 
@@ -40,11 +59,11 @@ Must be parseable as `_type: "configuration"` (the app may normalize missing `_t
 
 ## iOS client compatibility (no server change)
 
-If the provision response still contains generic `deviceId` / `tid` values, the iOS app may **rewrite identity fields** (`username`, `deviceId`, `clientId`, `tid`) after `POST /api/config/provision` and before applying settings, so installs can self-heal without backend changes. It does **not** rewrite `pubTopicBase` / publish topic so the device remains the same in backends that key on topic. The preferred contract remains server-issued unique identity.
+If the provision response still contains generic `deviceId` / `tid` values, the iOS app may **rewrite identity fields** (`username`, `deviceId`, `clientId`, `tid`) after **legacy** `POST /api/config/provision` (no `mode` in the request) and before applying settings, so installs can self-heal without backend changes. **Guided** provision (request included `mode`) does **not** apply that rewrite. The app does **not** rewrite `pubTopicBase` / publish topic in either path.
 
-Installs with already-applied bad identity are detected once the broker host is non-placeholder; the app sets `needs_web_provisioning` so native provision runs again. See `Settings migrateProvisionedIdentityRepairFlagIfNeededInMOC:` and `applyLocalProvisionIdentityRepairToMutableConfiguration:inMOC:`.
+Installs with a placeholder broker host are detected via `migrateWebProvisioningFlagIfNeededInMOC:`; the app sets `needs_web_provisioning` so native/Web provision can run. Server-side corrections can be pushed with a remote `setConfiguration` cmd after the client publishes its config (QoS 2 dump on foreground). See `applyLocalProvisionIdentityRepairToMutableConfiguration:inMOC:` for legacy single-step provision repair.
 
 ## Related
 
-- Native provision trigger: `LocationAPISyncService` → `OwnTracksAppDelegate configFromDictionary:`.
+- Native provision: `LocationAPISyncService` `provisionRemoteDeviceConfigurationIfNeededWithCompletion:` (`POST /api/config/provision/options` when available, then `POST /api/config/provision`) → `OwnTracksAppDelegate configFromDictionary:`.
 - Embedded web flow: `OwnTracks/docs/REACT_WEBAPP_EMBED_PROMPT.md`.

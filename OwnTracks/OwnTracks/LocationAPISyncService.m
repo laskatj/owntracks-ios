@@ -95,6 +95,96 @@ static NSDictionary *OTProvisionRequestBodyWithHints(NSManagedObjectContext *moc
     return [d copy];
 }
 
+static NSNumber *_Nullable OTProvisionTrackedDeviceIdNumberFromJSON(id obj) {
+    if ([obj isKindOfClass:[NSNumber class]]) {
+        return (NSNumber *)obj;
+    }
+    if ([obj isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)obj stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (!s.length) {
+            return nil;
+        }
+        return @(s.longLongValue);
+    }
+    return nil;
+}
+
+static NSDate *_Nullable OTProvisionDateFromLastSeenJSON(id value) {
+    if ([value isKindOfClass:[NSDate class]]) {
+        return (NSDate *)value;
+    }
+    if (![value isKindOfClass:[NSString class]]) {
+        return nil;
+    }
+    NSString *s = (NSString *)value;
+    NSISO8601DateFormatter *iso = [[NSISO8601DateFormatter alloc] init];
+    iso.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDate *d = [iso dateFromString:s];
+    if (!d) {
+        iso.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+        d = [iso dateFromString:s];
+    }
+    return d;
+}
+
+static NSString *OTProvisionFormatLastSeenForUI(id lastSeenAt) {
+    NSDate *d = OTProvisionDateFromLastSeenJSON(lastSeenAt);
+    if (!d) {
+        if ([lastSeenAt isKindOfClass:[NSString class]] && [(NSString *)lastSeenAt length] > 0) {
+            return (NSString *)lastSeenAt;
+        }
+        return @"—";
+    }
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateStyle = NSDateFormatterShortStyle;
+    fmt.timeStyle = NSDateFormatterShortStyle;
+    fmt.locale = NSLocale.currentLocale;
+    NSString *ds = [fmt stringFromDate:d];
+    return [NSString stringWithFormat:NSLocalizedString(@"ProvisionLastSeenPrefix", @"e.g. Last seen: 5/14/26, 4:40 PM"), ds];
+}
+
+/// Multi-line description for one row in the provision device picker (tap row to select).
+static NSString *OTProvisionDeviceRowDetailText(NSDictionary *dev) {
+    if (![dev isKindOfClass:[NSDictionary class]]) {
+        return @"";
+    }
+    NSString *nm = @"";
+    if ([dev[@"displayName"] isKindOfClass:[NSString class]]) {
+        nm = [(NSString *)dev[@"displayName"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+    NSString *topic = @"";
+    if ([dev[@"pubTopicBase"] isKindOfClass:[NSString class]] && [(NSString *)dev[@"pubTopicBase"] length]) {
+        topic = dev[@"pubTopicBase"];
+    } else if ([dev[@"deviceId"] isKindOfClass:[NSString class]]) {
+        topic = [(NSString *)dev[@"deviceId"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+    NSString *seen = OTProvisionFormatLastSeenForUI(dev[@"lastSeenAt"]);
+    NSNumber *tracked = OTProvisionTrackedDeviceIdNumberFromJSON(dev[@"trackedDeviceId"]);
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    if (nm.length) {
+        [lines addObject:nm];
+    }
+    if (topic.length) {
+        [lines addObject:topic];
+    }
+    if (tracked) {
+        [lines addObject:[NSString stringWithFormat:NSLocalizedString(@"ProvisionTrackedDeviceIdLine", nil), tracked]];
+    }
+    if ([dev[@"lastTrackerId"] isKindOfClass:[NSString class]]) {
+        NSString *lt = [(NSString *)dev[@"lastTrackerId"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (lt.length) {
+            [lines addObject:[NSString stringWithFormat:NSLocalizedString(@"ProvisionLastTrackerLine", nil), lt]];
+        }
+    }
+    if (seen.length) {
+        [lines addObject:seen];
+    }
+    if (!lines.count) {
+        return @"—";
+    }
+    return [lines componentsJoinedByString:@"\n"];
+}
+
 static BOOL OTJSONBoolish(id _Nullable value, BOOL defaultValue) {
     if (value == nil || value == [NSNull null]) {
         return defaultValue;
@@ -326,6 +416,144 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
 - (nullable OTWebNotificationItem *)notificationItemFromDictionary:(NSDictionary *)dict;
 - (NSError *)errorForStatus:(NSInteger)status fallbackDomain:(NSString *)domain;
 - (NSError *)locationDeleteErrorFromData:(NSData * _Nullable)data statusCode:(NSInteger)statusCode;
+
+- (void)OT_applyProvisionConfigurationPayload:(NSDictionary *)payload
+              allowLocalIdentityRepairIfInvalid:(BOOL)allowRepair
+                                     completion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
+
+- (void)OT_postProvisionHTTPWithURL:(NSURL *)provisionURL
+                             bodyData:(NSData *)bodyData
+                          accessToken:(NSString *)token
+                       allowRetry401:(BOOL)allowRetry401
+        allowLocalIdentityRepairIfInvalid:(BOOL)allowRepair
+                           completion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
+
+- (void)OT_runLegacySingleStepProvisionWithURL:(NSURL *)provisionURL
+                                           moc:(NSManagedObjectContext *)moc
+                                   accessToken:(NSString *)token
+                                    completion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
+
+- (void)OT_runGuidedProvisionPOSTWithURL:(NSURL *)provisionURL
+                                     moc:(NSManagedObjectContext *)moc
+                             accessToken:(NSString *)token
+                                    mode:(NSString *)mode
+                       trackedDeviceId:(NSNumber * _Nullable)trackedDeviceId
+                              completion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
+
+- (void)OT_presentProvisionDeviceChooserWithUser:(NSDictionary * _Nullable)userDict
+                                 existingDevices:(NSArray<NSDictionary *> *)devicesSlice
+                                      totalCount:(NSUInteger)totalCount
+                                       truncated:(BOOL)truncated
+                                    provisionURL:(NSURL *)provisionURL
+                                             moc:(NSManagedObjectContext *)moc
+                                     accessToken:(NSString *)token
+                                      completion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
+@end
+
+@interface OTProvisionDevicePickerTVC : UITableViewController
+@property (nonatomic, copy) NSArray<NSDictionary *> *devices;
+@property (nonatomic, copy, nullable) NSString *accountHeaderPlain;
+@property (nonatomic) BOOL truncatedFooter;
+@property (nonatomic, copy) void (^onPickExisting)(NSNumber *trackedDeviceId);
+@property (nonatomic, copy) void (^onPickNew)(void);
+@property (nonatomic, copy) void (^onCancel)(void);
+@end
+
+@implementation OTProvisionDevicePickerTVC
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = NSLocalizedString(@"ProvisionExistingDeviceTitle", nil);
+    self.navigationItem.leftBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+                                                    target:self
+                                                    action:@selector(OT_cancelPressed)];
+    self.tableView.estimatedRowHeight = 120.0;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.cellLayoutMarginsFollowReadableWidth = YES;
+}
+
+- (void)OT_cancelPressed {
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (self.onCancel) {
+            self.onCancel();
+        }
+    }];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 2;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 0) {
+        return (NSInteger)self.devices.count;
+    }
+    return 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0 && self.accountHeaderPlain.length) {
+        return self.accountHeaderPlain;
+    }
+    return nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 0 && self.truncatedFooter) {
+        return NSLocalizedString(@"ProvisionExistingDeviceTruncated", nil);
+    }
+    return nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *const kCell = @"OTProvisionDevicePickerCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kCell];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:kCell];
+        cell.textLabel.numberOfLines = 0;
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    if (indexPath.section == 0) {
+        NSDictionary *dev = self.devices[(NSUInteger)indexPath.row];
+        cell.textLabel.text = OTProvisionDeviceRowDetailText(dev);
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.textColor = UIColor.labelColor;
+    } else {
+        cell.textLabel.text = NSLocalizedString(@"ProvisionNewDeviceAction", nil);
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.section == 0) {
+        NSDictionary *dev = self.devices[(NSUInteger)indexPath.row];
+        NSNumber *tid = OTProvisionTrackedDeviceIdNumberFromJSON(dev[@"trackedDeviceId"]);
+        if (!tid) {
+            return;
+        }
+        __weak typeof(self) wself = self;
+        [self dismissViewControllerAnimated:YES completion:^{
+            __strong typeof(wself) sself = wself;
+            if (sself.onPickExisting) {
+                sself.onPickExisting(tid);
+            }
+        }];
+    } else {
+        __weak typeof(self) wself = self;
+        [self dismissViewControllerAnimated:YES completion:^{
+            __strong typeof(wself) sself = wself;
+            if (sself.onPickNew) {
+                sself.onPickNew();
+            }
+        }];
+    }
+}
+
 @end
 
 @implementation LocationAPISyncService
@@ -2051,18 +2279,10 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
         return;
     }
     NSURL *provisionURL = [WebAppURLResolver configProvisionAPIRequestURLFromPreferenceInMOC:moc];
+    NSURL *optionsURL = [WebAppURLResolver configProvisionOptionsAPIRequestURLFromPreferenceInMOC:moc];
     if (!provisionURL) {
         DDLogWarn(@"[ProvisionAPI] provision skipped (no web app origin / provision URL)");
         completion(NO, nil);
-        return;
-    }
-
-    NSError *jsonErr = nil;
-    NSDictionary *bodyDict = OTProvisionRequestBodyWithHints(moc);
-    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:bodyDict options:0 error:&jsonErr];
-    if (!bodyData) {
-        DDLogError(@"[ProvisionAPI] could not encode provision body: %@", jsonErr);
-        completion(NO, jsonErr);
         return;
     }
 
@@ -2083,137 +2303,398 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
             return;
         }
 
-        __block void (^runPOST)(NSString *token, BOOL allowRetry401);
-        runPOST = ^(NSString *token, BOOL allowRetry401) {
-            __strong typeof(wself) sselfInner = wself;
-            if (!sselfInner) {
+        if (!optionsURL) {
+            DDLogWarn(@"[ProvisionAPI] options URL nil — legacy single-step provision");
+            [sself OT_runLegacySingleStepProvisionWithURL:provisionURL moc:moc accessToken:accessToken completion:completion];
+            return;
+        }
+
+        NSDictionary *optionsBody = @{ @"deviceName": OTProvisionSanitizedDeviceName() };
+        [sself performAuthenticatedRequestWithURL:optionsURL
+                                           method:@"POST"
+                                         jsonBody:optionsBody
+                                       completion:^(NSData *data, NSInteger status, NSError *error) {
+            __strong typeof(wself) sself2 = wself;
+            if (!sself2) {
                 completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:0 userInfo:nil]);
                 return;
             }
-            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:provisionURL];
-            req.HTTPMethod = @"POST";
-            req.timeoutInterval = 30.0;
-            [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-            [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-            [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
-            req.HTTPBody = bodyData;
+            if (error) {
+                DDLogWarn(@"[ProvisionAPI] POST /options network error: %@", error.localizedDescription);
+                sself2.provisionInFlight = NO;
+                completion(NO, error);
+                return;
+            }
+            DDLogInfo(@"[ProvisionAPI] POST %@ → HTTP %ld (%lu bytes)",
+                      optionsURL.absoluteString, (long)status, (unsigned long)data.length);
 
-            [[LocationAPISyncURLSession() dataTaskWithRequest:req
-                                            completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-                __strong typeof(wself) sself2 = wself;
-                if (!sself2) {
-                    completion(NO, nil);
+            if (status == 404) {
+                DDLogInfo(@"[ProvisionAPI] POST /api/config/provision/options → 404 — legacy single-step provision");
+                [sself2 OT_runLegacySingleStepProvisionWithURL:provisionURL moc:moc accessToken:accessToken completion:completion];
+                return;
+            }
+            if (status != 200) {
+                sself2.provisionInFlight = NO;
+                completion(NO, [sself2 errorForStatus:status fallbackDomain:kOTProvisionAPIDomain]);
+                return;
+            }
+
+            NSError *parseErr = nil;
+            id obj = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseErr] : nil;
+            if (parseErr || ![obj isKindOfClass:[NSDictionary class]]) {
+                DDLogWarn(@"[ProvisionAPI] options 200 but JSON parse failed: %@", parseErr.localizedDescription);
+                sself2.provisionInFlight = NO;
+                completion(NO, parseErr ?: [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                               code:2
+                                                           userInfo:@{NSLocalizedDescriptionKey: @"Invalid JSON"}]);
+                return;
+            }
+            NSDictionary *optionsPayload = (NSDictionary *)obj;
+            id rawExisting = optionsPayload[@"existingDevices"];
+            NSArray *existing = [rawExisting isKindOfClass:[NSArray class]] ? rawExisting : nil;
+            NSUInteger n = existing.count;
+            if (n == 0) {
+                DDLogInfo(@"[ProvisionAPI] guided provision: empty existingDevices — POST mode=new");
+                [sself2 OT_runGuidedProvisionPOSTWithURL:provisionURL
+                                                     moc:moc
+                                             accessToken:accessToken
+                                                    mode:@"new"
+                                       trackedDeviceId:nil
+                                              completion:completion];
+                return;
+            }
+
+            static const NSUInteger kMaxProvisionDeviceChoices = 10;
+            BOOL truncated = n > kMaxProvisionDeviceChoices;
+            NSArray *slice = truncated ? [existing subarrayWithRange:NSMakeRange(0, kMaxProvisionDeviceChoices)] : existing;
+            NSMutableArray<NSDictionary *> *typed = [NSMutableArray array];
+            for (id item in slice) {
+                if (![item isKindOfClass:[NSDictionary class]]) {
+                    continue;
+                }
+                NSDictionary *d = (NSDictionary *)item;
+                if (OTProvisionTrackedDeviceIdNumberFromJSON(d[@"trackedDeviceId"])) {
+                    [typed addObject:d];
+                }
+            }
+            if (typed.count == 0 && n > 0) {
+                DDLogWarn(@"[ProvisionAPI] existingDevices had no valid trackedDeviceId — POST mode=new");
+                [sself2 OT_runGuidedProvisionPOSTWithURL:provisionURL
+                                                     moc:moc
+                                             accessToken:accessToken
+                                                    mode:@"new"
+                                       trackedDeviceId:nil
+                                              completion:completion];
+                return;
+            }
+            NSDictionary *userDict = [optionsPayload[@"user"] isKindOfClass:[NSDictionary class]] ? optionsPayload[@"user"] : nil;
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(wself) sself3 = wself;
+                if (!sself3) {
+                    completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:0 userInfo:nil]);
                     return;
                 }
-                if (error) {
-                    DDLogWarn(@"[ProvisionAPI] POST network error: %@", error.localizedDescription);
-                    sself2.provisionInFlight = NO;
-                    completion(NO, error);
-                    return;
-                }
-                NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
-                DDLogInfo(@"[ProvisionAPI] POST %@ → HTTP %ld (%lu bytes)",
-                          provisionURL.absoluteString, (long)status, (unsigned long)data.length);
+                [sself3 OT_presentProvisionDeviceChooserWithUser:userDict
+                                               existingDevices:typed
+                                                    totalCount:n
+                                                     truncated:truncated
+                                                  provisionURL:provisionURL
+                                                           moc:moc
+                                                   accessToken:accessToken
+                                                    completion:completion];
+            });
+        }];
+    }];
+}
 
-                if (status == 401 && allowRetry401) {
-                    sself2.cachedAccessToken = nil;
-                    sself2.cachedAccessTokenExpiry = 0;
-                    [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
-                        __strong typeof(wself) sself3 = wself;
-                        if (!sself3) {
-                            completion(NO, nil);
-                            return;
-                        }
-                        if (!newToken.length) {
-                            DDLogWarn(@"[ProvisionAPI] 401 retry — could not refresh token");
-                            sself3.provisionInFlight = NO;
-                            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
-                                                                code:401
-                                                            userInfo:@{NSLocalizedDescriptionKey: @"Unauthorized"}]);
-                            return;
-                        }
-                        runPOST(newToken, NO);
-                    }];
-                    return;
-                }
+- (void)OT_applyProvisionConfigurationPayload:(NSDictionary *)payload
+              allowLocalIdentityRepairIfInvalid:(BOOL)allowRepair
+                                     completion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    NSAssert([NSThread isMainThread], @"OT_applyProvisionConfigurationPayload must run on main");
+    OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
+    if (![ad isKindOfClass:[OwnTracksAppDelegate class]]) {
+        self.provisionInFlight = NO;
+        completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:3 userInfo:nil]);
+        return;
+    }
+    NSError *jsonLogErr = nil;
+    NSData *prettyLog = [NSJSONSerialization dataWithJSONObject:payload
+                                                         options:(NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys)
+                                                           error:&jsonLogErr];
+    if (prettyLog && !jsonLogErr) {
+        NSString *jsonStr = [[NSString alloc] initWithData:prettyLog encoding:NSUTF8StringEncoding];
+        DDLogInfo(@"[ProvisionAPI] server configuration (full JSON from POST /api/config/provision):\n%@", jsonStr);
+    } else {
+        DDLogWarn(@"[ProvisionAPI] server configuration could not be serialized for logging (%@); description: %@",
+                  jsonLogErr.localizedDescription ?: @"unknown",
+                  payload);
+    }
+    NSMutableDictionary *cfg = [NSMutableDictionary dictionaryWithDictionary:payload];
+    [Settings applyCanonicalDeviceIdFromPubTopicTailIfDeviceIdSuspectToMutableConfiguration:cfg];
+    NSError *validationError =
+        [Settings validationErrorForRemoteProvisionConfiguration:cfg
+                                                             inMOC:CoreData.sharedInstance.mainMOC];
+    if (validationError && allowRepair) {
+        [Settings applyLocalProvisionIdentityRepairToMutableConfiguration:cfg
+                                                                     inMOC:CoreData.sharedInstance.mainMOC];
+        validationError =
+            [Settings validationErrorForRemoteProvisionConfiguration:cfg
+                                                             inMOC:CoreData.sharedInstance.mainMOC];
+    }
+    if (validationError) {
+        DDLogWarn(@"[ProvisionAPI] configuration rejected by client validation: %@",
+                  validationError.localizedDescription);
+        self.provisionInFlight = NO;
+        completion(NO, validationError);
+        return;
+    }
+    [ad terminateSession];
+    [ad configFromDictionary:cfg];
+    ad.configLoad = [NSDate date];
+    [ad reconnect];
+    self.provisionInFlight = NO;
+    DDLogInfo(@"[ProvisionAPI] configuration applied from POST /api/config/provision");
+    completion(YES, nil);
+}
 
-                if (status == 200) {
-                    NSError *parseErr = nil;
-                    id obj = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseErr] : nil;
-                    if (parseErr || ![obj isKindOfClass:[NSDictionary class]]) {
-                        DDLogWarn(@"[ProvisionAPI] 200 but JSON parse failed: %@", parseErr.localizedDescription);
-                        sself2.provisionInFlight = NO;
-                        completion(NO, parseErr ?: [NSError errorWithDomain:kOTProvisionAPIDomain
-                                                                     code:2
-                                                                 userInfo:@{NSLocalizedDescriptionKey: @"Invalid JSON"}]);
+- (void)OT_postProvisionHTTPWithURL:(NSURL *)provisionURL
+                             bodyData:(NSData *)bodyData
+                          accessToken:(NSString *)token
+                       allowRetry401:(BOOL)allowRetry401
+        allowLocalIdentityRepairIfInvalid:(BOOL)allowRepair
+                           completion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    __weak typeof(self) wself = self;
+    __block void (^runPOST)(NSString *tok, BOOL allow401);
+    runPOST = ^(NSString *tok, BOOL allow401) {
+        __strong typeof(wself) sselfInner = wself;
+        if (!sselfInner) {
+            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:0 userInfo:nil]);
+            return;
+        }
+        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:provisionURL];
+        req.HTTPMethod = @"POST";
+        req.timeoutInterval = 30.0;
+        [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+        [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+        [req setValue:[NSString stringWithFormat:@"Bearer %@", tok] forHTTPHeaderField:@"Authorization"];
+        req.HTTPBody = bodyData;
+
+        [[LocationAPISyncURLSession() dataTaskWithRequest:req
+                                        completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+            __strong typeof(wself) sself2 = wself;
+            if (!sself2) {
+                completion(NO, nil);
+                return;
+            }
+            if (error) {
+                DDLogWarn(@"[ProvisionAPI] POST network error: %@", error.localizedDescription);
+                sself2.provisionInFlight = NO;
+                completion(NO, error);
+                return;
+            }
+            NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+            DDLogInfo(@"[ProvisionAPI] POST %@ → HTTP %ld (%lu bytes)",
+                      provisionURL.absoluteString, (long)status, (unsigned long)data.length);
+
+            if (status == 401 && allow401) {
+                sself2.cachedAccessToken = nil;
+                sself2.cachedAccessTokenExpiry = 0;
+                [sself2 obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable newToken) {
+                    __strong typeof(wself) sself3 = wself;
+                    if (!sself3) {
+                        completion(NO, nil);
                         return;
                     }
-                    NSDictionary *payload = (NSDictionary *)obj;
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        __strong typeof(wself) sself4 = wself;
-                        if (!sself4) {
-                            completion(NO, nil);
-                            return;
-                        }
-                        OwnTracksAppDelegate *ad = (OwnTracksAppDelegate *)[UIApplication sharedApplication].delegate;
-                        if (![ad isKindOfClass:[OwnTracksAppDelegate class]]) {
-                            sself4.provisionInFlight = NO;
-                            completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain code:3 userInfo:nil]);
-                            return;
-                        }
-                        NSMutableDictionary *cfg = [NSMutableDictionary dictionaryWithDictionary:payload];
-                        NSError *validationError =
-                            [Settings validationErrorForRemoteProvisionConfiguration:cfg
-                                                                             inMOC:CoreData.sharedInstance.mainMOC];
-                        if (validationError) {
-                            [Settings applyLocalProvisionIdentityRepairToMutableConfiguration:cfg
-                                                                                        inMOC:CoreData.sharedInstance.mainMOC];
-                            validationError =
-                                [Settings validationErrorForRemoteProvisionConfiguration:cfg
-                                                                                 inMOC:CoreData.sharedInstance.mainMOC];
-                        }
-                        if (validationError) {
-                            DDLogWarn(@"[ProvisionAPI] configuration rejected by client validation: %@",
-                                      validationError.localizedDescription);
-                            sself4.provisionInFlight = NO;
-                            completion(NO, validationError);
-                            return;
-                        }
-                        [ad terminateSession];
-                        [ad configFromDictionary:cfg];
-                        ad.configLoad = [NSDate date];
-                        [ad reconnect];
-                        sself4.provisionInFlight = NO;
-                        DDLogInfo(@"[ProvisionAPI] configuration applied from POST /api/config/provision");
-                        completion(YES, nil);
-                    });
+                    if (!newToken.length) {
+                        DDLogWarn(@"[ProvisionAPI] 401 retry — could not refresh token");
+                        sself3.provisionInFlight = NO;
+                        completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                            code:401
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Unauthorized"}]);
+                        return;
+                    }
+                    runPOST(newToken, NO);
+                }];
+                return;
+            }
+
+            if (status == 200) {
+                NSError *parseErr = nil;
+                id obj = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseErr] : nil;
+                if (parseErr || ![obj isKindOfClass:[NSDictionary class]]) {
+                    DDLogWarn(@"[ProvisionAPI] 200 but JSON parse failed: %@", parseErr.localizedDescription);
+                    sself2.provisionInFlight = NO;
+                    completion(NO, parseErr ?: [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                                   code:2
+                                                               userInfo:@{NSLocalizedDescriptionKey: @"Invalid JSON"}]);
                     return;
                 }
+                NSDictionary *payload = (NSDictionary *)obj;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong typeof(wself) sself4 = wself;
+                    if (!sself4) {
+                        completion(NO, nil);
+                        return;
+                    }
+                    [sself4 OT_applyProvisionConfigurationPayload:payload
+                              allowLocalIdentityRepairIfInvalid:allowRepair
+                                                     completion:completion];
+                });
+                return;
+            }
 
-                NSString *serverMsg = nil;
-                if (data.length) {
-                    id errObj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-                    if ([errObj isKindOfClass:[NSDictionary class]]) {
-                        id em = errObj[@"error"];
-                        if ([em isKindOfClass:[NSString class]]) {
-                            serverMsg = (NSString *)em;
-                        }
+            NSString *serverMsg = nil;
+            if (data.length) {
+                id errObj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+                if ([errObj isKindOfClass:[NSDictionary class]]) {
+                    id em = errObj[@"error"];
+                    if ([em isKindOfClass:[NSString class]]) {
+                        serverMsg = (NSString *)em;
                     }
                 }
-                if (!serverMsg.length) {
-                    serverMsg = [NSString stringWithFormat:@"HTTP %ld", (long)status];
-                }
-                NSError *apiErr = [NSError errorWithDomain:kOTProvisionAPIDomain
-                                                      code:status
-                                                  userInfo:@{NSLocalizedDescriptionKey: serverMsg}];
-                DDLogWarn(@"[ProvisionAPI] provision failed: %@", serverMsg);
-                sself2.provisionInFlight = NO;
-                completion(NO, apiErr);
-            }] resume];
-        };
+            }
+            if (!serverMsg.length) {
+                serverMsg = [NSString stringWithFormat:@"HTTP %ld", (long)status];
+            }
+            NSError *apiErr = [NSError errorWithDomain:kOTProvisionAPIDomain
+                                                  code:status
+                                              userInfo:@{NSLocalizedDescriptionKey: serverMsg}];
+            DDLogWarn(@"[ProvisionAPI] provision failed: %@", serverMsg);
+            sself2.provisionInFlight = NO;
+            completion(NO, apiErr);
+        }] resume];
+    };
 
-        runPOST(accessToken, YES);
-    }];
+    runPOST(token, allowRetry401);
+}
+
+- (void)OT_runLegacySingleStepProvisionWithURL:(NSURL *)provisionURL
+                                           moc:(NSManagedObjectContext *)moc
+                                   accessToken:(NSString *)token
+                                    completion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    NSError *jsonErr = nil;
+    NSDictionary *bodyDict = OTProvisionRequestBodyWithHints(moc);
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:bodyDict options:0 error:&jsonErr];
+    if (!bodyData) {
+        DDLogError(@"[ProvisionAPI] could not encode provision body: %@", jsonErr);
+        self.provisionInFlight = NO;
+        completion(NO, jsonErr);
+        return;
+    }
+    [self OT_postProvisionHTTPWithURL:provisionURL
+                             bodyData:bodyData
+                          accessToken:token
+                       allowRetry401:YES
+        allowLocalIdentityRepairIfInvalid:YES
+                           completion:completion];
+}
+
+- (void)OT_runGuidedProvisionPOSTWithURL:(NSURL *)provisionURL
+                                     moc:(NSManagedObjectContext *)moc
+                             accessToken:(NSString *)token
+                                    mode:(NSString *)mode
+                       trackedDeviceId:(NSNumber * _Nullable)trackedDeviceId
+                              completion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    NSDictionary *hints = OTProvisionRequestBodyWithHints(moc);
+    NSMutableDictionary *body = hints ? [hints mutableCopy] : [NSMutableDictionary dictionary];
+    body[@"mode"] = mode;
+    if (trackedDeviceId) {
+        body[@"trackedDeviceId"] = trackedDeviceId;
+    }
+    NSError *jsonErr = nil;
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&jsonErr];
+    if (!bodyData) {
+        DDLogError(@"[ProvisionAPI] could not encode guided provision body: %@", jsonErr);
+        self.provisionInFlight = NO;
+        completion(NO, jsonErr);
+        return;
+    }
+    DDLogInfo(@"[ProvisionAPI] guided POST mode=%@ trackedDeviceId=%@", mode, trackedDeviceId ?: @"(nil)");
+    [self OT_postProvisionHTTPWithURL:provisionURL
+                             bodyData:bodyData
+                          accessToken:token
+                       allowRetry401:YES
+        allowLocalIdentityRepairIfInvalid:NO
+                           completion:completion];
+}
+
+- (void)OT_presentProvisionDeviceChooserWithUser:(NSDictionary *)userDict
+                                 existingDevices:(NSArray<NSDictionary *> *)devicesSlice
+                                      totalCount:(NSUInteger)totalCount
+                                       truncated:(BOOL)truncated
+                                    provisionURL:(NSURL *)provisionURL
+                                             moc:(NSManagedObjectContext *)moc
+                                     accessToken:(NSString *)token
+                                      completion:(void (^)(BOOL applied, NSError * _Nullable error))completion {
+    NSAssert([NSThread isMainThread], @"OT_presentProvisionDeviceChooser must run on main");
+    (void)totalCount;
+    UIViewController *top = LocationAPISyncTopMostViewController();
+    if (!top) {
+        DDLogWarn(@"[ProvisionAPI] no presenter for device chooser — aborting guided provision");
+        self.provisionInFlight = NO;
+        completion(NO, [NSError errorWithDomain:kOTProvisionAPIDomain
+                                            code:4
+                                        userInfo:@{NSLocalizedDescriptionKey: @"No view controller to present device chooser"}]);
+        return;
+    }
+
+    NSString *acct = nil;
+    if ([userDict[@"displayName"] isKindOfClass:[NSString class]]) {
+        acct = [(NSString *)userDict[@"displayName"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+    NSString *accountHeaderPlain = nil;
+    if (acct.length) {
+        accountHeaderPlain = [NSString stringWithFormat:NSLocalizedString(@"ProvisionExistingDeviceAccountLine", @"Signed in as: {name}"), acct];
+    }
+
+    OTProvisionDevicePickerTVC *picker = [[OTProvisionDevicePickerTVC alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    picker.devices = devicesSlice;
+    picker.accountHeaderPlain = accountHeaderPlain;
+    picker.truncatedFooter = truncated;
+
+    __weak typeof(self) wself = self;
+    picker.onPickExisting = ^(NSNumber *trackedTid) {
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(NO, nil);
+            return;
+        }
+        [sself OT_runGuidedProvisionPOSTWithURL:provisionURL
+                                          moc:moc
+                                  accessToken:token
+                                         mode:@"existing"
+                            trackedDeviceId:trackedTid
+                                   completion:completion];
+    };
+    picker.onPickNew = ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(NO, nil);
+            return;
+        }
+        [sself OT_runGuidedProvisionPOSTWithURL:provisionURL
+                                          moc:moc
+                                  accessToken:token
+                                         mode:@"new"
+                            trackedDeviceId:nil
+                                   completion:completion];
+    };
+    picker.onCancel = ^{
+        __strong typeof(wself) sself = wself;
+        if (!sself) {
+            completion(NO, nil);
+            return;
+        }
+        sself.provisionInFlight = NO;
+        completion(NO, nil);
+    };
+
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:picker];
+    if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        nav.modalPresentationStyle = UIModalPresentationFormSheet;
+    }
+    [top presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)fetchDeviceImageAtPath:(NSString *)relativePath

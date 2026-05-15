@@ -28,6 +28,15 @@
 /* Cancel button title */
 "Cancel" = "Cancel";
 
+/* Native provision: existing device picker */
+"ProvisionExistingDeviceTitle" = "Is this one of your existing Sauron devices?";
+"ProvisionExistingDeviceAccountLine" = "Signed in as: %@";
+"ProvisionExistingDeviceTruncated" = "\nShowing the first 10 devices. Use the web app to manage additional devices.";
+"ProvisionNewDeviceAction" = "This is a new device";
+"ProvisionLastSeenPrefix" = "Last seen: %@";
+"ProvisionTrackedDeviceIdLine" = "Registered id: %@";
+"ProvisionLastTrackerLine" = "Tracker: %@";
+
 /* Clipboard */
 "Clipboard" = "Clipboard";
 

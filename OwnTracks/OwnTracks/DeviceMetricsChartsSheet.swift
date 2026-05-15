@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UIKit
 
 // MARK: - Shared metrics chart time window (12h base, optional zoom)
 
@@ -83,9 +84,9 @@ private enum MetricsChartDomainMath {
 }
 
 /// Full-screen sheet: speed, altitude, heart rate, and battery over the same 12-hour window.
-/// Shared scrub time + vertical `RuleMark` per chart. Pinch zooms the visible time slice (all charts);
-/// when zoomed, drag horizontally to pan. Touch or drag to scrub when not panning.
-/// Double-tap a chart or Clear to reset scrub (and zoom). Vertical scrolling works best outside plot areas.
+/// Two-finger pinch zooms the shared time window; when zoomed, one-finger horizontal drag pans.
+/// Touch-and-hold (~0.45s) then drag scrubs the shared time line. Vertical drags scroll the page.
+/// Double-tap a chart or Clear to reset scrub (and zoom).
 struct DeviceMetricsChartsSheet: View {
     @ObservedObject var vm: DeviceDetailViewModel
     @Environment(\.dismiss) private var dismiss
@@ -163,8 +164,8 @@ struct DeviceMetricsChartsSheet: View {
 
                     Text(
                         NSLocalizedString(
-                            "Pinch on any chart to zoom the time window (all charts). Drag horizontally to pan when zoomed. Tap or drag to scrub.",
-                            comment: "Hint for metrics pinch zoom, pan, and scrub"
+                            "Two-finger pinch on any chart to zoom the time window (all charts). When zoomed, drag left or right with one finger to pan. Touch and hold, then drag to move the time line and update the readout. Drag up or down to scroll this page.",
+                            comment: "Hint for metrics pinch zoom, pan, long-press scrub, and scroll"
                         )
                     )
                     .font(.caption2)
@@ -613,6 +614,93 @@ private struct AlignedMetricChart: View {
 
 // MARK: - Chart overlay (pinch zoom, pan, scrub)
 
+/// Long-press scrub using UIKit (`cancelsTouchesInView = false`). The delegate returns false for
+/// `shouldRecognizeSimultaneouslyWith` when the other recognizer is a `UIPanGestureRecognizer`, so the sheet
+/// `ScrollView` pan can win on vertical drags; simultaneous recognition with that pan often blocked scrolling
+/// when the touch began on the plot (SwiftUI `LongPressGesture` had the same issue).
+private struct MetricsChartUIKitScrubOverlay: UIViewRepresentable {
+    @Binding var scrubTime: Date?
+    @Binding var visibleDomain: ClosedRange<Date>?
+    @Binding var longPressScrubEngaged: Bool
+    let chartXDomain: ClosedRange<Date>
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.backgroundColor = .clear
+        v.isUserInteractionEnabled = true
+        v.isMultipleTouchEnabled = true
+
+        let lp = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.longPressed(_:)))
+        lp.minimumPressDuration = 0.45
+        lp.allowableMovement = 14
+        lp.cancelsTouchesInView = false
+        lp.delaysTouchesBegan = false
+        lp.delegate = context.coordinator
+        v.addGestureRecognizer(lp)
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.cancelsTouchesInView = false
+        doubleTap.delegate = context.coordinator
+        v.addGestureRecognizer(doubleTap)
+
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: MetricsChartUIKitScrubOverlay
+
+        init(_ parent: MetricsChartUIKitScrubOverlay) {
+            self.parent = parent
+        }
+
+        @objc func longPressed(_ gr: UILongPressGestureRecognizer) {
+            switch gr.state {
+            case .began:
+                parent.longPressScrubEngaged = true
+            case .changed:
+                parent.longPressScrubEngaged = true
+                guard let view = gr.view else { return }
+                let x = gr.location(in: view).x
+                let w = max(view.bounds.width, 1)
+                let frac = max(0, min(1, x / w))
+                let span = parent.chartXDomain.upperBound.timeIntervalSince(parent.chartXDomain.lowerBound)
+                let t = parent.chartXDomain.lowerBound.addingTimeInterval(frac * span)
+                parent.scrubTime = clampedDate(t, to: parent.chartXDomain)
+            case .ended, .cancelled, .failed:
+                parent.longPressScrubEngaged = false
+            default:
+                break
+            }
+        }
+
+        @objc func doubleTapped(_ gr: UITapGestureRecognizer) {
+            parent.scrubTime = nil
+            parent.visibleDomain = nil
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            // Do not run simultaneously with the enclosing scroll view's pan; that mode often prevents
+            // vertical scrolling when the touch begins on the plot. Let the pan and long-press compete instead.
+            if otherGestureRecognizer is UIPanGestureRecognizer {
+                return false
+            }
+            return true
+        }
+    }
+}
+
 private struct MetricsChartOverlayHost: View {
     let proxy: ChartProxy
     let baseDomain: ClosedRange<Date>
@@ -623,31 +711,54 @@ private struct MetricsChartOverlayHost: View {
 
     @State private var pinchStartDomain: ClosedRange<Date>?
     @State private var pinchAnchorDate: Date?
-    @State private var dragMode: DragIntent = .undecided
+    /// True once the long-press phase of scrub has succeeded; suppresses pan for the rest of that touch sequence.
+    @State private var longPressScrubEngaged = false
+    @State private var panLock: PanLockState = .undecided
     @State private var panDomainAtLock: ClosedRange<Date>?
     @State private var panTranslationAtLock: CGFloat = 0
 
-    private enum DragIntent {
+    private enum PanLockState {
         case undecided
-        case pan
-        case scrub
+        case active
+        case ignored
+    }
+
+    private var doubleTapReset: some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                scrubTime = nil
+                visibleDomain = nil
+            }
     }
 
     var body: some View {
         GeometryReader { geo in
-            Rectangle()
-                .fill(Color.clear)
-                .contentShape(Rectangle())
-                .simultaneousGesture(magnifyGesture(geo: geo))
-                .simultaneousGesture(mainDragGesture(geo: geo))
-                .simultaneousGesture(
-                    TapGesture(count: 2)
-                        .onEnded {
-                            scrubTime = nil
-                            visibleDomain = nil
-                        }
-                )
+            if isZoomedBelowBase {
+                overlayStack(geo: geo)
+                    .simultaneousGesture(panDragGesture(geo: geo))
+            } else {
+                overlayStack(geo: geo)
+            }
         }
+    }
+
+    private func overlayStack(geo: GeometryProxy) -> some View {
+        let plot = plotFrame(in: geo)
+        return ZStack(alignment: .topLeading) {
+            Color.clear
+            MetricsChartUIKitScrubOverlay(
+                scrubTime: $scrubTime,
+                visibleDomain: $visibleDomain,
+                longPressScrubEngaged: $longPressScrubEngaged,
+                chartXDomain: chartXDomain
+            )
+            .frame(width: plot.width, height: plot.height)
+            .position(x: plot.midX, y: plot.midY)
+        }
+        .frame(width: geo.size.width, height: geo.size.height)
+        .contentShape(Rectangle())
+        .simultaneousGesture(magnifyGesture(geo: geo))
+        .simultaneousGesture(doubleTapReset)
     }
 
     private func plotFrame(in geo: GeometryProxy) -> CGRect {
@@ -687,48 +798,38 @@ private struct MetricsChartOverlayHost: View {
             }
     }
 
-    private func mainDragGesture(geo: GeometryProxy) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+    private func panDragGesture(geo: GeometryProxy) -> some Gesture {
+        DragGesture(minimumDistance: 10)
             .onChanged { value in
+                guard !longPressScrubEngaged else { return }
                 let t = value.translation
-                let dist = hypot(t.width, t.height)
                 let pf = plotFrame(in: geo)
                 let plotW = max(Double(pf.width), 1)
 
-                if dragMode == .undecided && dist > 14 {
-                    if isZoomedBelowBase && abs(t.width) > abs(t.height) + 6 {
-                        dragMode = .pan
+                if panLock == .undecided {
+                    let dist = hypot(t.width, t.height)
+                    guard dist >= 10 else { return }
+                    if abs(t.width) > abs(t.height) + 6 {
+                        panLock = .active
                         panDomainAtLock = MetricsChartDomainMath.effectiveVisible(
                             visible: visibleDomain,
                             base: baseDomain
                         )
-                        panTranslationAtLock = t.width
+                        panTranslationAtLock = value.translation.width
                     } else {
-                        dragMode = .scrub
+                        panLock = .ignored
                     }
                 }
 
-                switch dragMode {
-                case .pan:
-                    guard let dLock = panDomainAtLock else { return }
-                    let deltaW = value.translation.width - panTranslationAtLock
-                    let span = dLock.upperBound.timeIntervalSince(dLock.lowerBound)
-                    let dt = -Double(deltaW) / plotW * span
-                    let d1 = MetricsChartDomainMath.domainByPan(domain: dLock, base: baseDomain, deltaTime: dt)
-                    visibleDomain = MetricsChartDomainMath.normalizedVisible(domain: d1, base: baseDomain)
-
-                case .scrub, .undecided:
-                    let loc = CGPoint(
-                        x: value.location.x - pf.origin.x,
-                        y: value.location.y - pf.origin.y
-                    )
-                    if let pair = proxy.value(at: loc, as: (Date, Double).self) {
-                        scrubTime = clampedDate(pair.0, to: chartXDomain)
-                    }
-                }
+                guard panLock == .active, let dLock = panDomainAtLock else { return }
+                let deltaW = value.translation.width - panTranslationAtLock
+                let span = dLock.upperBound.timeIntervalSince(dLock.lowerBound)
+                let dt = -Double(deltaW) / plotW * span
+                let d1 = MetricsChartDomainMath.domainByPan(domain: dLock, base: baseDomain, deltaTime: dt)
+                visibleDomain = MetricsChartDomainMath.normalizedVisible(domain: d1, base: baseDomain)
             }
             .onEnded { _ in
-                dragMode = .undecided
+                panLock = .undecided
                 panDomainAtLock = nil
                 panTranslationAtLock = 0
             }
@@ -736,8 +837,8 @@ private struct MetricsChartOverlayHost: View {
 }
 
 private extension View {
-    /// Pinch zooms time axis (shared `visibleDomain`); when zoomed, dominant horizontal drag pans; otherwise drag scrubs.
-    /// Double-tap clears scrub and zoom.
+    /// Pinch zooms time axis (shared `visibleDomain`). Long-press then drag scrubs. When zoomed, horizontal drag pans.
+    /// Double-tap clears scrub and zoom. No greedy `DragGesture(0)` so the sheet `ScrollView` can scroll vertically.
     func chartMetricsPlotInteractions(
         baseDomain: ClosedRange<Date>,
         chartXDomain: ClosedRange<Date>,

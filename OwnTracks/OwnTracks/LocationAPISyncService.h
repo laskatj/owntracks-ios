@@ -150,9 +150,11 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksLocationMQTTAllowli
 - (void)bulkDeleteNotifications:(NSArray<NSNumber *> *)notificationIds
                      completion:(void (^)(NSError * _Nullable error))completion;
 
-/// When the app still needs remote device configuration, POST `/api/config/provision` with Bearer auth
-/// (JSON body includes device hints per `OwnTracks/docs/PROVISION_API_CONTRACT.md`) and apply the JSON response
-/// via `OwnTracksAppDelegate configFromDictionary:` on the main queue after `Settings validationErrorForRemoteProvisionConfiguration:` passes.
+/// When the app still needs remote device configuration, runs guided native provision: POST `/api/config/provision/options`
+/// (device name hint), then either POST `/api/config/provision` with `mode` + `trackedDeviceId` / `mode:new` after an optional
+/// device chooser, or falls back to a legacy single POST without `mode` if `/options` returns 404. Applies the final JSON
+/// (`_type: configuration`) on the main queue via `OwnTracksAppDelegate configFromDictionary:` after validation. Client-side
+/// identity repair on failed validation applies only to the legacy path (no `mode` in request). See `OwnTracks/docs/PROVISION_API_CONTRACT.md`.
 /// Completion is called on an arbitrary background thread: `applied` YES if configuration was applied.
 - (void)provisionRemoteDeviceConfigurationIfNeededWithCompletion:(void (^)(BOOL applied, NSError * _Nullable error))completion;
 

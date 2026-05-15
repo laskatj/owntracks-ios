@@ -50,6 +50,8 @@ FOUNDATION_EXPORT NSString * _Nonnull const OTHUDIdleTimerReasonDeviceDetail;
       withImage:(nullable NSData *)image
   withImageName:(nullable NSString *)imageName;
 - (void)dump;
+/// Same payload as `dump` but with an explicit MQTT QoS (used for startup config beacon at QoS 2).
+- (void)dumpWithQoS:(NSInteger)qos;
 - (void)status;
 - (void)waypoints;
 - (void)sendRegion:(nonnull Region *)region;

@@ -134,6 +134,18 @@
     return c.URL;
 }
 
++ (nullable NSURL *)configProvisionOptionsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/config/provision/options";
+    c.query = nil;
+    c.fragment = nil;
+    return c.URL;
+}
+
 + (nullable NSURL *)geolocationCacheAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc {
     NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
     if (!origin) {

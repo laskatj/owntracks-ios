@@ -43,9 +43,6 @@ static NSString *OTSettingsProvisionSanitizedDeviceName(void) {
     return collapsed;
 }
 
-static NSString * const kOTIdentityRepairMigratedKey = @"owntracks_provision_identity_repair_v1_migrated";
-static NSString * const kOTIdentityRepairReasonKey = @"owntracks_provision_identity_repair_v1_reason";
-
 static NSSet<NSString *> *OTSettingsForbiddenProvisionDeviceTokens(void) {
     static NSSet<NSString *> *set;
     static dispatch_once_t onceToken;
@@ -143,6 +140,43 @@ static BOOL OTSettingsDeviceIdOrClientIdStringIsSuspect(NSString *s) {
     return NO;
 }
 
+/// True when `deviceId` equals the last path segment of `topicOrPubBase` (trimmed; percent-decoded), case-insensitive.
+/// Used when the broker topic was explicitly keyed with a display-style name so local "suspect" heuristics do not reject it.
+static BOOL OTSettingsDeviceIdMatchesTopicPathTail(NSString *deviceId, NSString *topicOrPubBase) {
+    if (![deviceId isKindOfClass:[NSString class]] || deviceId.length == 0) {
+        return NO;
+    }
+    if (![topicOrPubBase isKindOfClass:[NSString class]] || topicOrPubBase.length == 0) {
+        return NO;
+    }
+    NSString *pub = [topicOrPubBase stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!pub.length) {
+        return NO;
+    }
+    NSArray<NSString *> *parts = [pub componentsSeparatedByString:@"/"];
+    NSString *last = parts.lastObject;
+    last = [last stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!last.length) {
+        return NO;
+    }
+    NSString *decoded = last.stringByRemovingPercentEncoding;
+    if (!decoded.length) {
+        decoded = last;
+    }
+    NSString *did = [deviceId stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return did.length > 0 && [decoded caseInsensitiveCompare:did] == NSOrderedSame;
+}
+
+/// Alphanumeric + ASCII hyphen only (OwnTracks-style MQTT client slugs from the broker).
+static BOOL OTSettingsProvisionClientIdIsAlphanumericHyphenSlug(NSString *s) {
+    if (![s isKindOfClass:[NSString class]] || s.length < 12) {
+        return NO;
+    }
+    NSCharacterSet *allowed =
+        [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"];
+    return [s rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
+}
+
 static NSString *OTSettingsIdentitySlugFromVisibleString(NSString *raw) {
     if (![raw isKindOfClass:[NSString class]] || raw.length == 0) {
         return @"user";
@@ -194,6 +228,40 @@ static NSInteger OTSettingsTidAmbiguousFriendCount(NSString *tid, NSManagedObjec
         }
     }
     return n;
+}
+
+/// Picks a short `tid` from idfv hex (sliding 6-char window, then random UUID tries) until at most one Friend matches `effectiveTid`.
+static NSString *OTSettingsPickRepairTidFromIdfvHexAvoidingAmbiguity(NSString *hex, NSManagedObjectContext *moc) {
+    if (![hex isKindOfClass:[NSString class]] || hex.length < 6) {
+        return @"DEVICE";
+    }
+    NSMutableOrderedSet<NSString *> *tried = [NSMutableOrderedSet orderedSet];
+    NSUInteger maxStart = hex.length - 6;
+    for (NSUInteger start = 0; start <= maxStart && start < 32u; start++) {
+        NSString *cand = [[hex substringWithRange:NSMakeRange(start, 6)] uppercaseString];
+        if ([tried containsObject:cand]) {
+            continue;
+        }
+        [tried addObject:cand];
+        if (OTSettingsTidAmbiguousFriendCount(cand, moc) <= 1) {
+            return cand;
+        }
+    }
+    for (NSInteger attempt = 0; attempt < 24; attempt++) {
+        NSString *uuidHex = [[[[NSUUID UUID] UUIDString] lowercaseString] stringByReplacingOccurrencesOfString:@"-" withString:@""];
+        if (uuidHex.length < 6) {
+            continue;
+        }
+        NSString *cand = [[uuidHex substringToIndex:6] uppercaseString];
+        if ([tried containsObject:cand]) {
+            continue;
+        }
+        [tried addObject:cand];
+        if (OTSettingsTidAmbiguousFriendCount(cand, moc) <= 1) {
+            return cand;
+        }
+    }
+    return [[hex substringToIndex:MIN(6u, (unsigned)hex.length)] uppercaseString];
 }
 
 
@@ -677,150 +745,30 @@ static NSString * const kOwnTracksNeedsWebProvisioningMigratedV1Key = @"owntrack
             combined ? @"YES" : @"NO", ud ? @"YES" : @"NO", leg ? @"YES" : @"NO", host];
 }
 
-+ (BOOL)currentProvisionedIdentityNeedsRepairInMOC:(NSManagedObjectContext *)moc
-                                            reason:(NSString *__autoreleasing *)reasonOut {
-    if (reasonOut) {
-        *reasonOut = nil;
-    }
-    if ([self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc]) {
-        return NO;
-    }
-
-    NSString *rawDev = [self stringForKey:@"deviceid_preference" inMOC:moc];
-    rawDev = [rawDev stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (rawDev.length) {
-        if (OTSettingsDeviceIdOrClientIdStringIsSuspect(rawDev)) {
-            if (reasonOut) {
-                *reasonOut = [NSString stringWithFormat:@"deviceid_preference is generic or suspect (%@)", rawDev];
-            }
-            return YES;
-        }
-    }
-
-    NSString *tid = [self stringForKey:@"trackerid_preference" inMOC:moc];
-    tid = [tid stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (tid.length) {
-        if (OTSettingsDeviceIdOrClientIdStringIsSuspect(tid)) {
-            if (reasonOut) {
-                *reasonOut = [NSString stringWithFormat:@"trackerid_preference is generic or suspect (%@)", tid];
-            }
-            return YES;
-        }
-        if (OTSettingsTidAmbiguousFriendCount(tid, moc) > 1) {
-            if (reasonOut) {
-                *reasonOut = @"trackerid_preference matches multiple friends (ambiguous tid)";
-            }
-            return YES;
-        }
-    }
-
-    NSInteger mode = [self intForKey:@"mode" inMOC:moc];
-    if (mode == CONNECTION_MODE_MQTT) {
-        NSString *rawClient = OTTrimProvisioningString([self stringForKey:@"clientid_preference" inMOC:moc]);
-        if (rawClient.length == 0) {
-            if (reasonOut) {
-                *reasonOut = @"MQTT clientid_preference empty";
-            }
-            return YES;
-        }
-        if (OTSettingsDeviceIdOrClientIdStringIsSuspect(rawClient)) {
-            if (reasonOut) {
-                *reasonOut = [NSString stringWithFormat:@"MQTT clientid_preference is generic or suspect (%@)", rawClient];
-            }
-            return YES;
-        }
-    }
-
-    return NO;
-}
-
-+ (BOOL)applyPersistedIdentitySelfHealIfNeededInMOC:(NSManagedObjectContext *)moc {
-    NSString *priorReason = nil;
-    if (![self currentProvisionedIdentityNeedsRepairInMOC:moc reason:&priorReason]) {
-        return NO;
-    }
-    NSDictionary *base = [self toDictionaryInMOC:moc];
-    if (![base isKindOfClass:[NSDictionary class]] || base.count == 0) {
-        DDLogWarn(@"[Provisioning] applyPersistedIdentitySelfHeal — empty toDictionary");
-        return NO;
-    }
-    NSMutableDictionary *cfg = [base mutableCopy];
-    [self applyLocalProvisionIdentityRepairToMutableConfiguration:cfg inMOC:moc];
-    cfg[@"pubTopicBase"] = base[@"pubTopicBase"];
-    NSError *vErr = [self validationErrorForRemoteProvisionConfiguration:cfg inMOC:moc];
-    if (vErr) {
-        DDLogError(@"[Provisioning] applyPersistedIdentitySelfHeal — validation after repair failed: %@ (prior: %@)",
-                   vErr, priorReason ?: @"(nil)");
-        return NO;
-    }
-    NSError *fe = [self fromDictionary:cfg inMOC:moc];
-    if (fe) {
-        DDLogError(@"[Provisioning] applyPersistedIdentitySelfHeal — fromDictionary: %@", fe);
-        return NO;
-    }
-    [[CoreData sharedInstance] sync:moc];
-    DDLogInfo(@"[Provisioning] applyPersistedIdentitySelfHeal — wrote Core Data (prior: %@) deviceId=%@ tid=%@ clientId=%@ pubTopicBase preserved=%@",
-              priorReason ?: @"(nil)",
-              cfg[@"deviceId"] ?: @"",
-              cfg[@"tid"] ?: @"",
-              cfg[@"clientId"] ?: @"(n/a)",
-              cfg[@"pubTopicBase"] ?: @"");
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"reload" object:nil];
-        id ad = [UIApplication sharedApplication].delegate;
-        if ([ad respondsToSelector:@selector(connection)] && [ad respondsToSelector:@selector(reconnect)]) {
-            id conn = [ad performSelector:@selector(connection)];
-            if (conn) {
-                [ad performSelector:@selector(reconnect)];
-            }
-        }
-    });
-    return YES;
-}
-
-+ (void)migrateProvisionedIdentityRepairFlagIfNeededInMOC:(NSManagedObjectContext *)moc {
-    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
-    if ([self legacyBrokerHostIndicatesNeedsWebProvisioningInMOC:moc]) {
-        DDLogVerbose(@"[Provisioning] identitySelfHeal — skipped (placeholder broker / awaiting host)");
++ (void)applyCanonicalDeviceIdFromPubTopicTailIfDeviceIdSuspectToMutableConfiguration:(NSMutableDictionary *)payload {
+    if (![payload isKindOfClass:[NSMutableDictionary class]] || payload.count == 0) {
         return;
     }
-
-    NSString *reason = nil;
-    BOOL needs = [self currentProvisionedIdentityNeedsRepairInMOC:moc reason:&reason];
-    NSString *rawDevLog = [self stringForKey:@"deviceid_preference" inMOC:moc] ?: @"";
-    NSString *tidLog = [self stringForKey:@"trackerid_preference" inMOC:moc] ?: @"";
-    NSString *cidLog = [self stringForKey:@"clientid_preference" inMOC:moc] ?: @"";
-    NSString *topic = [self theGeneralTopicInMOC:moc];
-    NSArray *topicParts = [topic componentsSeparatedByString:@"/"];
-    NSString *tail = topicParts.count ? topicParts.lastObject : @"";
-
-    if (needs) {
-        [self setNeedsWebProvisioning:YES];
-        if (reason.length) {
-            [ud setObject:reason forKey:kOTIdentityRepairReasonKey];
-        }
-        DDLogInfo(@"[Provisioning] identitySelfHeal — needs_provision=YES reason=%@ | raw deviceId=\"%@\" tid=\"%@\" clientId=\"%@\" mode=%d topicTail=\"%@\"",
-                  reason ?: @"(nil)",
-                  rawDevLog,
-                  tidLog,
-                  cidLog,
-                  (int)[self intForKey:@"mode" inMOC:moc],
-                  tail);
-        if ([self applyPersistedIdentitySelfHealIfNeededInMOC:moc]) {
-            DDLogInfo(@"[Provisioning] identitySelfHeal — persisted local identity repair applied (Settings UI should refresh on reload)");
-        }
-    } else {
-        DDLogInfo(@"[Provisioning] identitySelfHeal — needs_provision=NO | raw deviceId=\"%@\" tid=\"%@\" clientId=\"%@\" mode=%d topicTail=\"%@\"",
-                  rawDevLog,
-                  tidLog,
-                  cidLog,
-                  (int)[self intForKey:@"mode" inMOC:moc],
-                  tail);
+    NSString *did = OTTrimProvisioningString(payload[@"deviceId"]);
+    if (!did.length || !OTSettingsDeviceIdOrClientIdStringIsSuspect(did)) {
+        return;
     }
-
-    if (![ud boolForKey:kOTIdentityRepairMigratedKey]) {
-        [ud setBool:YES forKey:kOTIdentityRepairMigratedKey];
+    NSString *pub = OTTrimProvisioningString(payload[@"pubTopicBase"]);
+    if (!pub.length) {
+        return;
     }
+    NSArray<NSString *> *parts = [pub componentsSeparatedByString:@"/"];
+    NSString *last = parts.lastObject;
+    last = [last stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!last.length || [last caseInsensitiveCompare:did] == NSOrderedSame) {
+        return;
+    }
+    if (OTSettingsDeviceIdOrClientIdStringIsSuspect(last)) {
+        return;
+    }
+    payload[@"deviceId"] = last;
+    DDLogInfo(@"[Provisioning] applyCanonicalDeviceIdFromPubTopicTail — deviceId was suspect (%@); aligned to topic tail \"%@\"",
+              did, last);
 }
 
 + (void)applyLocalProvisionIdentityRepairToMutableConfiguration:(NSMutableDictionary *)payload
@@ -872,7 +820,10 @@ static NSString * const kOwnTracksNeedsWebProvisioningMigratedV1Key = @"owntrack
     }
 
     NSUInteger take = MIN(6u, (unsigned)hex.length);
-    NSString *tidBody = [[[hex substringToIndex:take] uppercaseString] copy];
+    NSString *tidBody = OTSettingsPickRepairTidFromIdfvHexAvoidingAmbiguity(hex, moc);
+    if (!tidBody.length) {
+        tidBody = [[[hex substringToIndex:take] uppercaseString] copy];
+    }
     payload[@"tid"] = tidBody;
 
     DDLogWarn(@"[Provisioning] applyLocalProvisionIdentityRepair — deviceId=%@ username=%@ tid=%@ (pubTopicBase unchanged)",
@@ -1294,10 +1245,18 @@ static NSString * const kOwnTracksNeedsWebProvisioningMigratedV1Key = @"owntrack
                                userInfo:@{NSLocalizedDescriptionKey: @"Provisioning response missing deviceId"}];
     }
     if (OTSettingsDeviceIdOrClientIdStringIsSuspect(deviceId)) {
-        return [NSError errorWithDomain:kDomain
-                                   code:3
-                               userInfo:@{NSLocalizedDescriptionKey:
-                                              [NSString stringWithFormat:@"Provisioning deviceId is generic or suspect (%@)", deviceId]}];
+        NSString *pubBase = OTTrimProvisioningString(payload[@"pubTopicBase"]);
+        NSString *subTopic = OTTrimProvisioningString(payload[@"subTopic"]);
+        if (OTSettingsDeviceIdMatchesTopicPathTail(deviceId, pubBase) ||
+            OTSettingsDeviceIdMatchesTopicPathTail(deviceId, subTopic)) {
+            DDLogInfo(@"[Settings] provision validation — deviceId \"%@\" matches pubTopicBase/subTopic tail; accepting despite suspect heuristics",
+                      deviceId);
+        } else {
+            return [NSError errorWithDomain:kDomain
+                                       code:3
+                                   userInfo:@{NSLocalizedDescriptionKey:
+                                                  [NSString stringWithFormat:@"Provisioning deviceId is generic or suspect (%@)", deviceId]}];
+        }
     }
 
     id modeObj = payload[@"mode"];
@@ -1322,10 +1281,21 @@ static NSString * const kOwnTracksNeedsWebProvisioningMigratedV1Key = @"owntrack
                                    userInfo:@{NSLocalizedDescriptionKey: @"MQTT provisioning response missing clientId"}];
         }
         if (OTSettingsDeviceIdOrClientIdStringIsSuspect(clientId)) {
-            return [NSError errorWithDomain:kDomain
-                                       code:9
-                                   userInfo:@{NSLocalizedDescriptionKey:
-                                                      [NSString stringWithFormat:@"MQTT clientId is generic or suspect (%@)", clientId]}];
+            NSString *pubBase = OTTrimProvisioningString(payload[@"pubTopicBase"]);
+            NSString *subTopic = OTTrimProvisioningString(payload[@"subTopic"]);
+            NSString *didForClient = OTTrimProvisioningString(payload[@"deviceId"]);
+            BOOL topicAlignedDevice =
+                OTSettingsDeviceIdMatchesTopicPathTail(didForClient, pubBase) ||
+                OTSettingsDeviceIdMatchesTopicPathTail(didForClient, subTopic);
+            if (topicAlignedDevice && OTSettingsProvisionClientIdIsAlphanumericHyphenSlug(clientId)) {
+                DDLogInfo(@"[Settings] provision validation — clientId \"%@\" is suspect heuristically but deviceId matches topic tail and clientId is a broker-style slug — accepting",
+                          clientId);
+            } else {
+                return [NSError errorWithDomain:kDomain
+                                           code:9
+                                       userInfo:@{NSLocalizedDescriptionKey:
+                                                          [NSString stringWithFormat:@"MQTT clientId is generic or suspect (%@)", clientId]}];
+            }
         }
     }
 

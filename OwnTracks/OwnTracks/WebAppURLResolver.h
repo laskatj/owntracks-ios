@@ -33,6 +33,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// POST {origin}/api/config/provision (same origin as location API).
 + (nullable NSURL *)configProvisionAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 
+/// POST {origin}/api/config/provision/options (guided provision step 1).
++ (nullable NSURL *)configProvisionOptionsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
+
 /// GET {origin}/api/geolocationcache
 + (nullable NSURL *)geolocationCacheAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 

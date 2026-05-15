@@ -999,6 +999,12 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
 
 @implementation TabBarController
 
+/// Locations tab is admin-only once `/api/authorization/user` has been applied this session.
+- (BOOL)OT_currentUserMaySeeLocationsTab {
+    LocationAPISyncService *svc = [LocationAPISyncService sharedInstance];
+    return [svc hasAuthorizationUserProfilePayload] && [svc currentUserIsAdminFromAuthorizationAPI];
+}
+
 - (NSArray<UIViewController *> *)baseControllersReplacingHistoryWithInbox {
     NSMutableArray<UIViewController *> *base = [NSMutableArray arrayWithArray:self.viewControllers ?: @[]];
     NSUInteger replacementIndex = NSNotFound;
@@ -1068,6 +1074,15 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
      usingBlock:^(NSNotification * _Nonnull note) {
         [self refreshInboxBadge];
     }];
+    [[NSNotificationCenter defaultCenter]
+     addObserverForName:OwnTracksCurrentUserProfileDidUpdateNotification
+     object:nil
+     queue:[NSOperationQueue mainQueue]
+     usingBlock:^(NSNotification * _Nonnull note) {
+        (void)note;
+        [self adjust];
+    }];
+    [self adjust];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -1091,6 +1106,24 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
         } else {
             if ([viewControllers containsObject:self.regionVC]) {
                 [viewControllers removeObject:self.regionVC];
+            }
+        }
+    }
+
+    BOOL showLocations = [self OT_currentUserMaySeeLocationsTab];
+    if (self.locationsVC) {
+        NSUInteger locIndex = [viewControllers indexOfObject:self.locationsVC];
+        if (!showLocations && locIndex != NSNotFound) {
+            if (self.selectedViewController == self.locationsVC) {
+                self.selectedIndex = 0;
+            }
+            [viewControllers removeObjectAtIndex:locIndex];
+        } else if (showLocations && locIndex == NSNotFound) {
+            NSUInteger inboxIndex = self.inboxVC ? [viewControllers indexOfObject:self.inboxVC] : NSNotFound;
+            if (inboxIndex != NSNotFound) {
+                [viewControllers insertObject:self.locationsVC atIndex:inboxIndex];
+            } else {
+                [viewControllers addObject:self.locationsVC];
             }
         }
     }
