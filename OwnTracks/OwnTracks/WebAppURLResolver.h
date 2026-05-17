@@ -64,6 +64,33 @@ NS_ASSUME_NONNULL_BEGIN
 /// POST {origin}/api/push/devices/apns (OAuth Bearer); see OTInboxRealtimeContract.h.
 + (nullable NSURL *)apnsDeviceRegistrationAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc;
 
+/// GET {origin}/api/users/devices[?includeAllForAdmin=true]
++ (nullable NSURL *)usersDevicesAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                              includeAllForAdmin:(BOOL)includeAllForAdmin;
+
+/// GET {origin}/api/dashcam/clips?deviceId=&from=&to=
++ (nullable NSURL *)dashcamClipsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                        deviceId:(NSInteger)deviceId
+                                                       fromUnix:(NSInteger)fromUnix
+                                                         toUnix:(NSInteger)toUnix;
+
+/// GET {origin}/api/dashcam/thumb/{clipId}[?access_token=...]
++ (nullable NSURL *)dashcamThumbAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                   clipId:(NSString *)clipId
+                                              accessToken:(nullable NSString *)accessToken;
+
+/// GET {origin}/api/dashcam/stream/{clipId}/{camera}[?access_token=...]
++ (nullable NSURL *)dashcamStreamAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                    clipId:(NSString *)clipId
+                                                    camera:(NSString *)camera
+                                               accessToken:(nullable NSString *)accessToken;
+
+/// GET {origin}/api/dashcam/telemetry/{clipId}/{camera}[?access_token=...]
++ (nullable NSURL *)dashcamTelemetryAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                       clipId:(NSString *)clipId
+                                                       camera:(NSString *)camera
+                                                  accessToken:(nullable NSString *)accessToken;
+
 @end
 
 NS_ASSUME_NONNULL_END
