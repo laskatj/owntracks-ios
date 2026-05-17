@@ -14,6 +14,7 @@
 #import "WebAppURLResolver.h"
 #import "OTInboxRealtimeContract.h"
 #import "ViewController.h"
+#import "DashcamGridViewController.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
@@ -994,6 +995,7 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
 @property (strong, nonatomic) UIViewController *friendsVC;
 @property (strong, nonatomic) UIViewController *locationsVC;
 @property (strong, nonatomic) UIViewController *inboxVC;
+@property (strong, nonatomic) UIViewController *dashcamVC;
 @property (strong, nonatomic) NSArray<UIViewController *> *fixedBaseControllers;
 @end
 
@@ -1003,6 +1005,11 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
 - (BOOL)OT_currentUserMaySeeLocationsTab {
     LocationAPISyncService *svc = [LocationAPISyncService sharedInstance];
     return [svc hasAuthorizationUserProfilePayload] && [svc currentUserIsAdminFromAuthorizationAPI];
+}
+
+/// Dash Cam tab is admin-only and shares the same authorization gate as the Locations tab.
+- (BOOL)OT_currentUserMaySeeDashcamTab {
+    return [self OT_currentUserMaySeeLocationsTab];
 }
 
 - (NSArray<UIViewController *> *)baseControllersReplacingHistoryWithInbox {
@@ -1128,11 +1135,29 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
         }
     }
 
+    BOOL showDashcam = [self OT_currentUserMaySeeDashcamTab];
+    if (self.dashcamVC) {
+        NSUInteger dashIndex = [viewControllers indexOfObject:self.dashcamVC];
+        if (!showDashcam && dashIndex != NSNotFound) {
+            if (self.selectedViewController == self.dashcamVC) {
+                self.selectedIndex = 0;
+            }
+            [viewControllers removeObjectAtIndex:dashIndex];
+        } else if (showDashcam && dashIndex == NSNotFound) {
+            NSUInteger inboxIndex = self.inboxVC ? [viewControllers indexOfObject:self.inboxVC] : NSNotFound;
+            if (inboxIndex != NSNotFound) {
+                [viewControllers insertObject:self.dashcamVC atIndex:inboxIndex];
+            } else {
+                [viewControllers addObject:self.dashcamVC];
+            }
+        }
+    }
+
     [self setViewControllers:viewControllers animated:FALSE];
 }
 
 - (void)installParityTabsIfNeeded {
-    if (self.locationsVC && self.inboxVC) {
+    if (self.locationsVC && self.inboxVC && self.dashcamVC) {
         return;
     }
     OTLocationsViewController *locations = [[OTLocationsViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
@@ -1154,11 +1179,19 @@ typedef NS_ENUM(NSInteger, OTInboxTypeFilter) {
                                                          image:[UIImage systemImageNamed:@"tray.full"]
                                                            tag:111];
 
+    DashcamGridViewController *dashcam = [[DashcamGridViewController alloc] init];
+    UINavigationController *dashcamNav = [[UINavigationController alloc] initWithRootViewController:dashcam];
+    dashcamNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Dash Cam"
+                                                           image:[UIImage systemImageNamed:@"car.fill"]
+                                                             tag:112];
+
     self.locationsVC = locationsNav;
     self.inboxVC = inboxNav;
+    self.dashcamVC = dashcamNav;
     NSMutableArray *vcs = [NSMutableArray arrayWithArray:self.viewControllers ?: @[]];
     [vcs addObject:locationsNav];
     [vcs addObject:inboxNav];
+    [vcs addObject:dashcamNav];
     [self setViewControllers:vcs animated:NO];
 }
 

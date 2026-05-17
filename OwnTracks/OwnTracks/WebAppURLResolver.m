@@ -248,4 +248,114 @@
     return c.URL;
 }
 
++ (nullable NSURL *)usersDevicesAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                              includeAllForAdmin:(BOOL)includeAllForAdmin {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/users/devices";
+    if (includeAllForAdmin) {
+        c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"includeAllForAdmin" value:@"true"] ];
+    }
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)dashcamClipsAPIRequestURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                        deviceId:(NSInteger)deviceId
+                                                       fromUnix:(NSInteger)fromUnix
+                                                         toUnix:(NSInteger)toUnix {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.path = @"/api/dashcam/clips";
+    c.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"deviceId" value:[NSString stringWithFormat:@"%ld", (long)deviceId]],
+        [NSURLQueryItem queryItemWithName:@"from" value:[NSString stringWithFormat:@"%ld", (long)fromUnix]],
+        [NSURLQueryItem queryItemWithName:@"to" value:[NSString stringWithFormat:@"%ld", (long)toUnix]],
+    ];
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (NSString *)OT_pathEncodedDashcamClipId:(NSString *)clipId {
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:
+        @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"];
+    return [clipId stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+}
+
++ (nullable NSURL *)dashcamThumbAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                   clipId:(NSString *)clipId
+                                              accessToken:(nullable NSString *)accessToken {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || clipId.length == 0) {
+        return nil;
+    }
+    NSString *encoded = [self OT_pathEncodedDashcamClipId:clipId];
+    if (encoded.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.percentEncodedPath = [NSString stringWithFormat:@"/api/dashcam/thumb/%@", encoded];
+    if (accessToken.length > 0) {
+        c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:accessToken] ];
+    } else {
+        c.query = nil;
+    }
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)dashcamStreamAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                    clipId:(NSString *)clipId
+                                                    camera:(NSString *)camera
+                                               accessToken:(nullable NSString *)accessToken {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || clipId.length == 0 || camera.length == 0) {
+        return nil;
+    }
+    NSString *encClip = [self OT_pathEncodedDashcamClipId:clipId];
+    NSString *encCam = [self OT_pathEncodedDashcamClipId:camera];
+    if (encClip.length == 0 || encCam.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.percentEncodedPath = [NSString stringWithFormat:@"/api/dashcam/stream/%@/%@", encClip, encCam];
+    if (accessToken.length > 0) {
+        c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:accessToken] ];
+    } else {
+        c.query = nil;
+    }
+    c.fragment = nil;
+    return c.URL;
+}
+
++ (nullable NSURL *)dashcamTelemetryAPIURLFromPreferenceInMOC:(NSManagedObjectContext *)moc
+                                                       clipId:(NSString *)clipId
+                                                       camera:(NSString *)camera
+                                                  accessToken:(nullable NSString *)accessToken {
+    NSURL *origin = [self webAppOriginURLFromPreferenceInMOC:moc];
+    if (!origin || clipId.length == 0 || camera.length == 0) {
+        return nil;
+    }
+    NSString *encClip = [self OT_pathEncodedDashcamClipId:clipId];
+    NSString *encCam = [self OT_pathEncodedDashcamClipId:camera];
+    if (encClip.length == 0 || encCam.length == 0) {
+        return nil;
+    }
+    NSURLComponents *c = [NSURLComponents componentsWithURL:origin resolvingAgainstBaseURL:NO];
+    c.percentEncodedPath = [NSString stringWithFormat:@"/api/dashcam/telemetry/%@/%@", encClip, encCam];
+    if (accessToken.length > 0) {
+        c.queryItems = @[ [NSURLQueryItem queryItemWithName:@"access_token" value:accessToken] ];
+    } else {
+        c.query = nil;
+    }
+    c.fragment = nil;
+    return c.URL;
+}
+
 @end

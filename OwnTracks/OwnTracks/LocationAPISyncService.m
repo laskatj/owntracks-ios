@@ -295,6 +295,15 @@ static BOOL OTWebLocationItemHasFollowStyleName(OTWebLocationItem *item) {
 @implementation OTWebNotificationsPage
 @end
 
+@implementation OTWebDeviceItem
+@end
+
+@implementation OTDashcamClipCamera
+@end
+
+@implementation OTDashcamClipItem
+@end
+
 NSTimeInterval OTRouteHistoryPointUnixTime(id pt) {
     if (![pt isKindOfClass:[NSDictionary class]]) {
         return NAN;
@@ -2751,6 +2760,286 @@ static NSArray<NSDictionary *> *OTExtractRouteHistoryPointsFromJSONData(NSData *
 
 - (void)obtainOAuthAccessTokenForAPICallsWithCompletion:(void (^)(NSString * _Nullable token))completion {
     [self obtainAccessTokenForLocationAPIWithCompletion:completion];
+}
+
+#pragma mark - Dashcam
+
+static NSDictionary *OTDashcamSafeDict(id obj) {
+    return [obj isKindOfClass:[NSDictionary class]] ? (NSDictionary *)obj : nil;
+}
+
+static NSString *OTDashcamSafeString(id obj) {
+    return [obj isKindOfClass:[NSString class]] ? (NSString *)obj : nil;
+}
+
+static NSNumber *OTDashcamSafeNumber(id obj) {
+    if ([obj isKindOfClass:[NSNumber class]]) {
+        return (NSNumber *)obj;
+    }
+    if ([obj isKindOfClass:[NSString class]]) {
+        NSString *s = (NSString *)obj;
+        if (s.length == 0) {
+            return nil;
+        }
+        return @(s.doubleValue);
+    }
+    return nil;
+}
+
+static OTWebDeviceItem *OTDeviceItemFromDictionary(NSDictionary *dict) {
+    if (!OTDashcamSafeDict(dict)) {
+        return nil;
+    }
+    OTWebDeviceItem *item = [[OTWebDeviceItem alloc] init];
+    NSNumber *idNum = OTDashcamSafeNumber(dict[@"id"]);
+    item.deviceId = idNum.integerValue;
+    item.topicId = OTDashcamSafeString(dict[@"topicId"]);
+    item.deviceName = OTDashcamSafeString(dict[@"deviceName"]);
+    item.ownerName = OTDashcamSafeString(dict[@"ownerName"]);
+    id sharedVal = dict[@"isShared"];
+    if ([sharedVal isKindOfClass:[NSNumber class]]) {
+        item.isShared = [(NSNumber *)sharedVal boolValue];
+    }
+    return item;
+}
+
+static OTDashcamClipCamera *OTDashcamClipCameraFromDictionary(NSDictionary *dict) {
+    if (!OTDashcamSafeDict(dict)) {
+        return nil;
+    }
+    NSString *camera = OTDashcamSafeString(dict[@"camera"]);
+    if (camera.length == 0) {
+        return nil;
+    }
+    OTDashcamClipCamera *out = [[OTDashcamClipCamera alloc] init];
+    out.camera = camera;
+    out.fileName = OTDashcamSafeString(dict[@"fileName"]);
+    return out;
+}
+
+static NSDate * _Nullable OTDashcamDateFromISOString(id value) {
+    if (![value isKindOfClass:[NSString class]]) {
+        return nil;
+    }
+    NSString *s = (NSString *)value;
+    if (s.length == 0) {
+        return nil;
+    }
+    static NSISO8601DateFormatter *withFrac;
+    static NSISO8601DateFormatter *plain;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        withFrac = [[NSISO8601DateFormatter alloc] init];
+        withFrac.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+        plain = [[NSISO8601DateFormatter alloc] init];
+        plain.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+    });
+    NSDate *d = [withFrac dateFromString:s];
+    if (!d) {
+        d = [plain dateFromString:s];
+    }
+    return d;
+}
+
+static OTDashcamClipItem *OTDashcamClipItemFromDictionary(NSDictionary *dict,
+                                                          NSInteger envelopeDeviceId,
+                                                          NSString *envelopeUser,
+                                                          NSString *envelopeDevice) {
+    if (!OTDashcamSafeDict(dict)) {
+        return nil;
+    }
+    NSString *clipId = OTDashcamSafeString(dict[@"clipId"]);
+    if (clipId.length == 0) {
+        return nil;
+    }
+    OTDashcamClipItem *item = [[OTDashcamClipItem alloc] init];
+    item.clipId = clipId;
+    item.deviceId = envelopeDeviceId;
+    item.owner = envelopeUser;
+    item.device = envelopeDevice;
+    item.eventFolderName = OTDashcamSafeString(dict[@"eventFolderName"]);
+    NSNumber *ts = OTDashcamSafeNumber(dict[@"eventUnixTimestamp"]);
+    item.eventUnixTimestamp = ts ? ts.doubleValue : 0.0;
+    NSDate *iso = OTDashcamDateFromISOString(dict[@"eventTimestampIso"]);
+    if (iso) {
+        item.eventDate = iso;
+        if (item.eventUnixTimestamp <= 0) {
+            item.eventUnixTimestamp = [iso timeIntervalSince1970];
+        }
+    } else if (item.eventUnixTimestamp > 0) {
+        item.eventDate = [NSDate dateWithTimeIntervalSince1970:item.eventUnixTimestamp];
+    }
+    item.latitude = OTDashcamSafeNumber(dict[@"latitude"]);
+    item.longitude = OTDashcamSafeNumber(dict[@"longitude"]);
+    item.street = OTDashcamSafeString(dict[@"street"]);
+    item.city = OTDashcamSafeString(dict[@"city"]);
+    item.reason = OTDashcamSafeString(dict[@"reason"]);
+    item.warning = OTDashcamSafeString(dict[@"warning"]);
+    id hasThumb = dict[@"hasThumb"];
+    item.hasThumb = [hasThumb isKindOfClass:[NSNumber class]] ? [(NSNumber *)hasThumb boolValue] : NO;
+    id usedFallback = dict[@"usedRouteStartFallback"];
+    item.usedRouteStartFallback = [usedFallback isKindOfClass:[NSNumber class]] ? [(NSNumber *)usedFallback boolValue] : NO;
+    id fromJson = dict[@"positionFromEventJson"];
+    item.positionFromEventJson = [fromJson isKindOfClass:[NSNumber class]] ? [(NSNumber *)fromJson boolValue] : NO;
+    NSMutableArray<OTDashcamClipCamera *> *cams = [NSMutableArray array];
+    id camerasRaw = dict[@"cameras"];
+    if ([camerasRaw isKindOfClass:[NSArray class]]) {
+        for (id camDict in (NSArray *)camerasRaw) {
+            OTDashcamClipCamera *c = OTDashcamClipCameraFromDictionary(camDict);
+            if (c) {
+                [cams addObject:c];
+            }
+        }
+    }
+    item.cameras = [cams copy];
+    return item;
+}
+
+- (void)fetchUsersDevicesIncludeAllForAdmin:(BOOL)includeAllForAdmin
+                                 completion:(void (^)(NSArray<OTWebDeviceItem *> * _Nullable, NSError * _Nullable))completion {
+    NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
+    __block NSURL *url = nil;
+    [mainMOC performBlockAndWait:^{
+        url = [WebAppURLResolver usersDevicesAPIRequestURLFromPreferenceInMOC:mainMOC
+                                                            includeAllForAdmin:includeAllForAdmin];
+    }];
+    if (!url) {
+        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                            code:1
+                                        userInfo:@{NSLocalizedDescriptionKey: @"No web app origin"}]);
+        return;
+    }
+    [self performAuthenticatedGET:url completion:^(NSData * _Nullable data, NSError * _Nullable error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        if (!data.length) {
+            completion(@[], nil);
+            return;
+        }
+        NSError *jsonErr = nil;
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        if (jsonErr || ![obj isKindOfClass:[NSArray class]]) {
+            DDLogWarn(@"[Dashcam] users/devices parse error: %@", jsonErr.localizedDescription);
+            completion(nil, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService"
+                                                            code:2
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Bad devices payload"}]);
+            return;
+        }
+        NSMutableArray<OTWebDeviceItem *> *out = [NSMutableArray array];
+        for (id entry in (NSArray *)obj) {
+            OTWebDeviceItem *item = OTDeviceItemFromDictionary(entry);
+            if (item && item.deviceId > 0) {
+                [out addObject:item];
+            }
+        }
+        completion([out copy], nil);
+    }];
+}
+
+- (void)fetchDashcamClipsForDeviceId:(NSInteger)deviceId
+                            fromUnix:(NSInteger)fromUnix
+                              toUnix:(NSInteger)toUnix
+                          completion:(void (^)(NSArray<OTDashcamClipItem *> * _Nullable, NSError * _Nullable))completion {
+    NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
+    __block NSURL *url = nil;
+    [mainMOC performBlockAndWait:^{
+        url = [WebAppURLResolver dashcamClipsAPIRequestURLFromPreferenceInMOC:mainMOC
+                                                                      deviceId:deviceId
+                                                                      fromUnix:fromUnix
+                                                                        toUnix:toUnix];
+    }];
+    if (!url) {
+        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                            code:1
+                                        userInfo:@{NSLocalizedDescriptionKey: @"No web app origin"}]);
+        return;
+    }
+    [self performAuthenticatedGET:url completion:^(NSData * _Nullable data, NSError * _Nullable error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        if (!data.length) {
+            completion(@[], nil);
+            return;
+        }
+        NSError *jsonErr = nil;
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        if (jsonErr || ![obj isKindOfClass:[NSDictionary class]]) {
+            completion(nil, jsonErr ?: [NSError errorWithDomain:@"LocationAPISyncService"
+                                                            code:2
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Bad clip payload"}]);
+            return;
+        }
+        NSDictionary *envelope = (NSDictionary *)obj;
+        NSNumber *envDeviceId = OTDashcamSafeNumber(envelope[@"deviceId"]);
+        NSString *envUser = OTDashcamSafeString(envelope[@"user"]);
+        NSString *envDevice = OTDashcamSafeString(envelope[@"device"]);
+        id clipsRaw = envelope[@"clips"];
+        if (![clipsRaw isKindOfClass:[NSArray class]]) {
+            completion(@[], nil);
+            return;
+        }
+        NSMutableArray<OTDashcamClipItem *> *out = [NSMutableArray array];
+        for (id entry in (NSArray *)clipsRaw) {
+            OTDashcamClipItem *clip = OTDashcamClipItemFromDictionary(entry,
+                                                                       envDeviceId ? envDeviceId.integerValue : deviceId,
+                                                                       envUser,
+                                                                       envDevice);
+            if (clip) {
+                [out addObject:clip];
+            }
+        }
+        completion([out copy], nil);
+    }];
+}
+
+- (void)resolveDashcamMediaURLForClipId:(NSString *)clipId
+                                 camera:(NSString *)camera
+                                   kind:(NSString *)kind
+                             completion:(void (^)(NSURL * _Nullable, NSError * _Nullable))completion {
+    if (clipId.length == 0 || kind.length == 0) {
+        completion(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                            code:1
+                                        userInfo:@{NSLocalizedDescriptionKey: @"Missing clip id or kind"}]);
+        return;
+    }
+    [self obtainAccessTokenForLocationAPIWithCompletion:^(NSString * _Nullable token) {
+        if (token.length == 0) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                                code:401
+                                            userInfo:@{NSLocalizedDescriptionKey: @"No access token"}]);
+            return;
+        }
+        NSManagedObjectContext *mainMOC = CoreData.sharedInstance.mainMOC;
+        __block NSURL *url = nil;
+        [mainMOC performBlockAndWait:^{
+            if ([kind isEqualToString:@"thumb"]) {
+                url = [WebAppURLResolver dashcamThumbAPIURLFromPreferenceInMOC:mainMOC
+                                                                         clipId:clipId
+                                                                    accessToken:token];
+            } else if ([kind isEqualToString:@"stream"]) {
+                url = [WebAppURLResolver dashcamStreamAPIURLFromPreferenceInMOC:mainMOC
+                                                                          clipId:clipId
+                                                                          camera:camera
+                                                                     accessToken:token];
+            } else if ([kind isEqualToString:@"telemetry"]) {
+                url = [WebAppURLResolver dashcamTelemetryAPIURLFromPreferenceInMOC:mainMOC
+                                                                             clipId:clipId
+                                                                             camera:camera
+                                                                        accessToken:token];
+            }
+        }];
+        if (!url) {
+            completion(nil, [NSError errorWithDomain:@"LocationAPISyncService"
+                                                code:2
+                                            userInfo:@{NSLocalizedDescriptionKey: @"Could not build dashcam media URL"}]);
+            return;
+        }
+        completion(url, nil);
+    }];
 }
 
 - (void)registerApnsDeviceTokenHex:(NSString *)hexString sandbox:(BOOL)sandbox completion:(void (^)(NSError * _Nullable error))completion {

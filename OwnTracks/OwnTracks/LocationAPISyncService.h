@@ -64,6 +64,42 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksLocationMQTTAllowli
 @property (nonatomic) NSInteger take;
 @end
 
+/// One device returned by `GET /api/users/devices`. Used as the source of identity for dashcam queries.
+@interface OTWebDeviceItem : NSObject
+@property (nonatomic) NSInteger deviceId;
+@property (nonatomic, copy, nullable) NSString *topicId;
+@property (nonatomic, copy, nullable) NSString *deviceName;
+@property (nonatomic, copy, nullable) NSString *ownerName;
+@property (nonatomic) BOOL isShared;
+@end
+
+/// One camera entry inside an `OTDashcamClipItem`.
+@interface OTDashcamClipCamera : NSObject
+@property (nonatomic, copy) NSString *camera;
+@property (nonatomic, copy, nullable) NSString *fileName;
+@end
+
+/// A single dashcam clip from `GET /api/dashcam/clips`.
+@interface OTDashcamClipItem : NSObject
+@property (nonatomic) NSInteger deviceId;
+@property (nonatomic, copy, nullable) NSString *owner;
+@property (nonatomic, copy, nullable) NSString *device;
+@property (nonatomic, copy) NSString *clipId;
+@property (nonatomic, copy, nullable) NSString *eventFolderName;
+@property (nonatomic) NSTimeInterval eventUnixTimestamp;
+@property (nonatomic, strong, nullable) NSDate *eventDate;
+@property (nonatomic, strong, nullable) NSNumber *latitude;
+@property (nonatomic, strong, nullable) NSNumber *longitude;
+@property (nonatomic, copy, nullable) NSString *street;
+@property (nonatomic, copy, nullable) NSString *city;
+@property (nonatomic, copy, nullable) NSString *reason;
+@property (nonatomic) BOOL hasThumb;
+@property (nonatomic) BOOL usedRouteStartFallback;
+@property (nonatomic) BOOL positionFromEventJson;
+@property (nonatomic, copy, nullable) NSString *warning;
+@property (nonatomic, strong) NSArray<OTDashcamClipCamera *> *cameras;
+@end
+
 @interface LocationAPISyncService : NSObject
 
 + (instancetype)sharedInstance;
@@ -203,6 +239,25 @@ FOUNDATION_EXPORT NSNotificationName _Nonnull const OwnTracksLocationMQTTAllowli
 - (void)registerApnsDeviceTokenHex:(NSString *)hexString
                            sandbox:(BOOL)sandbox
                         completion:(void (^)(NSError * _Nullable error))completion;
+
+/// GET `/api/users/devices?includeAllForAdmin=true` — admin-only device inventory used as the dashcam device picker source.
+- (void)fetchUsersDevicesIncludeAllForAdmin:(BOOL)includeAllForAdmin
+                                 completion:(void (^)(NSArray<OTWebDeviceItem *> * _Nullable devices,
+                                                      NSError * _Nullable error))completion;
+
+/// GET `/api/dashcam/clips?deviceId=&from=&to=` for one device. Returned items are populated with `owner`/`device`/`deviceId` from the response envelope. Completion is invoked on an arbitrary background thread.
+- (void)fetchDashcamClipsForDeviceId:(NSInteger)deviceId
+                            fromUnix:(NSInteger)fromUnix
+                              toUnix:(NSInteger)toUnix
+                          completion:(void (^)(NSArray<OTDashcamClipItem *> * _Nullable clips,
+                                               NSError * _Nullable error))completion;
+
+/// Resolves a full dashcam media URL (thumb/stream/telemetry) that embeds the current OAuth access token as `?access_token=...`. AVPlayer cannot reliably set Authorization headers on range requests, so this is the preferred form for media playback.
+- (void)resolveDashcamMediaURLForClipId:(NSString *)clipId
+                                 camera:(nullable NSString *)camera
+                                   kind:(NSString *)kind
+                             completion:(void (^)(NSURL * _Nullable url,
+                                                  NSError * _Nullable error))completion;
 
 @end
 
