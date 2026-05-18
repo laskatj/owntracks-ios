@@ -62,6 +62,8 @@ static NSString *TVFirstNonEmptyStringForKeys(NSDictionary *dict, NSArray<NSStri
 
     TVLocationAPIDevice *d = [[TVLocationAPIDevice alloc] init];
     d.mqttTopic = topic;
+    d.velocity = -1.0;
+    d.altitudeMeters = NAN;
     id nameObj = device[@"deviceName"];
     d.deviceName = ([nameObj isKindOfClass:[NSString class]] && [(NSString *)nameObj length] > 0)
         ? (NSString *)nameObj
@@ -73,6 +75,16 @@ static NSString *TVFirstNonEmptyStringForKeys(NSDictionary *dict, NSArray<NSStri
         @"imageUrl", @"imageURL",
         @"avatarUrl", @"faceUrl"
     ]);
+
+    id vObj = device[@"velocity"];
+    if ([vObj isKindOfClass:[NSNumber class]]) {
+        d.velocity = [(NSNumber *)vObj doubleValue];
+    }
+
+    id altObj = device[@"altitude"];
+    if ([altObj isKindOfClass:[NSNumber class]]) {
+        d.altitudeMeters = [(NSNumber *)altObj doubleValue];
+    }
 
     id ts = device[@"timestamp"];
     NSNumber *tst = [ts isKindOfClass:[NSNumber class]] ? (NSNumber *)ts : nil;
@@ -95,10 +107,12 @@ static NSString *TVFirstNonEmptyStringForKeys(NSDictionary *dict, NSArray<NSStri
 
     if (userKey.length) {
         d.routeAPIUser = userKey;
+        d.userKey = userKey;
     } else {
         id u = device[@"user"];
         if ([u isKindOfClass:[NSString class]] && [(NSString *)u length] > 0) {
             d.routeAPIUser = (NSString *)u;
+            d.userKey = (NSString *)u;
         }
     }
     return d;

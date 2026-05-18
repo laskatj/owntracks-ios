@@ -9,8 +9,11 @@
 #import "TVRecorderOAuthClient.h"
 #import "TVRecorderTokenStore.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
+#import <math.h>
 
 static const DDLogLevel ddLogLevel = DDLogLevelInfo;
+static const NSUInteger kTVMaxAltitudeHistorySamples = 40;
+static const NSUInteger kTVMaxVelocityHistorySamples = 40;
 
 NSString * const TVFriendStoreDidUpdateNotification = @"TVFriendStoreDidUpdate";
 
@@ -33,10 +36,17 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
 @property (strong, nonatomic) NSMutableDictionary<NSString *, UIImage *>   *mImages;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSValue *>   *mCoords;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mRawTimestamps;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mVelocities;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *>  *mAltitudes;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *mAltitudeHistory;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *mVelocityHistory;
 @property (strong, nonatomic) NSMutableSet<NSString *>                     *mAllowedTopics;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mAPIDeviceNames;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mMarkerImageURLs;
 @property (strong, nonatomic) NSMutableSet<NSString *>                     *mInFlightMarkerImageTopics;
+@property (strong, nonatomic) NSMutableArray<NSString *>                   *mPersonKeys;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *mPersonTopics;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *>  *mTopicPersonKey;
 @end
 
 @implementation TVFriendStore
@@ -56,7 +66,14 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
         _mImages         = [NSMutableDictionary dictionary];
         _mCoords         = [NSMutableDictionary dictionary];
         _mRawTimestamps  = [NSMutableDictionary dictionary];
+        _mVelocities     = [NSMutableDictionary dictionary];
+        _mAltitudes      = [NSMutableDictionary dictionary];
+        _mAltitudeHistory = [NSMutableDictionary dictionary];
+        _mVelocityHistory = [NSMutableDictionary dictionary];
         _mAllowedTopics  = [NSMutableSet set];
+        _mPersonKeys     = [NSMutableArray array];
+        _mPersonTopics   = [NSMutableDictionary dictionary];
+        _mTopicPersonKey = [NSMutableDictionary dictionary];
         _mAPIDeviceNames = [NSMutableDictionary dictionary];
         _mMarkerImageURLs = [NSMutableDictionary dictionary];
         _mInFlightMarkerImageTopics = [NSMutableSet set];
@@ -108,6 +125,133 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
 
 - (NSTimeInterval)rawTimestampForTopic:(NSString *)topic {
     return [self.mRawTimestamps[topic] doubleValue];
+}
+
+- (double)velocityKmhForTopic:(NSString *)topic {
+    NSNumber *v = self.mVelocities[topic];
+    return v ? v.doubleValue : -1.0;
+}
+
+- (double)altitudeMetersForTopic:(NSString *)topic {
+    NSNumber *alt = self.mAltitudes[topic];
+    return alt ? alt.doubleValue : NAN;
+}
+
+- (NSArray<NSNumber *> *)altitudeHistoryForTopic:(NSString *)topic {
+    NSArray<NSNumber *> *history = self.mAltitudeHistory[topic];
+    return history ? [history copy] : @[];
+}
+
+- (NSArray<NSNumber *> *)velocityHistoryKmhForTopic:(NSString *)topic {
+    NSArray<NSNumber *> *history = self.mVelocityHistory[topic];
+    return history ? [history copy] : @[];
+}
+
+- (void)appendVelocityKmh:(double)velocityKmh forTopic:(NSString *)topic {
+    if (!topic.length || velocityKmh < 0.0) {
+        return;
+    }
+    self.mVelocities[topic] = @(velocityKmh);
+    NSMutableArray<NSNumber *> *history = self.mVelocityHistory[topic];
+    if (!history) {
+        history = [NSMutableArray array];
+        self.mVelocityHistory[topic] = history;
+    }
+    [history addObject:@(velocityKmh)];
+    while (history.count > kTVMaxVelocityHistorySamples) {
+        [history removeObjectAtIndex:0];
+    }
+}
+
+- (void)appendAltitudeMeters:(double)altitudeMeters forTopic:(NSString *)topic {
+    if (!topic.length || isnan(altitudeMeters)) {
+        return;
+    }
+    self.mAltitudes[topic] = @(altitudeMeters);
+    NSMutableArray<NSNumber *> *history = self.mAltitudeHistory[topic];
+    if (!history) {
+        history = [NSMutableArray array];
+        self.mAltitudeHistory[topic] = history;
+    }
+    [history addObject:@(altitudeMeters)];
+    while (history.count > kTVMaxAltitudeHistorySamples) {
+        [history removeObjectAtIndex:0];
+    }
+}
+
+- (NSArray<NSString *> *)personKeys {
+    return [self.mPersonKeys copy];
+}
+
+- (NSArray<NSString *> *)topicsForPersonKey:(NSString *)personKey {
+    NSArray<NSString *> *topics = self.mPersonTopics[personKey];
+    return topics ? [topics copy] : @[];
+}
+
+- (NSString *)displayNameForPersonKey:(NSString *)personKey {
+    if (!personKey.length) {
+        return @"Unknown";
+    }
+    NSString *spaced = [personKey stringByReplacingOccurrencesOfString:@"_" withString:@" "];
+    return [spaced capitalizedStringWithLocale:NSLocale.currentLocale];
+}
+
+- (NSString *)personKeyForTopic:(NSString *)topic {
+    return self.mTopicPersonKey[topic];
+}
+
+- (NSString *)personKeyDerivedFromTopic:(NSString *)topic {
+    if (!topic.length) {
+        return @"unknown";
+    }
+    NSArray<NSString *> *parts = [topic componentsSeparatedByString:@"/"];
+    if (parts.count >= 3 && [parts[0] isEqualToString:@"owntracks"]) {
+        return parts[1];
+    }
+    if (parts.count >= 3 && [parts[0] isEqualToString:@"api"]) {
+        return parts[1];
+    }
+    if (parts.count >= 2) {
+        return parts[0];
+    }
+    return topic;
+}
+
+- (void)rebuildPersonGrouping {
+    NSDictionary<NSString *, NSString *> *savedPersonKeys = [self.mTopicPersonKey copy];
+    [self.mPersonKeys removeAllObjects];
+    [self.mPersonTopics removeAllObjects];
+    [self.mTopicPersonKey removeAllObjects];
+
+    for (NSString *topic in self.mTopics) {
+        NSString *personKey = savedPersonKeys[topic];
+        if (!personKey.length) {
+            personKey = [self personKeyDerivedFromTopic:topic];
+        }
+        self.mTopicPersonKey[topic] = personKey;
+        NSMutableArray<NSString *> *bucket = self.mPersonTopics[personKey];
+        if (!bucket) {
+            bucket = [NSMutableArray array];
+            self.mPersonTopics[personKey] = bucket;
+            [self.mPersonKeys addObject:personKey];
+        }
+        if (![bucket containsObject:topic]) {
+            [bucket addObject:topic];
+        }
+    }
+
+    [self.mPersonKeys sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        return [[self displayNameForPersonKey:a] localizedCaseInsensitiveCompare:[self displayNameForPersonKey:b]];
+    }];
+
+    for (NSString *personKey in self.mPersonKeys) {
+        NSMutableArray<NSString *> *bucket = self.mPersonTopics[personKey];
+        [bucket sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+            NSString *la = self.mAPIDeviceNames[a] ?: self.mLabels[a] ?: [a lastPathComponent];
+            NSString *lb = self.mAPIDeviceNames[b] ?: self.mLabels[b] ?: [b lastPathComponent];
+            return [la localizedCaseInsensitiveCompare:lb];
+        }];
+    }
 }
 
 - (UIImage *)imageForTopic:(NSString *)topic {
@@ -187,11 +331,22 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
             self.mRawTimestamps[topic] = @(d.timestamp);
             self.mTimes[topic] = [self timestampStringFromTimestamp:d.timestamp];
         }
+
+        if (d.velocity >= 0.0) {
+            [self appendVelocityKmh:d.velocity forTopic:topic];
+        }
+        if (!isnan(d.altitudeMeters)) {
+            [self appendAltitudeMeters:d.altitudeMeters forTopic:topic];
+        }
+
+        NSString *personKey = d.userKey.length ? d.userKey : [self personKeyDerivedFromTopic:topic];
+        self.mTopicPersonKey[topic] = personKey;
     }
 
     [self fetchMissingMarkerImagesForDevices:devices];
 
     [self sortTopics];
+    [self rebuildPersonGrouping];
 
     DDLogInfo(@"[TVFriendStore] applyLocationAPIDevices count=%lu allowed=%lu",
               (unsigned long)devices.count, (unsigned long)newAllowed.count);
@@ -209,7 +364,21 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
     [self.mImages removeObjectForKey:topic];
     [self.mCoords removeObjectForKey:topic];
     [self.mRawTimestamps removeObjectForKey:topic];
+    [self.mVelocities removeObjectForKey:topic];
+    [self.mVelocityHistory removeObjectForKey:topic];
+    [self.mAltitudes removeObjectForKey:topic];
+    [self.mAltitudeHistory removeObjectForKey:topic];
     [self.mAPIDeviceNames removeObjectForKey:topic];
+    NSString *personKey = self.mTopicPersonKey[topic];
+    [self.mTopicPersonKey removeObjectForKey:topic];
+    if (personKey.length) {
+        NSMutableArray<NSString *> *bucket = self.mPersonTopics[personKey];
+        [bucket removeObject:topic];
+        if (bucket.count == 0) {
+            [self.mPersonTopics removeObjectForKey:personKey];
+            [self.mPersonKeys removeObject:personKey];
+        }
+    }
     [self.mMarkerImageURLs removeObjectForKey:topic];
     [self.mInFlightMarkerImageTopics removeObject:topic];
     NSURL *file = [[self cacheDirectory] URLByAppendingPathComponent:[self cacheFilenameForTopic:topic]];
@@ -242,11 +411,25 @@ static NSSet *TVFriendStoreMQTTSubtopicLeafs(void) {
     self.mCoords[topic]        = [NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)];
     self.mRawTimestamps[topic] = @([info[@"tst"] doubleValue]);
 
+    id velObj = info[@"vel"];
+    if ([velObj isKindOfClass:[NSNumber class]]) {
+        [self appendVelocityKmh:[(NSNumber *)velObj doubleValue] forTopic:topic];
+    }
+    id altObj = info[@"alt"];
+    if ([altObj isKindOfClass:[NSNumber class]]) {
+        [self appendAltitudeMeters:[(NSNumber *)altObj doubleValue] forTopic:topic];
+    }
+
+    if (!self.mTopicPersonKey[topic]) {
+        self.mTopicPersonKey[topic] = [self personKeyDerivedFromTopic:topic];
+    }
+
     BOOL isNew = ![self.mTopics containsObject:topic];
     NSString *change;
     if (isNew) {
         [self.mTopics addObject:topic];
         [self sortTopics];
+        [self rebuildPersonGrouping];
         change = @"new";
         DDLogInfo(@"[TVFriendStore] new friend: %@ at %.5f,%.5f", topic, lat, lon);
     } else {

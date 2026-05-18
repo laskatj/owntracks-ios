@@ -80,10 +80,6 @@
 		84B0CDAD239E2EFA00CE9305 /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84B0CDAC239E2EFA00CE9305 /* BackgroundTasks.framework */; };
 		84B5E1042E30000100D2E3F4 /* WebAppURLResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 84B5E1012E30000100D2E3F4 /* WebAppURLResolver.m */; };
 		84B5E1052E30000100D2E3F4 /* LocationAPISyncService.m in Sources */ = {isa = PBXBuildFile; fileRef = 84B5E1032E30000100D2E3F4 /* LocationAPISyncService.m */; };
-		DC010003DC010003DC010003 /* DashcamGridViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = DC010002DC010002DC010002 /* DashcamGridViewController.m */; };
-		DC020003DC020003DC020003 /* DashcamPlayerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = DC020002DC020002DC020002 /* DashcamPlayerViewController.m */; };
-		DC030002DC030002DC030002 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC030001DC030001DC030001 /* AVKit.framework */; };
-		DC040002DC040002DC040002 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC040001DC040001DC040001 /* AVFoundation.framework */; };
 		84B7397A1A65629200B103F4 /* LocationManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 84B739791A65629200B103F4 /* LocationManager.m */; };
 		84BD03AA25D5301F0077B9B8 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84AE8ADB25C165D600C0B0EE /* MapKit.framework */; };
 		84C3F4562CEF7490004DB332 /* AttachPhotoTVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 84C3F4552CEF7490004DB332 /* AttachPhotoTVC.m */; };
@@ -122,6 +118,10 @@
 		CAFE21022F91008100532801 /* OTInboxRealtimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20052F91008100532801 /* OTInboxRealtimeCoordinator.swift */; };
 		D4E5F6A1B2C30001AAAA0001 /* HealthKitHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */; };
 		D4E5F6A1B2C30002AAAA0001 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4E5F6A1B2C30005AAAA0001 /* HealthKit.framework */; };
+		DC010003DC010003DC010003 /* DashcamGridViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = DC010002DC010002DC010002 /* DashcamGridViewController.m */; };
+		DC020003DC020003DC020003 /* DashcamPlayerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = DC020002DC020002DC020002 /* DashcamPlayerViewController.m */; };
+		DC030002DC030002DC030002 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC030001DC030001DC030001 /* AVKit.framework */; };
+		DC040002DC040002DC040002 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC040001DC040001DC040001 /* AVFoundation.framework */; };
 		DD010002DD010002DD010002 /* DeviceDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD010001DD010001DD010001 /* DeviceDetailViewModel.swift */; };
 		DD020002DD020002DD020002 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD020001DD020001DD020001 /* DeviceDetailView.swift */; };
 		DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */; };
@@ -377,12 +377,6 @@
 		84B5E1012E30000100D2E3F4 /* WebAppURLResolver.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebAppURLResolver.m; sourceTree = "<group>"; };
 		84B5E1022E30000100D2E3F4 /* LocationAPISyncService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocationAPISyncService.h; sourceTree = "<group>"; };
 		84B5E1032E30000100D2E3F4 /* LocationAPISyncService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LocationAPISyncService.m; sourceTree = "<group>"; };
-		DC010001DC010001DC010001 /* DashcamGridViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DashcamGridViewController.h; sourceTree = "<group>"; };
-		DC010002DC010002DC010002 /* DashcamGridViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DashcamGridViewController.m; sourceTree = "<group>"; };
-		DC020001DC020001DC020001 /* DashcamPlayerViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DashcamPlayerViewController.h; sourceTree = "<group>"; };
-		DC020002DC020002DC020002 /* DashcamPlayerViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DashcamPlayerViewController.m; sourceTree = "<group>"; };
-		DC030001DC030001DC030001 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
-		DC040001DC040001DC040001 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		84B739781A65629200B103F4 /* LocationManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LocationManager.h; sourceTree = "<group>"; };
 		84B739791A65629200B103F4 /* LocationManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = LocationManager.m; sourceTree = "<group>"; };
 		84BA0A0F2DE6F24B00AFACA9 /* ro */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ro; path = ro.lproj/Storyboard.strings; sourceTree = "<group>"; };
@@ -499,6 +493,12 @@
 		D4E5F6A1B2C30003AAAA0001 /* HealthKitHeartRateManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HealthKitHeartRateManager.h; sourceTree = "<group>"; };
 		D4E5F6A1B2C30004AAAA0001 /* HealthKitHeartRateManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HealthKitHeartRateManager.m; sourceTree = "<group>"; };
 		D4E5F6A1B2C30005AAAA0001 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		DC010001DC010001DC010001 /* DashcamGridViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DashcamGridViewController.h; sourceTree = "<group>"; };
+		DC010002DC010002DC010002 /* DashcamGridViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DashcamGridViewController.m; sourceTree = "<group>"; };
+		DC020001DC020001DC020001 /* DashcamPlayerViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DashcamPlayerViewController.h; sourceTree = "<group>"; };
+		DC020002DC020002DC020002 /* DashcamPlayerViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DashcamPlayerViewController.m; sourceTree = "<group>"; };
+		DC030001DC030001DC030001 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
+		DC040001DC040001DC040001 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		DD010001DD010001DD010001 /* DeviceDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailViewModel.swift; sourceTree = "<group>"; };
 		DD020001DD020001DD020001 /* DeviceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailView.swift; sourceTree = "<group>"; };
 		DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDetailHostingController.swift; sourceTree = "<group>"; };
@@ -1850,7 +1850,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.5;
+				MARKETING_VERSION = 19.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1908,7 +1908,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.5;
+				MARKETING_VERSION = 19.4.6;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;

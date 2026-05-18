@@ -53,6 +53,30 @@ extern NSString * const TVFriendStoreDidUpdateNotification;
 /// or 0 if unknown.
 - (NSTimeInterval)rawTimestampForTopic:(NSString *)topic;
 
+/// Last known speed in km/h, or -1 if unknown.
+- (double)velocityKmhForTopic:(NSString *)topic;
+
+/// Last known altitude in meters, or NAN if unknown.
+- (double)altitudeMetersForTopic:(NSString *)topic;
+
+/// Recent altitude samples in meters (oldest first), up to 40 entries.
+- (NSArray<NSNumber *> *)altitudeHistoryForTopic:(NSString *)topic;
+
+/// Recent speed samples in km/h (oldest first), up to 40 entries.
+- (NSArray<NSNumber *> *)velocityHistoryKmhForTopic:(NSString *)topic;
+
+/// Person keys sorted for the friends list (one key per API user / MQTT user segment).
+@property (nonatomic, readonly) NSArray<NSString *> *personKeys;
+
+/// MQTT topics for a person key, sorted like friendTopics.
+- (NSArray<NSString *> *)topicsForPersonKey:(NSString *)personKey;
+
+/// Human-readable label for a person key.
+- (NSString *)displayNameForPersonKey:(NSString *)personKey;
+
+/// Person key for a device topic, if known.
+- (nullable NSString *)personKeyForTopic:(NSString *)topic;
+
 /// Strips /info, /event, etc. so the key matches API mqttTopic.
 + (NSString *)baseMQTTTopicFromMessageTopic:(NSString *)topic;
 

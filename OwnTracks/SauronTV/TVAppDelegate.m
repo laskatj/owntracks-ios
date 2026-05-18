@@ -337,6 +337,10 @@ static const DDLogLevel ddLogLevel = DDLogLevelInfo;
         if ([lvel isKindOfClass:[NSNumber class]]) {
             info[@"vel"] = lvel;
         }
+        id lalt = dict[@"alt"];
+        if ([lalt isKindOfClass:[NSNumber class]]) {
+            info[@"alt"] = lalt;
+        }
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [[NSNotificationCenter defaultCenter]

@@ -14,6 +14,8 @@
 #import "TVRecorderTokenStore.h"
 #import "SmoothMarkerAnimator.h"
 #import "OTMapFollowHeading.h"
+#import "TVSpeedometerView.h"
+#import "TVAltimeterView.h"
 #import <CoreLocation/CoreLocation.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -186,6 +188,10 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 @property (strong, nonatomic) UIView      *trackingHUD;
 @property (strong, nonatomic) UIImageView *hudPhotoView;
 @property (strong, nonatomic) UILabel     *hudNameLabel;
+@property (strong, nonatomic) UIStackView *instrumentationStack;
+@property (strong, nonatomic) NSLayoutConstraint *instrumentationTopConstraint;
+@property (strong, nonatomic) TVSpeedometerView *speedometerView;
+@property (strong, nonatomic) TVAltimeterView *altimeterView;
 
 /// Live route cache (same pattern as iOS ViewController).
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
@@ -268,6 +274,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
              object:nil];
 
     [self buildTrackingHUD];
+    [self buildInstrumentationHUD];
 
     DDLogInfo(@"[TVMapViewController] viewDidLoad");
 }
@@ -308,11 +315,18 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
             v = v.superview;
         }
     }
+    [self updateInstrumentationTopAlignment];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self updateInstrumentationTopAlignment];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self stopFollowLink];
+    [UIApplication sharedApplication].idleTimerDisabled = NO;
 }
 
 - (void)dealloc {
@@ -400,6 +414,96 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
                         options:UIViewAnimationOptionCurveEaseIn
                      animations:^{ self.trackingHUD.alpha = 0; }
                      completion:nil];
+}
+
+#pragma mark - Instrumentation HUD
+
+- (void)buildInstrumentationHUD {
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.alignment = UIStackViewAlignmentTop;
+    stack.spacing = 10.0;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.userInteractionEnabled = NO;
+    stack.alpha = 0.0;
+
+    TVSpeedometerView *gauge = [[TVSpeedometerView alloc] initWithFrame:CGRectZero];
+    gauge.translatesAutoresizingMaskIntoConstraints = NO;
+    gauge.usesImperial = YES;
+    gauge.maxSpeedKmh = 200.0;
+
+    TVAltimeterView *altimeter = [[TVAltimeterView alloc] initWithFrame:CGRectZero];
+    altimeter.translatesAutoresizingMaskIntoConstraints = NO;
+    altimeter.usesImperial = YES;
+
+    // Order: Altitude (left) → Speedometer (right), trailing edge of screen.
+    [stack addArrangedSubview:altimeter];
+    [stack addArrangedSubview:gauge];
+    [self.view addSubview:stack];
+
+    self.instrumentationStack = stack;
+    self.speedometerView = gauge;
+    self.altimeterView = altimeter;
+
+    self.instrumentationTopConstraint =
+        [stack.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:0.0];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [gauge.widthAnchor constraintEqualToConstant:180.0],
+        [gauge.heightAnchor constraintEqualToConstant:180.0],
+        [altimeter.widthAnchor constraintEqualToConstant:180.0],
+        [altimeter.heightAnchor constraintEqualToConstant:180.0],
+
+        self.instrumentationTopConstraint,
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-16.0],
+    ]];
+}
+
+- (void)updateInstrumentationTopAlignment {
+    if (!self.instrumentationTopConstraint || !self.tabBarController.tabBar.superview) {
+        return;
+    }
+    CGRect tabFrame = [self.tabBarController.tabBar convertRect:self.tabBarController.tabBar.bounds
+                                                       toView:self.view];
+    self.instrumentationTopConstraint.constant = CGRectGetMinY(tabFrame);
+}
+
+- (void)refreshInstrumentationForTopic:(NSString *)topic {
+    TVFriendStore *store = [TVFriendStore shared];
+    self.speedometerView.speedKmh = [store velocityKmhForTopic:topic];
+    self.speedometerView.speedHistoryKmh = [store velocityHistoryKmhForTopic:topic];
+    self.altimeterView.altitudeMeters = [store altitudeMetersForTopic:topic];
+    self.altimeterView.altitudeHistoryMeters = [store altitudeHistoryForTopic:topic];
+}
+
+- (void)showSpeedometerForTopic:(NSString *)topic {
+    [self refreshInstrumentationForTopic:topic];
+    [UIView animateWithDuration:0.3
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseOut
+                     animations:^{ self.instrumentationStack.alpha = 1.0; }
+                     completion:nil];
+}
+
+- (void)hideSpeedometer {
+    [UIView animateWithDuration:0.2
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseIn
+                     animations:^{ self.instrumentationStack.alpha = 0.0; }
+                     completion:nil];
+}
+
+- (void)updateInstrumentationFromUserInfo:(NSDictionary *)info topic:(NSString *)topic {
+    TVFriendStore *store = [TVFriendStore shared];
+    id velObj = info[@"vel"];
+    if ([velObj isKindOfClass:[NSNumber class]]) {
+        self.speedometerView.speedKmh = [(NSNumber *)velObj doubleValue];
+    } else {
+        self.speedometerView.speedKmh = [store velocityKmhForTopic:topic];
+    }
+    self.speedometerView.speedHistoryKmh = [store velocityHistoryKmhForTopic:topic];
+    self.altimeterView.altitudeMeters = [store altitudeMetersForTopic:topic];
+    self.altimeterView.altitudeHistoryMeters = [store altitudeHistoryForTopic:topic];
 }
 
 #pragma mark - Smooth map following (CADisplayLink)
@@ -588,6 +692,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     [self.liveTrackPoints[topic] addObject:[NSValue valueWithMKCoordinate:coord]];
 
     if (self.selectedTopic.length && [self.selectedTopic isEqualToString:topic]) {
+        [self updateInstrumentationFromUserInfo:note.userInfo topic:topic];
         [self rebuildLiveTrackForTopic:topic];
         NSValue *prevBox = self.followMapPrevCoordByTopic[topic];
         CLLocationCoordinate2D prev = kCLLocationCoordinate2DInvalid;
@@ -936,6 +1041,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         [self.followMapPrevCoordByTopic removeObjectForKey:topic];
         self.followHeadingDegreesNumber = nil;
         [self showTrackingHUDForTopic:topic];
+        [self showSpeedometerForTopic:topic];
         [self zoomToFriend:topic];
 
         if ([self.routeFetchedTopics containsObject:topic] && self.liveTrackPoints[topic].count >= 2) {
@@ -944,6 +1050,7 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
             [self fetchRouteForTopic:topic];
         }
         [self startFollowLink];
+        [UIApplication sharedApplication].idleTimerDisabled = YES;
         DDLogInfo(@"[TVMapViewController] following %@", topic);
     } else {
         if (previous.length) {
@@ -954,7 +1061,9 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
         self.followHeadingDegreesNumber = nil;
         [self.followMapPrevCoordByTopic removeAllObjects];
         [self hideTrackingHUD];
+        [self hideSpeedometer];
         [self stopFollowLink];
+        [UIApplication sharedApplication].idleTimerDisabled = NO;
         [self zoomToFitAllAnnotations];
         DDLogInfo(@"[TVMapViewController] showing all friends");
     }
