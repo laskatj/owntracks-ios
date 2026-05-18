@@ -80,13 +80,18 @@ static UIColor *OTAltimeterGraphBlue(void) {
 
     CGPoint center = CGPointMake(CGRectGetMidX(valueRect), CGRectGetMidY(valueRect) - 4.0);
 
+    BOOL compact = CGRectGetWidth(rect) > 0.0 && CGRectGetWidth(rect) < 110.0;
+    CGFloat altFontSize = compact ? 32.0 : 44.0;
+    CGFloat unitFontSize = compact ? 12.0 : 16.0;
+    CGFloat mountainPointSize = compact ? 12.0 : 15.0;
+
     double displayAlt = [self displayAltitudeFromMeters:self.altitudeMeters];
     NSString *altText = isnan(self.altitudeMeters)
         ? @"—"
         : [NSString stringWithFormat:@"%.0f", displayAlt];
 
     NSDictionary *altAttrs = @{
-        NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:44.0 weight:UIFontWeightBold],
+        NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:altFontSize weight:UIFontWeightBold],
         NSForegroundColorAttributeName: UIColor.whiteColor,
     };
     CGSize altSize = [altText sizeWithAttributes:altAttrs];
@@ -96,12 +101,12 @@ static UIColor *OTAltimeterGraphBlue(void) {
 
     NSString *unit = [self unitLabel];
     NSDictionary *unitAttrs = @{
-        NSFontAttributeName: [UIFont systemFontOfSize:16.0 weight:UIFontWeightMedium],
+        NSFontAttributeName: [UIFont systemFontOfSize:unitFontSize weight:UIFontWeightMedium],
         NSForegroundColorAttributeName: [UIColor colorWithWhite:0.55 alpha:1.0],
     };
     CGSize unitSize = [unit sizeWithAttributes:unitAttrs];
 
-    UIImageSymbolConfiguration *mountainCfg = [UIImageSymbolConfiguration configurationWithPointSize:15.0
+    UIImageSymbolConfiguration *mountainCfg = [UIImageSymbolConfiguration configurationWithPointSize:mountainPointSize
                                                                                               weight:UIImageSymbolWeightSemibold];
     UIImage *mountain = [UIImage systemImageNamed:@"mountain.2.fill" withConfiguration:mountainCfg];
     if (mountain) {

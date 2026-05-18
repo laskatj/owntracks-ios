@@ -154,9 +154,13 @@ static const double kKmhToMph = 0.621371;
         [valueArc stroke];
     }
 
+    BOOL compact = CGRectGetWidth(rect) > 0.0 && CGRectGetWidth(rect) < 110.0;
+    CGFloat speedFontSize = compact ? 29.0 : 40.0;
+    CGFloat unitFontSize = compact ? 12.0 : 16.0;
+
     NSString *speedText = [NSString stringWithFormat:@"%.0f", displaySpeed];
     NSDictionary *speedAttrs = @{
-        NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:40.0 weight:UIFontWeightBold],
+        NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:speedFontSize weight:UIFontWeightBold],
         NSForegroundColorAttributeName: UIColor.whiteColor,
     };
     CGSize speedSize = [speedText sizeWithAttributes:speedAttrs];
@@ -166,7 +170,7 @@ static const double kKmhToMph = 0.621371;
 
     NSString *unitText = self.usesImperial ? @"MPH" : @"KM/H";
     NSDictionary *unitAttrs = @{
-        NSFontAttributeName: [UIFont systemFontOfSize:16.0 weight:UIFontWeightMedium],
+        NSFontAttributeName: [UIFont systemFontOfSize:unitFontSize weight:UIFontWeightMedium],
         NSForegroundColorAttributeName: [UIColor colorWithWhite:0.55 alpha:1.0],
     };
     CGSize unitSize = [unitText sizeWithAttributes:unitAttrs];

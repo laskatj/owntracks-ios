@@ -218,6 +218,7 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (strong, nonatomic) NSLayoutConstraint *altimeterHeightConstraint;
 @property (strong, nonatomic) NSLayoutConstraint *speedometerWidthConstraint;
 @property (strong, nonatomic) NSLayoutConstraint *speedometerHeightConstraint;
+@property (strong, nonatomic, nullable) NSLayoutConstraint *instrumentationTopConstraint;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *followVelocityHistoryKmhByTopic;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *followAltitudeMetersByTopic;
 @property (strong, nonatomic) UIControl *heartRateMapChip;
@@ -451,6 +452,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     [self refreshBellUnreadBadge];
     [self fetchCurrentUserProfileIfSignedIn];
     [self setupMapRouteFollowControlsRow];
+    [self updateInstrumentationTopConstraint];
     self.followEnabled = YES;
     [self updateFollowToggleAppearance];
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -895,7 +897,13 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
 #pragma mark - Instrumentation HUD
 
 - (CGFloat)instrumentationTileSide {
-    return self.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad ? 180.0 : 130.0;
+    CGFloat side = self.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad ? 160.0 : 96.0;
+    if (self.traitCollection.userInterfaceIdiom != UIUserInterfaceIdiomPad
+        && self.view.bounds.size.width > 0.0
+        && self.view.bounds.size.width < 360.0) {
+        side = 88.0;
+    }
+    return side;
 }
 
 - (void)updateInstrumentationTileSizes {
@@ -943,9 +951,10 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
         self.altimeterHeightConstraint,
         self.speedometerWidthConstraint,
         self.speedometerHeightConstraint,
-        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8.0],
-        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12.0],
+        [stack.trailingAnchor constraintEqualToAnchor:self.heartRateMapChip.trailingAnchor],
     ]];
+
+    [self updateInstrumentationTopConstraint];
 
     if (self.compassButton) {
         self.compassBelowInstrumentationConstraint =
@@ -953,11 +962,44 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     }
 }
 
+- (void)updateInstrumentationTopConstraint {
+    if (!self.instrumentationStack) {
+        return;
+    }
+    if (self.instrumentationTopConstraint) {
+        self.instrumentationTopConstraint.active = NO;
+    }
+    NSLayoutYAxisAnchor *chromeTop;
+    CGFloat topConstant = 0.0;
+    if (self.trackingButton) {
+        chromeTop = self.trackingButton.topAnchor;
+    } else if (self.mapRouteFollowStack) {
+        chromeTop = self.mapRouteFollowStack.topAnchor;
+    } else {
+        chromeTop = self.modes.bottomAnchor;
+        topConstant = 8.0;
+    }
+    self.instrumentationTopConstraint =
+        [self.instrumentationStack.topAnchor constraintEqualToAnchor:chromeTop constant:topConstant];
+    self.instrumentationTopConstraint.active = YES;
+}
+
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
     if (previousTraitCollection
         && self.traitCollection.userInterfaceIdiom != previousTraitCollection.userInterfaceIdiom) {
         [self updateInstrumentationTileSizes];
+    }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    static CGSize sLastInstrumentationLayoutSize;
+    CGSize bounds = self.view.bounds.size;
+    if (!CGSizeEqualToSize(bounds, sLastInstrumentationLayoutSize)) {
+        sLastInstrumentationLayoutSize = bounds;
+        [self updateInstrumentationTileSizes];
+        [self updateInstrumentationTopConstraint];
     }
 }
 
@@ -1061,8 +1103,12 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     }
     [self seedFollowInstrumentHistoryForFriend:friend];
     [self refreshInstrumentationForFriend:friend];
+    [self updateInstrumentationTopConstraint];
     [self setInstrumentationCompassBelowHUD:YES];
     [self.view bringSubviewToFront:self.instrumentationStack];
+    if (self.heartRateMapChip) {
+        [self.view bringSubviewToFront:self.heartRateMapChip];
+    }
     if (self.compassButton) {
         [self.view bringSubviewToFront:self.compassButton];
     }
@@ -1463,6 +1509,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
         ]];
     }
     [NSLayoutConstraint activateConstraints:self.mapRouteFollowStackLayoutConstraints];
+    [self updateInstrumentationTopConstraint];
 }
 
 - (void)updateFollowToggleAppearance {
@@ -1880,6 +1927,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     }
 
     [self updateMapRouteFollowStackLayoutConstraints];
+    [self updateInstrumentationTopConstraint];
     [self updateFollowToggleAppearance];
     if (self.routeHistoryToggleButton && !self.routeHistoryToggleButton.hidden) {
         [self updateRouteHistoryToggleAppearance];
