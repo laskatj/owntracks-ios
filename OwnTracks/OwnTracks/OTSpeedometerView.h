@@ -1,14 +1,14 @@
 //
-//  TVSpeedometerView.h
-//  SauronTV
+//  OTSpeedometerView.h
+//  OwnTracks
 //
 
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Circular speedometer drawn with Core Graphics (green / yellow / red arc by speed).
-@interface TVSpeedometerView : UIView
+/// Circular speedometer with bottom speed sparkline (green / yellow / red arc by speed).
+@interface OTSpeedometerView : UIView
 
 /// Current speed in km/h (negative hides arc fill; display shows 0).
 @property (nonatomic) double speedKmh;

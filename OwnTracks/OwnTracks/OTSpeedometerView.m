@@ -1,16 +1,16 @@
 //
-//  TVSpeedometerView.m
-//  SauronTV
+//  OTSpeedometerView.m
+//  OwnTracks
 //
 
-#import "TVSpeedometerView.h"
+#import "OTSpeedometerView.h"
 
 static const CGFloat kArcLineWidth = 10.0;
 static const CGFloat kArcStartDeg = 225.0;
 static const CGFloat kArcSweepDeg = 270.0;
 static const double kKmhToMph = 0.621371;
 
-@implementation TVSpeedometerView
+@implementation OTSpeedometerView
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {

@@ -1,17 +1,17 @@
 //
-//  TVAltimeterView.m
-//  SauronTV
+//  OTAltimeterView.m
+//  OwnTracks
 //
 
-#import "TVAltimeterView.h"
+#import "OTAltimeterView.h"
 
 static const double kMetersToFeet = 3.28084;
 
-static UIColor *TVAltimeterGraphBlue(void) {
+static UIColor *OTAltimeterGraphBlue(void) {
     return [UIColor colorWithRed:0.35 green:0.78 blue:1.0 alpha:1.0];
 }
 
-@implementation TVAltimeterView
+@implementation OTAltimeterView
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
@@ -105,7 +105,7 @@ static UIColor *TVAltimeterGraphBlue(void) {
                                                                                               weight:UIImageSymbolWeightSemibold];
     UIImage *mountain = [UIImage systemImageNamed:@"mountain.2.fill" withConfiguration:mountainCfg];
     if (mountain) {
-        mountain = [mountain imageWithTintColor:TVAltimeterGraphBlue()
+        mountain = [mountain imageWithTintColor:OTAltimeterGraphBlue()
                                   renderingMode:UIImageRenderingModeAlwaysOriginal];
     }
     CGFloat mountainSide = 16.0;
@@ -186,7 +186,7 @@ static UIColor *TVAltimeterGraphBlue(void) {
         }
     }
 
-    [TVAltimeterGraphBlue() setStroke];
+    [OTAltimeterGraphBlue() setStroke];
     [wave stroke];
 }
 

@@ -1,6 +1,6 @@
 //
-//  TVAltimeterView.h
-//  SauronTV
+//  OTAltimeterView.h
+//  OwnTracks
 //
 
 #import <UIKit/UIKit.h>
@@ -8,7 +8,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /// Altitude readout with sparkline history (feet when usesImperial).
-@interface TVAltimeterView : UIView
+@interface OTAltimeterView : UIView
 
 /// Current altitude in meters (NAN if unknown).
 @property (nonatomic) double altitudeMeters;

@@ -28,6 +28,8 @@
 #import "SettingsTVC.h"
 #import "Settings.h"
 #import "OTMapFollowHeading.h"
+#import "OTSpeedometerView.h"
+#import "OTAltimeterView.h"
 #import <math.h>
 #import "OTHeartRateMonitoring.h"
 #import "BluetoothHeartRateManager.h"
@@ -39,6 +41,7 @@ static NSString * const kMapRouteHistoryHoursKey = @"mapRouteHistoryHours";
 static NSString * const kOTFriendPinTapGRName = @"org.owntracks.OTFriendPinTap";
 
 static NSString * const kOTFollowUserPitchKey = @"OTFollowUserPitch";
+static const NSUInteger kOTFollowInstrumentHistoryMax = 40;
 static NSString * const kOTFollowUserDistanceKey = @"OTFollowUserDistance";
 /// Default camera altitude (m) when starting follow — street-level; user can pinch after.
 static const CLLocationDistance kFollowDefaultCameraDistanceM = 900.0;
@@ -205,6 +208,18 @@ static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNu
 @property (strong, nonatomic) MKUserTrackingButton *trackingButton;
 @property (strong, nonatomic) MKScaleView *scaleView;
 @property (strong, nonatomic) MKCompassButton *compassButton;
+@property (strong, nonatomic, nullable) NSLayoutConstraint *compassTopConstraint;
+@property (strong, nonatomic, nullable) NSLayoutConstraint *compassBelowInstrumentationConstraint;
+/// Speed + altitude HUD while following a device (altimeter left, speedometer right).
+@property (strong, nonatomic) UIStackView *instrumentationStack;
+@property (strong, nonatomic) OTSpeedometerView *speedometerView;
+@property (strong, nonatomic) OTAltimeterView *altimeterView;
+@property (strong, nonatomic) NSLayoutConstraint *altimeterWidthConstraint;
+@property (strong, nonatomic) NSLayoutConstraint *altimeterHeightConstraint;
+@property (strong, nonatomic) NSLayoutConstraint *speedometerWidthConstraint;
+@property (strong, nonatomic) NSLayoutConstraint *speedometerHeightConstraint;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *followVelocityHistoryKmhByTopic;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *followAltitudeMetersByTopic;
 @property (strong, nonatomic) UIControl *heartRateMapChip;
 @property (strong, nonatomic) UIImageView *heartRateMapHeartImageView;
 @property (strong, nonatomic) UILabel *heartRateMapBPMLabel;
@@ -382,6 +397,8 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     self.friendAnimators = [NSMutableDictionary dictionary];
     self.routeLastFetchDebugByTopic = [NSMutableDictionary dictionary];
     self.followMapPrevCoordByTopic = [NSMutableDictionary dictionary];
+    self.followVelocityHistoryKmhByTopic = [NSMutableDictionary dictionary];
+    self.followAltitudeMetersByTopic = [NSMutableDictionary dictionary];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(liveFriendLocationUpdate:)
                                                  name:@"OTLiveFriendLocation"
@@ -403,6 +420,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     [self setupScaleView];
     [self setupMapHeartRateIndicator];
     [self setupCompassButton];
+    [self buildInstrumentationHUD];
     
     [[LocationManager sharedInstance] addObserver:self
                                        forKeyPath:@"monitoring"
@@ -862,13 +880,229 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
         compassTop = self.heartRateMapChip.bottomAnchor;
         compassTopConstant = 8.0;
     }
+    self.compassTopConstraint =
+        [compass.topAnchor constraintEqualToAnchor:compassTop constant:compassTopConstant];
     [NSLayoutConstraint activateConstraints:@[
         [compass.trailingAnchor constraintEqualToAnchor:self.mapView.trailingAnchor constant:-12],
-        [compass.topAnchor constraintEqualToAnchor:compassTop constant:compassTopConstant],
+        self.compassTopConstraint,
     ]];
     [self.view bringSubviewToFront:compass];
     if (self.heartRateMapChip) {
         [self.view bringSubviewToFront:self.heartRateMapChip];
+    }
+}
+
+#pragma mark - Instrumentation HUD
+
+- (CGFloat)instrumentationTileSide {
+    return self.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad ? 180.0 : 130.0;
+}
+
+- (void)updateInstrumentationTileSizes {
+    CGFloat side = [self instrumentationTileSide];
+    self.altimeterWidthConstraint.constant = side;
+    self.altimeterHeightConstraint.constant = side;
+    self.speedometerWidthConstraint.constant = side;
+    self.speedometerHeightConstraint.constant = side;
+}
+
+- (void)buildInstrumentationHUD {
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.alignment = UIStackViewAlignmentTop;
+    stack.spacing = 10.0;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.userInteractionEnabled = NO;
+    stack.alpha = 0.0;
+
+    OTAltimeterView *altimeter = [[OTAltimeterView alloc] initWithFrame:CGRectZero];
+    altimeter.translatesAutoresizingMaskIntoConstraints = NO;
+    altimeter.usesImperial = YES;
+
+    OTSpeedometerView *gauge = [[OTSpeedometerView alloc] initWithFrame:CGRectZero];
+    gauge.translatesAutoresizingMaskIntoConstraints = NO;
+    gauge.usesImperial = YES;
+    gauge.maxSpeedKmh = 200.0;
+
+    [stack addArrangedSubview:altimeter];
+    [stack addArrangedSubview:gauge];
+    [self.view addSubview:stack];
+
+    self.instrumentationStack = stack;
+    self.altimeterView = altimeter;
+    self.speedometerView = gauge;
+
+    CGFloat side = [self instrumentationTileSide];
+    self.altimeterWidthConstraint = [altimeter.widthAnchor constraintEqualToConstant:side];
+    self.altimeterHeightConstraint = [altimeter.heightAnchor constraintEqualToConstant:side];
+    self.speedometerWidthConstraint = [gauge.widthAnchor constraintEqualToConstant:side];
+    self.speedometerHeightConstraint = [gauge.heightAnchor constraintEqualToConstant:side];
+
+    [NSLayoutConstraint activateConstraints:@[
+        self.altimeterWidthConstraint,
+        self.altimeterHeightConstraint,
+        self.speedometerWidthConstraint,
+        self.speedometerHeightConstraint,
+        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8.0],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12.0],
+    ]];
+
+    if (self.compassButton) {
+        self.compassBelowInstrumentationConstraint =
+            [self.compassButton.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:8.0];
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (previousTraitCollection
+        && self.traitCollection.userInterfaceIdiom != previousTraitCollection.userInterfaceIdiom) {
+        [self updateInstrumentationTileSizes];
+    }
+}
+
+- (void)appendFollowVelocityKmh:(double)kmh forTopic:(NSString *)topic {
+    if (!topic.length || kmh < 0.0) {
+        return;
+    }
+    NSMutableArray<NSNumber *> *history = self.followVelocityHistoryKmhByTopic[topic];
+    if (!history) {
+        history = [NSMutableArray array];
+        self.followVelocityHistoryKmhByTopic[topic] = history;
+    }
+    [history addObject:@(kmh)];
+    while (history.count > kOTFollowInstrumentHistoryMax) {
+        [history removeObjectAtIndex:0];
+    }
+}
+
+- (void)appendFollowAltitudeMeters:(double)meters forTopic:(NSString *)topic {
+    if (!topic.length || isnan(meters)) {
+        return;
+    }
+    NSMutableArray<NSNumber *> *history = self.followAltitudeMetersByTopic[topic];
+    if (!history) {
+        history = [NSMutableArray array];
+        self.followAltitudeMetersByTopic[topic] = history;
+    }
+    [history addObject:@(meters)];
+    while (history.count > kOTFollowInstrumentHistoryMax) {
+        [history removeObjectAtIndex:0];
+    }
+}
+
+- (NSArray<NSNumber *> *)followVelocityHistoryForTopic:(NSString *)topic {
+    return topic.length ? [self.followVelocityHistoryKmhByTopic[topic] copy] : @[];
+}
+
+- (NSArray<NSNumber *> *)followAltitudeHistoryForTopic:(NSString *)topic {
+    return topic.length ? [self.followAltitudeMetersByTopic[topic] copy] : @[];
+}
+
+- (void)clearFollowInstrumentHistoryForTopic:(NSString *)topic {
+    if (!topic.length) {
+        return;
+    }
+    [self.followVelocityHistoryKmhByTopic removeObjectForKey:topic];
+    [self.followAltitudeMetersByTopic removeObjectForKey:topic];
+}
+
+- (void)seedFollowInstrumentHistoryForFriend:(Friend *)friend {
+    NSString *topic = friend.topic;
+    if (!topic.length) {
+        return;
+    }
+    [self clearFollowInstrumentHistoryForTopic:topic];
+    Waypoint *wp = friend.newestWaypoint;
+    if (wp.vel && wp.vel.doubleValue >= 0.0) {
+        [self appendFollowVelocityKmh:wp.vel.doubleValue forTopic:topic];
+    }
+    if (wp.alt) {
+        [self appendFollowAltitudeMeters:wp.alt.doubleValue forTopic:topic];
+    }
+}
+
+- (void)setInstrumentationCompassBelowHUD:(BOOL)belowHUD {
+    if (!self.compassButton || !self.compassTopConstraint || !self.compassBelowInstrumentationConstraint) {
+        return;
+    }
+    if (belowHUD) {
+        self.compassTopConstraint.active = NO;
+        self.compassBelowInstrumentationConstraint.active = YES;
+    } else {
+        self.compassBelowInstrumentationConstraint.active = NO;
+        self.compassTopConstraint.active = YES;
+    }
+}
+
+- (void)refreshInstrumentationForFriend:(Friend *)friend {
+    if (!friend) {
+        return;
+    }
+    NSString *topic = friend.topic;
+    Waypoint *wp = friend.newestWaypoint;
+    double kmh = -1.0;
+    if (wp.vel && wp.vel.doubleValue >= 0.0) {
+        kmh = wp.vel.doubleValue;
+    }
+    double altM = NAN;
+    if (wp.alt) {
+        altM = wp.alt.doubleValue;
+    }
+    self.speedometerView.speedKmh = kmh;
+    self.speedometerView.speedHistoryKmh = [self followVelocityHistoryForTopic:topic];
+    self.altimeterView.altitudeMeters = altM;
+    self.altimeterView.altitudeHistoryMeters = [self followAltitudeHistoryForTopic:topic];
+}
+
+- (void)showInstrumentationHUDForFriend:(Friend *)friend {
+    if (!friend || !self.followEnabled) {
+        return;
+    }
+    [self seedFollowInstrumentHistoryForFriend:friend];
+    [self refreshInstrumentationForFriend:friend];
+    [self setInstrumentationCompassBelowHUD:YES];
+    [self.view bringSubviewToFront:self.instrumentationStack];
+    if (self.compassButton) {
+        [self.view bringSubviewToFront:self.compassButton];
+    }
+    [UIView animateWithDuration:0.3
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseOut
+                     animations:^{ self.instrumentationStack.alpha = 1.0; }
+                     completion:nil];
+}
+
+- (void)hideInstrumentationHUD {
+    [UIView animateWithDuration:0.2
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseIn
+                     animations:^{ self.instrumentationStack.alpha = 0.0; }
+                     completion:^(BOOL finished) {
+        if (finished) {
+            [self setInstrumentationCompassBelowHUD:NO];
+        }
+    }];
+}
+
+- (void)updateInstrumentationFromUserInfo:(NSDictionary *)info topic:(NSString *)topic {
+    if (!topic.length) {
+        return;
+    }
+    id velObj = info[@"vel"];
+    if ([velObj isKindOfClass:[NSNumber class]]) {
+        double kmh = [(NSNumber *)velObj doubleValue];
+        if (kmh >= 0.0) {
+            [self appendFollowVelocityKmh:kmh forTopic:topic];
+        }
+    }
+    id altObj = info[@"alt"];
+    if ([altObj isKindOfClass:[NSNumber class]]) {
+        [self appendFollowAltitudeMeters:[(NSNumber *)altObj doubleValue] forTopic:topic];
+    }
+    Friend *friend = self.followFriend;
+    if (friend && [friend.topic isEqualToString:topic]) {
+        [self refreshInstrumentationForFriend:friend];
     }
 }
 
@@ -1358,6 +1592,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
         self.followFriend = nil;
         self.followHeadingTargetNumber = nil;
         [self stopFollowLink];
+        [self hideInstrumentationHUD];
         return;
     }
     self.followFriend = f;
@@ -1376,6 +1611,7 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
                                   heading:initialHeading
                        preserveUserAltitude:YES];
     [self startFollowLink];
+    [self showInstrumentationHUDForFriend:f];
 }
 
 /// Removes live-track `MKPolyline` overlays for all topics except `topic` (nil = remove all).
@@ -1475,6 +1711,15 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
     [friendAnnotationV setNeedsDisplay];
     VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil, nil);
+    if (self.followFriend && [self.followFriend.topic isEqualToString:friend.topic] && self.followEnabled) {
+        if (waypoint.vel && waypoint.vel.doubleValue >= 0.0) {
+            [self appendFollowVelocityKmh:waypoint.vel.doubleValue forTopic:friend.topic];
+        }
+        if (waypoint.alt) {
+            [self appendFollowAltitudeMeters:waypoint.alt.doubleValue forTopic:friend.topic];
+        }
+        [self refreshInstrumentationForFriend:friend];
+    }
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -2421,6 +2666,10 @@ calloutAccessoryControlTapped:(UIControl *)control {
         Friend *friend = (Friend *)view.annotation;
         NSString *topic = friend.topic;
         DDLogInfo(@"[Follow] didDeselectAnnotationView: topic=%@, stopping follow", friend.topic);
+        [self hideInstrumentationHUD];
+        if (topic.length) {
+            [self clearFollowInstrumentHistoryForTopic:topic];
+        }
         [self stopFollowLink];
         self.followHeadingTargetNumber = nil;
         self.selectedFriend = nil;
@@ -2511,6 +2760,11 @@ calloutAccessoryControlTapped:(UIControl *)control {
         [self fetchRouteForFriend:friend mapView:mapView];
     }
     [self updateRouteHistoryToggleVisibility];
+    if (self.followEnabled) {
+        [self showInstrumentationHUDForFriend:friend];
+    } else {
+        [self hideInstrumentationHUD];
+    }
 }
 
 - (void)resetFollowCameraSmootherState {
@@ -3105,6 +3359,9 @@ calloutAccessoryControlTapped:(UIControl *)control {
                 self.followHeadingTargetNumber = @(OTNormalizeHeadingDegrees(heading));
             }
         }
+    }
+    if (self.followEnabled && self.followFriend && [self.followFriend.topic isEqualToString:topic]) {
+        [self updateInstrumentationFromUserInfo:note.userInfo topic:topic];
     }
     [self updateRouteHistoryToggleVisibility];
 }

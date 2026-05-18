@@ -174,6 +174,10 @@ static BOOL OT_APNSIndicatesInboxRefresh(NSDictionary *userInfo) {
     if ([vel isKindOfClass:[NSNumber class]]) {
         userInfo[@"vel"] = vel;
     }
+    id alt = dictionary[@"alt"];
+    if ([alt isKindOfClass:[NSNumber class]]) {
+        userInfo[@"alt"] = alt;
+    }
     id hr = dictionary[@"hr"];
     if ([hr isKindOfClass:[NSNumber class]] && [(NSNumber *)hr intValue] > 0) {
         userInfo[@"hr"] = hr;

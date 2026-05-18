@@ -14,8 +14,8 @@
 #import "TVRecorderTokenStore.h"
 #import "SmoothMarkerAnimator.h"
 #import "OTMapFollowHeading.h"
-#import "TVSpeedometerView.h"
-#import "TVAltimeterView.h"
+#import "OTSpeedometerView.h"
+#import "OTAltimeterView.h"
 #import <CoreLocation/CoreLocation.h>
 #import <CocoaLumberjack/CocoaLumberjack.h>
 
@@ -190,8 +190,8 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
 @property (strong, nonatomic) UILabel     *hudNameLabel;
 @property (strong, nonatomic) UIStackView *instrumentationStack;
 @property (strong, nonatomic) NSLayoutConstraint *instrumentationTopConstraint;
-@property (strong, nonatomic) TVSpeedometerView *speedometerView;
-@property (strong, nonatomic) TVAltimeterView *altimeterView;
+@property (strong, nonatomic) OTSpeedometerView *speedometerView;
+@property (strong, nonatomic) OTAltimeterView *altimeterView;
 
 /// Live route cache (same pattern as iOS ViewController).
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *liveTrackPoints;
@@ -427,12 +427,12 @@ static NSString * const kOTLiveFriendLocationNotification = @"OTLiveFriendLocati
     stack.userInteractionEnabled = NO;
     stack.alpha = 0.0;
 
-    TVSpeedometerView *gauge = [[TVSpeedometerView alloc] initWithFrame:CGRectZero];
+    OTSpeedometerView *gauge = [[OTSpeedometerView alloc] initWithFrame:CGRectZero];
     gauge.translatesAutoresizingMaskIntoConstraints = NO;
     gauge.usesImperial = YES;
     gauge.maxSpeedKmh = 200.0;
 
-    TVAltimeterView *altimeter = [[TVAltimeterView alloc] initWithFrame:CGRectZero];
+    OTAltimeterView *altimeter = [[OTAltimeterView alloc] initWithFrame:CGRectZero];
     altimeter.translatesAutoresizingMaskIntoConstraints = NO;
     altimeter.usesImperial = YES;
 
