@@ -10,7 +10,6 @@
 #import "FriendMarkerAnimator.h"
 #import "StatusTVC.h"
 #import "FriendAnnotationV.h"
-#import "FriendCalloutSpeedView.h"
 #import "PhotoAnnotationV.h"
 #import "FriendsTVC.h"
 #import "RegionsTVC.h"
@@ -156,39 +155,6 @@ static UIImage *OTRouteHistoryWindowClockImage(CGFloat side, NSInteger hours) {
         CGContextStrokePath(c);
     }];
     return [raw imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-}
-
-static void VCSyncFriendCalloutSpeed(FriendAnnotationV *fv, Friend *friend, NSNumber *_Nullable liveVelKmH,
-                                     NSNumber *_Nullable liveHeartRateBPM) {
-    UIView *detail = fv.detailCalloutAccessoryView;
-    if (![detail isKindOfClass:[FriendCalloutSpeedView class]]) {
-        return;
-    }
-    FriendCalloutSpeedView *callout = (FriendCalloutSpeedView *)detail;
-    double kmh = -1.0;
-    if ([liveVelKmH isKindOfClass:[NSNumber class]] && isfinite(liveVelKmH.doubleValue)) {
-        kmh = liveVelKmH.doubleValue;
-    } else {
-        Waypoint *wp = friend.newestWaypoint;
-        if (wp.vel != nil) {
-            double v = wp.vel.doubleValue;
-            if (isfinite(v) && v >= 0.0) {
-                kmh = v;
-            }
-        }
-    }
-    [callout updateSpeedKmH:kmh];
-
-    NSNumber *hr = nil;
-    if ([liveHeartRateBPM isKindOfClass:[NSNumber class]] && liveHeartRateBPM.intValue > 0) {
-        hr = liveHeartRateBPM;
-    } else {
-        Waypoint *wpHR = friend.newestWaypoint;
-        if (wpHR.heartRate != nil && wpHR.heartRate.intValue > 0) {
-            hr = wpHR.heartRate;
-        }
-    }
-    [callout updateHeartRateBPM:hr];
 }
 
 @interface ViewController ()
@@ -1757,7 +1723,6 @@ static MKMapRect OTMapRectOutsetFraction(MKMapRect rect, double fraction) {
     friendAnnotationV.course = (waypoint.cog).doubleValue;
     friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
     [friendAnnotationV setNeedsDisplay];
-    VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil, nil);
     if (self.followFriend && [self.followFriend.topic isEqualToString:friend.topic] && self.followEnabled) {
         if (waypoint.vel && waypoint.vel.doubleValue >= 0.0) {
             [self appendFollowVelocityKmh:waypoint.vel.doubleValue forTopic:friend.topic];
@@ -2398,7 +2363,7 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         }
         friendAnnotationV.displayPriority = MKFeatureDisplayPriorityRequired;
         friendAnnotationV.zPriority = MKFeatureDisplayPriorityDefaultHigh;
-        friendAnnotationV.canShowCallout = YES;
+        friendAnnotationV.canShowCallout = NO;
         friendAnnotationV.rightCalloutAccessoryView = nil;
         friendAnnotationV.accessibilityLabel = friend.nameOrTopic;
 
@@ -2421,10 +2386,6 @@ didChangeDragState:(MKAnnotationViewDragState)newState
         friendAnnotationV.course = (waypoint.cog).doubleValue;
         friendAnnotationV.me = [friend.topic isEqualToString:[Settings theGeneralTopicInMOC:CoreData.sharedInstance.mainMOC]];
         [friendAnnotationV setNeedsDisplay];
-
-        FriendCalloutSpeedView *speedCallout = [[FriendCalloutSpeedView alloc] initWithFrame:CGRectZero];
-        friendAnnotationV.detailCalloutAccessoryView = speedCallout;
-        VCSyncFriendCalloutSpeed(friendAnnotationV, friend, nil, nil);
 
         return friendAnnotationV;
 
@@ -2658,9 +2619,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
         self.followHeadingLockPausedByUserGesture = NO;
         self.followTemporarilySuspendedByGesture = NO;
         [self applyFollowSelectionForMapFriend:friend mapView:mapView];
-        if ([view isKindOfClass:[FriendAnnotationV class]]) {
-            VCSyncFriendCalloutSpeed((FriendAnnotationV *)view, friend, nil, nil);
-        }
     }
 }
 
@@ -3330,12 +3288,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
         tstSec = [[NSDate date] timeIntervalSince1970];
     }
 
-    NSNumber *liveHRNum = nil;
-    id hrRaw = note.userInfo[@"hr"];
-    if ([hrRaw isKindOfClass:[NSNumber class]] && [(NSNumber *)hrRaw intValue] > 0) {
-        liveHRNum = (NSNumber *)hrRaw;
-    }
-
     // Smooth-animate the marker via CADisplayLink; no remove/readd, live track polyline is unaffected.
     for (id<MKAnnotation> ann in self.mapView.annotations) {
         if ([ann isKindOfClass:[Friend class]]) {
@@ -3361,7 +3313,6 @@ calloutAccessoryControlTapped:(UIControl *)control {
                         fv.speed = velNum.doubleValue;
                     }
                     [fv setNeedsDisplay];
-                    VCSyncFriendCalloutSpeed(fv, friend, velNum, liveHRNum);
                 }
                 break;
             }

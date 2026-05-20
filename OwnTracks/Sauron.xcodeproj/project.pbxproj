@@ -107,15 +107,10 @@
 		84FD93072353950100CCEC3B /* OwnTracksEditTVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 84FD93062353950100CCEC3B /* OwnTracksEditTVC.m */; };
 		A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
 		A1F2E3D42F91008300532801 /* OTMapFollowHeading.m in Sources */ = {isa = PBXBuildFile; fileRef = A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */; };
-		E2OTSP12F9100A500532801 /* OTSpeedometerView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTSP02F9100A200532801 /* OTSpeedometerView.m */; };
-		E2OTSP13F9100A600532801 /* OTSpeedometerView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTSP02F9100A200532801 /* OTSpeedometerView.m */; };
-		E2OTAL12F9100A700532801 /* OTAltimeterView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTAL02F9100A400532801 /* OTAltimeterView.m */; };
-		E2OTAL13F9100A800532801 /* OTAltimeterView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTAL02F9100A400532801 /* OTAltimeterView.m */; };
 		AAAA0012AAAA0012AAAA0012 /* SauronWatchWidget.appex in Embed Watch App Extensions */ = {isa = PBXBuildFile; fileRef = AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAAA0016AAAA0016AAAA0016 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */; };
 		AAAA0017AAAA0017AAAA0017 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */; };
 		AE010100AE010100AE010100 /* OTLocalHeartRateTimeSeriesStore.m in Sources */ = {isa = PBXBuildFile; fileRef = AE010102AE010102AE010102 /* OTLocalHeartRateTimeSeriesStore.m */; };
-		B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */ = {isa = PBXBuildFile; fileRef = B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */; };
 		C0BEBA49C0BE000100BEA001 /* BluetoothHeartRateManager.m in Sources */ = {isa = PBXBuildFile; fileRef = C0BEBA48C0BE000100BEA001 /* BluetoothHeartRateManager.m */; };
 		C0BEBA4AC0BE000100BEA001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0BEBA4BC0BE000100BEA001 /* CoreBluetooth.framework */; };
 		CAFE21012F91008100532801 /* OTInboxRealtimeContract.m in Sources */ = {isa = PBXBuildFile; fileRef = CAFE20032F91008100532801 /* OTInboxRealtimeContract.m */; };
@@ -131,6 +126,10 @@
 		DD030002DD030002DD030002 /* DeviceDetailHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD030001DD030001DD030001 /* DeviceDetailHostingController.swift */; };
 		DD040002DD040002DD040002 /* DeviceMetricsChartsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */; };
 		E1E2E3E42F9100AA00532801 /* OTHeartRateMonitoring.m in Sources */ = {isa = PBXBuildFile; fileRef = E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */; };
+		E2OTAL12F9100A700532801 /* OTAltimeterView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTAL02F9100A400532801 /* OTAltimeterView.m */; };
+		E2OTAL13F9100A800532801 /* OTAltimeterView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTAL02F9100A400532801 /* OTAltimeterView.m */; };
+		E2OTSP12F9100A500532801 /* OTSpeedometerView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTSP02F9100A200532801 /* OTSpeedometerView.m */; };
+		E2OTSP13F9100A600532801 /* OTSpeedometerView.m in Sources */ = {isa = PBXBuildFile; fileRef = E2OTSP02F9100A200532801 /* OTSpeedometerView.m */; };
 		F0A100222F9100010053280B /* OwnTracksWatchBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F0A100212F9100010053280B /* OwnTracksWatchBridge.m */; };
 		F0A100242F9100010053280B /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0A100232F9100010053280B /* WatchConnectivity.framework */; };
 		F0A100282F9100010053280B /* SauronWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F0A100252F9100010053280B /* SauronWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -469,10 +468,6 @@
 		9DBE9F76099A512C36F126BC /* Pods-OwnTracks.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracks.release.xcconfig"; path = "Target Support Files/Pods-OwnTracks/Pods-OwnTracks.release.xcconfig"; sourceTree = "<group>"; };
 		A1F2E3D42F91008000532801 /* OTMapFollowHeading.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTMapFollowHeading.h; sourceTree = "<group>"; };
 		A1F2E3D42F91008200532801 /* OTMapFollowHeading.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTMapFollowHeading.m; sourceTree = "<group>"; };
-		E2OTSP01F9100A100532801 /* OTSpeedometerView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTSpeedometerView.h; sourceTree = "<group>"; };
-		E2OTSP02F9100A200532801 /* OTSpeedometerView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTSpeedometerView.m; sourceTree = "<group>"; };
-		E2OTAL01F9100A300532801 /* OTAltimeterView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTAltimeterView.h; sourceTree = "<group>"; };
-		E2OTAL02F9100A400532801 /* OTAltimeterView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTAltimeterView.m; sourceTree = "<group>"; };
 		A3E3904A50CDD6C3C5ADEFFC /* Pods-Sauron.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sauron.debug.xcconfig"; path = "Target Support Files/Pods-Sauron/Pods-Sauron.debug.xcconfig"; sourceTree = "<group>"; };
 		AAAA0001AAAA0001AAAA0001 /* SauronWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SauronWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAAA0015AAAA0015AAAA0015 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
@@ -483,8 +478,6 @@
 		B1AC89FB2E2FDF3700E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B1AC89FD2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		B1AC89FE2E2FDF3900E0E194 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FriendCalloutSpeedView.h; sourceTree = "<group>"; };
-		B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FriendCalloutSpeedView.m; sourceTree = "<group>"; };
 		B23BF478C2DF040EB8AA1F21 /* Pods-SauronTV.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SauronTV.release.xcconfig"; path = "Target Support Files/Pods-SauronTV/Pods-SauronTV.release.xcconfig"; sourceTree = "<group>"; };
 		B8A7BDCE89FD144BB55060A0 /* Pods_SauronTV.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SauronTV.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA827F68D1E69AEA6BCC7251 /* Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; path = "Target Support Files/Pods-OwnTracksWrist WatchKit Extension/Pods-OwnTracksWrist WatchKit Extension.debug.xcconfig"; sourceTree = "<group>"; };
@@ -513,6 +506,10 @@
 		DD040001DD040001DD040001 /* DeviceMetricsChartsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMetricsChartsSheet.swift; sourceTree = "<group>"; };
 		E1E2E3E42F9100A900532801 /* OTHeartRateMonitoring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTHeartRateMonitoring.h; sourceTree = "<group>"; };
 		E1E2E3E42F9100AB00532801 /* OTHeartRateMonitoring.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTHeartRateMonitoring.m; sourceTree = "<group>"; };
+		E2OTAL01F9100A300532801 /* OTAltimeterView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTAltimeterView.h; sourceTree = "<group>"; };
+		E2OTAL02F9100A400532801 /* OTAltimeterView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTAltimeterView.m; sourceTree = "<group>"; };
+		E2OTSP01F9100A100532801 /* OTSpeedometerView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OTSpeedometerView.h; sourceTree = "<group>"; };
+		E2OTSP02F9100A200532801 /* OTSpeedometerView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OTSpeedometerView.m; sourceTree = "<group>"; };
 		F0A100202F9100010053280B /* OwnTracksWatchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OwnTracksWatchBridge.h; sourceTree = "<group>"; };
 		F0A100212F9100010053280B /* OwnTracksWatchBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OwnTracksWatchBridge.m; sourceTree = "<group>"; };
 		F0A100232F9100010053280B /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
@@ -918,8 +915,6 @@
 				E2OTSP02F9100A200532801 /* OTSpeedometerView.m */,
 				E2OTAL01F9100A300532801 /* OTAltimeterView.h */,
 				E2OTAL02F9100A400532801 /* OTAltimeterView.m */,
-				B1F2E3D42F91009000532801 /* FriendCalloutSpeedView.h */,
-				B1F2E3D42F91009100532801 /* FriendCalloutSpeedView.m */,
 			);
 			name = Friends;
 			sourceTree = "<group>";
@@ -1410,7 +1405,6 @@
 				A1F2E3D42F91008100532801 /* OTMapFollowHeading.m in Sources */,
 				E2OTSP12F9100A500532801 /* OTSpeedometerView.m in Sources */,
 				E2OTAL12F9100A700532801 /* OTAltimeterView.m in Sources */,
-				B1F2E3D42F91009200532801 /* FriendCalloutSpeedView.m in Sources */,
 				8474443A1DA4BC9600975BE4 /* ConnType.m in Sources */,
 				8411B90E189FEC070019D2D6 /* FriendsTVC.m in Sources */,
 				842E6ED620BEF031001928FA /* Queue+CoreDataClass.m in Sources */,
@@ -1658,7 +1652,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.3.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
@@ -1705,7 +1699,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.3.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksforktv;
@@ -1866,7 +1860,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.6;
+				MARKETING_VERSION = 19.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
 				PROVISIONING_PROFILE = "";
@@ -1924,7 +1918,7 @@
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/OwnTracks",
 				);
-				MARKETING_VERSION = 19.4.6;
+				MARKETING_VERSION = 19.4.7;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.laskatj.owntracksfork;
 				PRODUCT_NAME = Sauron;
